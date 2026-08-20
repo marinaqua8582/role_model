@@ -1,0 +1,33 @@
+@import "tailwindcss";
+
+@layer base {
+  body {
+    background-color: #F7F8F4;
+    color: #2C362B;
+    font-family: -apple-system, BlinkMacSystemFont, "Pretendard Variable", Pretendard, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+  }
+
+  ::selection {
+    background-color: #DCE2D7;
+    color: #2C362B;
+  }
+}
+
+/* Custom Scrollbar for Natural Tones */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #F1F4EF;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #C4CDC0;
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #AAB5A5;
+}

@@ -1,0 +1,284 @@
+import React, { useState, useEffect } from 'react';
+import { ChatbotPurposeData, RoleModelData } from '../../types';
+import { Target, Users, Sparkles, ArrowRight, ArrowLeft, Check, Edit3, RotateCcw } from 'lucide-react';
+import { buildChatbotPurposeSentence } from '../../utils/promptGenerator';
+
+interface Step2PurposeProps {
+  data: ChatbotPurposeData;
+  roleModel: RoleModelData;
+  onChange: (data: ChatbotPurposeData) => void;
+  onNext: () => void;
+  onPrev: () => void;
+  isReadOnly?: boolean;
+}
+
+const PURPOSE_OPTIONS = [
+  '롤모델의 직업을 소개한다.',
+  '이 직업에서 하는 일을 알려 준다.',
+  '이 직업에 필요한 역량을 알려 준다.',
+  '롤모델의 노력과 성장 과정을 소개한다.',
+  '실패나 어려움을 극복한 경험을 소개한다.',
+  '진로 준비 방법을 알려 준다.',
+  '진로 고민에 조언한다.',
+  '학생이 자신의 진로를 생각하도록 질문한다.',
+];
+
+const TARGET_OPTIONS = [
+  '이 직업에 관심 있는 중학생',
+  '진로를 아직 정하지 못한 중학생',
+  '롤모델의 삶과 경험이 궁금한 학생',
+  '나와 비슷한 고민을 하는 학생',
+  '기타',
+];
+
+export const Step2Purpose: React.FC<Step2PurposeProps> = ({
+  data,
+  roleModel,
+  onChange,
+  onNext,
+  onPrev,
+  isReadOnly = false,
+}) => {
+  const [isEditingSentence, setIsEditingSentence] = useState(false);
+
+  const updateField = <K extends keyof ChatbotPurposeData>(field: K, value: ChatbotPurposeData[K]) => {
+    if (isReadOnly) return;
+    onChange({ ...data, [field]: value });
+  };
+
+  const togglePurpose = (purpose: string) => {
+    if (isReadOnly) return;
+    const current = data.chatbotPurposes || [];
+    if (current.includes(purpose)) {
+      onChange({ ...data, chatbotPurposes: current.filter((p) => p !== purpose) });
+    } else {
+      if (current.length >= 4) {
+        return; // Max 4
+      }
+      onChange({ ...data, chatbotPurposes: [...current, purpose] });
+    }
+  };
+
+  // Sync auto sentence if not manually edited
+  useEffect(() => {
+    if (!data.purposeSummarySentence || !isEditingSentence) {
+      const generated = buildChatbotPurposeSentence(
+        data,
+        roleModel.roleModelName,
+        roleModel.roleModelJob
+      );
+      if (generated !== data.purposeSummarySentence && !isEditingSentence) {
+        onChange({ ...data, purposeSummarySentence: generated });
+      }
+    }
+  }, [data.chatbotPurposes, data.targetUser, data.targetUserCustom, data.expectedOutcome]);
+
+  const isValid =
+    data.chatbotPurposes.length >= 1 &&
+    data.chatbotPurposes.length <= 4 &&
+    Boolean(data.targetUser) &&
+    (data.targetUser !== '기타' || Boolean(data.targetUserCustom.trim()));
+
+  return (
+    <div className="max-w-4xl mx-auto space-y-6">
+      {/* Step Header */}
+      <div className="bg-white rounded-2xl p-3 sm:p-4 border border-[#E1E4D8] shadow-xs flex items-center justify-between">
+        <div className="flex items-center gap-2.5">
+          <span className="w-7 h-7 rounded-xl bg-[#4B6344] text-white text-xs font-bold flex items-center justify-center shadow-xs">
+            2
+          </span>
+          <h3 className="font-bold text-[#2C362B] text-sm sm:text-base">STEP 2. 챗봇 목적 정하기</h3>
+        </div>
+        <span className="text-xs text-[#6B7280]">진로 AI 멘토 역할 설계</span>
+      </div>
+
+      <div className="bg-white rounded-3xl border border-[#E1E4D8] shadow-sm p-6 sm:p-8 space-y-8">
+        {/* STEP 2-1: Chatbot Role */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <div>
+              <h4 className="text-xl font-bold text-[#2C362B] flex items-center gap-2">
+                <Target className="w-5 h-5 text-[#4B6344]" />
+                <span>STEP 2-1. 챗봇의 핵심 역할 선택</span>
+              </h4>
+              <p className="text-xs text-[#6B7280] mt-0.5">
+                내 롤모델 챗봇이 친구들에게 어떤 도움을 주면 좋을까요? 가장 중요한 역할을 <strong>3~4개</strong> 선택하세요.
+              </p>
+            </div>
+            <span
+              className={`text-xs font-bold px-3 py-1 rounded-full ${
+                data.chatbotPurposes.length >= 3 && data.chatbotPurposes.length <= 4
+                  ? 'bg-[#F1F4EF] text-[#4B6344] border border-[#DCE2D7]'
+                  : 'bg-[#F9FAF8] text-[#5D6B58] border border-[#E1E4D8]'
+              }`}
+            >
+              {data.chatbotPurposes.length} / 4개 선택됨
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
+            {PURPOSE_OPTIONS.map((item) => {
+              const isSelected = data.chatbotPurposes.includes(item);
+              return (
+                <button
+                  key={item}
+                  type="button"
+                  disabled={isReadOnly || (!isSelected && data.chatbotPurposes.length >= 4)}
+                  onClick={() => togglePurpose(item)}
+                  className={`p-3.5 rounded-2xl text-xs font-bold text-left border flex items-center justify-between transition-all cursor-pointer ${
+                    isSelected
+                      ? 'bg-[#4B6344] text-white border-[#4B6344] shadow-xs'
+                      : 'bg-[#F9FAF8] text-[#5D6B58] border-[#E1E4D8] hover:bg-[#F1F4EF] disabled:opacity-40 disabled:cursor-not-allowed'
+                  }`}
+                >
+                  <span className="leading-snug">{item}</span>
+                  {isSelected && <Check className="w-4 h-4 shrink-0 ml-2" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* STEP 2-2: Target User */}
+        <div className="border-t border-[#F3F4F1] pt-6">
+          <h4 className="text-xl font-bold text-[#2C362B] flex items-center gap-2 mb-1">
+            <Users className="w-5 h-5 text-[#4B6344]" />
+            <span>STEP 2-2. 대화 대상 및 기대 효과</span>
+          </h4>
+          <p className="text-xs text-[#6B7280] mb-4">
+            이 챗봇과 주로 대화할 사용자는 누구이며, 어떤 가치를 전달하고 싶나요?
+          </p>
+
+          <div className="space-y-4">
+            <label className="block text-xs font-bold text-[#4B6344]">대상 선택</label>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              {TARGET_OPTIONS.map((target) => {
+                const isSelected = data.targetUser === target;
+                return (
+                  <button
+                    key={target}
+                    type="button"
+                    disabled={isReadOnly}
+                    onClick={() => updateField('targetUser', target)}
+                    className={`px-3.5 py-2.5 rounded-xl text-xs font-bold border flex items-center justify-between transition-all cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#4B6344] text-white border-[#4B6344] shadow-xs'
+                        : 'bg-[#F9FAF8] text-[#5D6B58] border-[#E1E4D8] hover:bg-[#F1F4EF]'
+                    }`}
+                  >
+                    <span>{target}</span>
+                    {isSelected && <Check className="w-3.5 h-3.5" />}
+                  </button>
+                );
+              })}
+            </div>
+
+            {data.targetUser === '기타' && (
+              <input
+                type="text"
+                disabled={isReadOnly}
+                value={data.targetUserCustom}
+                onChange={(e) => updateField('targetUserCustom', e.target.value)}
+                placeholder="대상 사용자를 직접 입력해 주세요 (예: 예술 분야 진학을 고민 중인 중학생)"
+                className="w-full px-4 py-3 bg-[#F9FAF8] border border-[#E1E4D8] rounded-xl text-xs font-medium text-[#2C362B] focus:bg-white focus:border-[#4B6344] outline-none transition-all"
+              />
+            )}
+
+            <div className="mt-4 space-y-1.5">
+              <label className="block text-xs font-bold text-[#4B6344]">
+                이 챗봇과 대화한 친구가 무엇을 얻어 갔으면 좋겠나요? (기대 효과)
+              </label>
+              <input
+                type="text"
+                disabled={isReadOnly}
+                value={data.expectedOutcome}
+                onChange={(e) => updateField('expectedOutcome', e.target.value)}
+                placeholder="예: 막연했던 진로에 대한 구체적인 준비 방법과 자신감"
+                className="w-full px-4 py-3 bg-[#F9FAF8] border border-[#E1E4D8] rounded-xl text-sm font-medium text-[#2C362B] placeholder:text-[#6B7280]/60 focus:bg-white focus:border-[#4B6344] focus:ring-2 focus:ring-[#4B6344]/20 outline-none transition-all"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* STEP 2-3: Auto Purpose Sentence Generation */}
+        <div className="border-t border-[#F3F4F1] pt-6">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-xl font-bold text-[#2C362B] flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-[#4B6344]" />
+              <span>STEP 2-3. 목적 문장 자동 생성</span>
+            </h4>
+            <div className="flex items-center gap-2">
+              {!isEditingSentence ? (
+                <button
+                  type="button"
+                  disabled={isReadOnly}
+                  onClick={() => setIsEditingSentence(true)}
+                  className="px-3 py-1.5 text-xs font-bold text-[#4B6344] bg-[#F1F4EF] hover:bg-[#EAECE6] rounded-xl flex items-center gap-1.5 border border-[#DCE2D7] transition-colors cursor-pointer"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  <span>직접 수정하기</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const regenerated = buildChatbotPurposeSentence(
+                      data,
+                      roleModel.roleModelName,
+                      roleModel.roleModelJob
+                    );
+                    updateField('purposeSummarySentence', regenerated);
+                    setIsEditingSentence(false);
+                  }}
+                  className="px-3 py-1.5 text-xs font-bold text-[#5D6B58] bg-[#F3F4F1] hover:bg-[#EAECE6] rounded-xl flex items-center gap-1.5 border border-[#E1E4D8] transition-colors cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>자동 생성 문장으로 복원</span>
+                </button>
+              )}
+            </div>
+          </div>
+
+          <div className="bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl p-5">
+            {isEditingSentence ? (
+              <textarea
+                rows={3}
+                disabled={isReadOnly}
+                value={data.purposeSummarySentence}
+                onChange={(e) => updateField('purposeSummarySentence', e.target.value)}
+                className="w-full p-3 bg-white border border-[#E1E4D8] rounded-xl text-sm text-[#2C362B] outline-none focus:ring-2 focus:ring-[#4B6344]/20 resize-none"
+              />
+            ) : (
+              <p className="text-sm text-[#2C362B] font-medium leading-relaxed">
+                {data.purposeSummarySentence ||
+                  buildChatbotPurposeSentence(data, roleModel.roleModelName, roleModel.roleModelJob)}
+              </p>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation Footer */}
+      <div className="flex items-center justify-between pt-2">
+        <button
+          type="button"
+          onClick={onPrev}
+          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>이전 STEP</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={!isValid}
+          className="px-8 py-3 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 text-white font-bold rounded-xl text-sm shadow-md shadow-[#4B6344]/20 flex items-center gap-2 transition-all cursor-pointer"
+        >
+          <span>다음 STEP으로 저장 및 이동</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
+    </div>
+  );
+};

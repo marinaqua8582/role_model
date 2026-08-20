@@ -1,0 +1,6 @@
+{
+  "name": "나의 롤모델 챗봇 만들기",
+  "description": "중학교 3학년 진로 수업을 위한 롤모델 AI 챗봇(Gemini Gems) 프롬프트 설계 및 제작 도우미 웹앱",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

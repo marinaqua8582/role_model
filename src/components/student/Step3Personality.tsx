@@ -1,10 +1,12 @@
-import React, { useEffect } from 'react';
-import { PersonalityData } from '../../types';
-import { Smile, MessageSquare, HeartHandshake, ArrowRight, ArrowLeft, Check, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { PersonalityData, StudentInfo } from '../../types';
+import { Smile, MessageSquare, HeartHandshake, ArrowRight, ArrowLeft, Check, Info, AlertCircle } from 'lucide-react';
 import { buildPersonalityRulesSummary } from '../../utils/promptGenerator';
+import { saveStep3Progress } from '../../api/client';
 
 interface Step3PersonalityProps {
   data: PersonalityData;
+  student?: StudentInfo;
   onChange: (data: PersonalityData) => void;
   onNext: () => void;
   onPrev: () => void;
@@ -45,11 +47,15 @@ const HONORIFIC_OPTIONS: Array<'친근한 존댓말' | '차분한 존댓말' | '
 
 export const Step3Personality: React.FC<Step3PersonalityProps> = ({
   data,
+  student,
   onChange,
   onNext,
   onPrev,
   isReadOnly = false,
 }) => {
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const updateField = <K extends keyof PersonalityData>(field: K, value: PersonalityData[K]) => {
     if (isReadOnly) return;
     onChange({ ...data, [field]: value });
@@ -68,18 +74,42 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
     }
   };
 
+  const isValid =
+    data.personalities.length >= 2 &&
+    data.personalities.length <= 3 &&
+    Boolean(data.speakingStyle) &&
+    Boolean(data.honorificStyle);
+
+  const handleSaveAndNext = async () => {
+    if (!isValid) return;
+    if (isReadOnly || !student) {
+      onNext();
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const res = await saveStep3Progress(student, data);
+      if (res.success) {
+        onNext();
+      } else {
+        setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
+      setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   useEffect(() => {
     const summary = buildPersonalityRulesSummary(data);
     if (summary !== data.personalityRulesSummary) {
       onChange({ ...data, personalityRulesSummary: summary });
     }
   }, [data.personalities, data.speakingStyle, data.honorificStyle, data.desiredFeeling]);
-
-  const isValid =
-    data.personalities.length >= 2 &&
-    data.personalities.length <= 3 &&
-    Boolean(data.speakingStyle) &&
-    Boolean(data.honorificStyle);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -243,12 +273,36 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
         </div>
       </div>
 
+      {/* Error message */}
+      {saveError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl flex items-start justify-between gap-3 text-sm animate-in fade-in duration-200">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">저장에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
+              {saveError !== '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.' && (
+                <p className="text-xs text-rose-600 mt-0.5">{saveError}</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveAndNext}
+            disabled={isSaving}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold rounded-lg shrink-0 transition-colors cursor-pointer"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+
       {/* Navigation Footer */}
       <div className="flex items-center justify-between pt-2">
         <button
           type="button"
           onClick={onPrev}
-          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
+          disabled={isSaving}
+          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>이전 STEP</span>
@@ -256,12 +310,21 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
 
         <button
           type="button"
-          onClick={onNext}
-          disabled={!isValid}
+          onClick={handleSaveAndNext}
+          disabled={!isValid || isSaving}
           className="px-8 py-3 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 text-white font-bold rounded-xl text-sm shadow-md shadow-[#4B6344]/20 flex items-center gap-2 transition-all cursor-pointer"
         >
-          <span>다음 STEP으로 저장 및 이동</span>
-          <ArrowRight className="w-4 h-4" />
+          {isSaving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>저장 중...</span>
+            </>
+          ) : (
+            <>
+              <span>다음 STEP으로 저장 및 이동</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </div>
     </div>

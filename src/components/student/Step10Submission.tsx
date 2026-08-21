@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
-import { FinalSubmissionData, StudentProgress } from '../../types';
-import { Send, Sparkles, Award, ExternalLink, ArrowLeft, MessageSquare, RefreshCw } from 'lucide-react';
+import { FinalSubmissionData, StudentProgress, StudentInfo } from '../../types';
+import { Send, Sparkles, Award, ExternalLink, ArrowLeft, MessageSquare, RefreshCw, AlertCircle } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { submitFinal } from '../../api/client';
 
 interface Step10SubmissionProps {
   data: FinalSubmissionData;
   progress: StudentProgress;
+  student?: StudentInfo;
   onChange: (data: FinalSubmissionData) => void;
-  onSubmit: () => Promise<void>;
+  onSubmit?: () => Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -15,6 +17,7 @@ interface Step10SubmissionProps {
 export const Step10Submission: React.FC<Step10SubmissionProps> = ({
   data,
   progress,
+  student,
   onChange,
   onSubmit,
   onPrev,
@@ -22,29 +25,48 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(progress.isFinalSubmitted);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const updateField = <K extends keyof FinalSubmissionData>(field: K, value: FinalSubmissionData[K]) => {
     if (isReadOnly) return;
     onChange({ ...data, [field]: value });
   };
 
+  const studentInfo: StudentInfo = student || {
+    grade: progress.grade,
+    classNum: progress.classNum,
+    number: progress.number,
+    name: progress.name,
+    studentKey: progress.studentKey,
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
     setIsSubmitting(true);
+    setSubmitError(null);
+
     try {
-      await onSubmit();
-      setIsSubmittedSuccess(true);
-      // Fire confetti effect
-      try {
-        confetti({
-          particleCount: 120,
-          spread: 70,
-          origin: { y: 0.6 },
-        });
-      } catch (e) {}
-    } catch (err) {
+      if (onSubmit) {
+        await onSubmit();
+      }
+      
+      const res = await submitFinal(studentInfo, data, progress);
+      if (res.success) {
+        setIsSubmittedSuccess(true);
+        try {
+          confetti({
+            particleCount: 120,
+            spread: 70,
+            origin: { y: 0.6 },
+          });
+        } catch (e) {}
+      } else {
+        setSubmitError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
       console.error(err);
+      setSubmitError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setIsSubmitting(false);
     }
@@ -101,12 +123,12 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div>
                 <span className="text-[#6B7280] block mb-0.5">나의 롤모델</span>
-                <strong className="text-[#2C362B] text-sm">{progress.step1?.roleModelName}</strong> (
-                {progress.step1?.roleModelJob})
+                <strong className="text-[#2C362B] text-sm">{progress.step1?.roleModelName || '미입력'}</strong> (
+                {progress.step1?.roleModelJob || '미입력'})
               </div>
               <div>
                 <span className="text-[#6B7280] block mb-0.5">챗봇 이름</span>
-                <strong className="text-[#4B6344] text-sm">{progress.step6?.chatbotName}</strong>
+                <strong className="text-[#4B6344] text-sm">{progress.step6?.chatbotName || '미입력'}</strong>
               </div>
             </div>
 
@@ -160,7 +182,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
             </label>
             <input
               type="url"
-              disabled={isReadOnly}
+              disabled={isReadOnly || isSubmitting}
               value={data.gemUrl}
               onChange={(e) => updateField('gemUrl', e.target.value)}
               placeholder="https://gemini.google.com/gems/share/..."
@@ -180,7 +202,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
             <div>
               <input
                 type="text"
-                disabled={isReadOnly}
+                disabled={isReadOnly || isSubmitting}
                 value={data.sampleQuestion1}
                 onChange={(e) => updateField('sampleQuestion1', e.target.value)}
                 placeholder="내가 챗봇에게 물어본 질문 1"
@@ -188,7 +210,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
               />
               <textarea
                 rows={2}
-                disabled={isReadOnly}
+                disabled={isReadOnly || isSubmitting}
                 value={data.sampleAnswer1}
                 onChange={(e) => updateField('sampleAnswer1', e.target.value)}
                 placeholder="챗봇이 답변한 주요 내용 1"
@@ -206,7 +228,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
             <div>
               <input
                 type="text"
-                disabled={isReadOnly}
+                disabled={isReadOnly || isSubmitting}
                 value={data.sampleQuestion2}
                 onChange={(e) => updateField('sampleQuestion2', e.target.value)}
                 placeholder="내가 챗봇에게 물어본 질문 2"
@@ -214,7 +236,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
               />
               <textarea
                 rows={2}
-                disabled={isReadOnly}
+                disabled={isReadOnly || isSubmitting}
                 value={data.sampleAnswer2}
                 onChange={(e) => updateField('sampleAnswer2', e.target.value)}
                 placeholder="챗봇이 답변한 주요 내용 2"
@@ -232,7 +254,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
             <div>
               <input
                 type="text"
-                disabled={isReadOnly}
+                disabled={isReadOnly || isSubmitting}
                 value={data.sampleQuestion3}
                 onChange={(e) => updateField('sampleQuestion3', e.target.value)}
                 placeholder="내가 챗봇에게 물어본 질문 3"
@@ -240,7 +262,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
               />
               <textarea
                 rows={2}
-                disabled={isReadOnly}
+                disabled={isReadOnly || isSubmitting}
                 value={data.sampleAnswer3}
                 onChange={(e) => updateField('sampleAnswer3', e.target.value)}
                 placeholder="챗봇이 답변한 주요 내용 3"
@@ -252,11 +274,11 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
           {/* Revision Summary */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-[#4B6344]">
-              테스트를 거치며 수정한 점 (선택)
+              수정한 점 (선택)
             </label>
             <input
               type="text"
-              disabled={isReadOnly}
+              disabled={isReadOnly || isSubmitting}
               value={data.revisionSummary}
               onChange={(e) => updateField('revisionSummary', e.target.value)}
               placeholder="예: 진로를 단정하지 않도록 조언 규칙을 보강하고, 말투를 더욱 따뜻하게 바꿈"
@@ -267,11 +289,11 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
           {/* Reflection */}
           <div className="space-y-1.5">
             <label className="block text-xs font-bold text-[#4B6344]">
-              진로 프로젝트 제작 소감 <span className="text-rose-500">*</span>
+              제작 소감 <span className="text-rose-500">*</span>
             </label>
             <textarea
               rows={4}
-              disabled={isReadOnly}
+              disabled={isReadOnly || isSubmitting}
               value={data.reflection}
               onChange={(e) => updateField('reflection', e.target.value)}
               placeholder="롤모델을 조사하고 AI 챗봇을 직접 설계해보며 느낀 점, 앞으로의 진로 계획 등을 진솔하게 적어보세요."
@@ -279,12 +301,36 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
             />
           </div>
 
+          {/* Error message */}
+          {submitError && (
+            <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl flex items-start justify-between gap-3 text-sm animate-in fade-in duration-200">
+              <div className="flex items-start gap-2.5">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold">저장에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
+                  {submitError !== '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.' && (
+                    <p className="text-xs text-rose-600 mt-0.5">{submitError}</p>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={handleSubmit}
+                disabled={isSubmitting}
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold rounded-lg shrink-0 transition-colors cursor-pointer"
+              >
+                다시 시도
+              </button>
+            </div>
+          )}
+
           {/* Action buttons */}
           <div className="flex items-center justify-between pt-4 border-t border-[#F3F4F1]">
             <button
               type="button"
               onClick={onPrev}
-              className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
+              disabled={isSubmitting}
+              className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
             >
               <ArrowLeft className="w-4 h-4" />
               <span>이전 STEP</span>
@@ -313,3 +359,4 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
     </div>
   );
 };
+

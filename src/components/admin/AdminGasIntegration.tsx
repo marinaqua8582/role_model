@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { getGoogleAppsScriptCode } from '../../utils/gasScriptTemplate';
-import { getStoredGasUrl, setStoredGasUrl } from '../../api/client';
+import { getEffectiveGasUrl, getStoredGasUrl, setStoredGasUrl } from '../../api/client';
 import { Copy, Check, X, Code2, FileSpreadsheet } from 'lucide-react';
 
 interface AdminGasIntegrationProps {
@@ -9,7 +9,7 @@ interface AdminGasIntegrationProps {
 
 export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClose }) => {
   const [copied, setCopied] = useState(false);
-  const [gasUrl, setGasUrl] = useState(getStoredGasUrl());
+  const [gasUrl, setGasUrl] = useState(getStoredGasUrl() || getEffectiveGasUrl());
   const [isSaved, setIsSaved] = useState(false);
 
   const scriptCode = getGoogleAppsScriptCode();

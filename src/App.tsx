@@ -10,7 +10,9 @@ import {
   fetchStudentProgress,
   saveStudentProgress,
   fetchAdminOverview,
+  fetchStudentDetail,
 } from './api/client';
+import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Header } from './components/common/Header';
 import { StepProgressBar } from './components/common/StepProgressBar';
 import { StudentAuth } from './components/student/StudentAuth';
@@ -53,6 +55,11 @@ export default function App() {
   const [adminGradeFilter, setAdminGradeFilter] = useState<number | 'all'>('all');
   const [adminClassFilter, setAdminClassFilter] = useState<number | 'all'>('all');
 
+  // Admin loading & error states
+  const [adminLoading, setAdminLoading] = useState(false);
+  const [adminError, setAdminError] = useState<string | null>(null);
+  const [, setLoadingStudentKey] = useState<string | null>(null);
+
   // Admin modals
   const [selectedStudentDetail, setSelectedStudentDetail] = useState<StudentProgress | null>(null);
   const [showRosterManager, setShowRosterManager] = useState(false);
@@ -83,19 +90,29 @@ export default function App() {
   const loadRoster = async () => {
     try {
       const data = await fetchRoster();
-      setRoster(data);
+      if (data && Array.isArray(data) && data.length > 0) {
+        setRoster(data);
+      }
     } catch (e) {
-      console.error('Failed to load roster', e);
+      // Graceful fallback: StudentAuth will fetch roster options directly via getRosterOptions
     }
   };
 
   const loadAdminData = async () => {
+    setAdminLoading(true);
+    setAdminError(null);
     try {
       const overview = await fetchAdminOverview();
-      setAllStudentsProgress(overview.students);
+      setAllStudentsProgress(overview.students || []);
       setAdminStats(overview.stats);
-    } catch (e) {
+      if (overview.roster && overview.roster.length > 0) {
+        setRoster(overview.roster);
+      }
+    } catch (e: any) {
       console.error('Failed to load admin overview', e);
+      setAdminError(e?.message || '학생 데이터를 불러오지 못했습니다. 다시 시도해 주세요.');
+    } finally {
+      setAdminLoading(false);
     }
   };
 
@@ -155,6 +172,7 @@ export default function App() {
 
   const handleFinalSubmit = async () => {
     if (!currentStudent) return;
+    if (isPreviewStudentMode) return;
     const updated: StudentProgress = {
       ...currentStudent,
       isFinalSubmitted: true,
@@ -167,24 +185,70 @@ export default function App() {
     updateProgress(updated, true);
   };
 
-  // Preview student from admin
-  const handlePreviewStudent = (student: StudentProgress) => {
-    setCurrentStudent(student);
-    setIsPreviewStudentMode(true);
-    setIsAdminView(false);
-    setSelectedStudentDetail(null);
+  // Open detail modal with full student detail
+  const handleSelectStudentDetail = async (student: StudentProgress) => {
+    setSelectedStudentDetail(student); // Open immediately with initial data
+    try {
+      setLoadingStudentKey(student.studentKey);
+      const detail = await fetchStudentDetail(student.studentKey);
+      if (detail) {
+        setSelectedStudentDetail(detail);
+      }
+    } catch (err) {
+      console.warn('Could not fetch full detail for modal, keeping existing info', err);
+    } finally {
+      setLoadingStudentKey(null);
+    }
+  };
+
+  // Preview student from admin in read-only mode
+  const handlePreviewStudent = async (student: StudentProgress) => {
+    try {
+      setLoadingStudentKey(student.studentKey);
+      const detail = await fetchStudentDetail(student.studentKey);
+      setCurrentStudent(detail || student);
+    } catch (e) {
+      setCurrentStudent(student);
+    } finally {
+      setLoadingStudentKey(null);
+      setIsPreviewStudentMode(true);
+      setIsAdminView(false);
+      setSelectedStudentDetail(null);
+    }
   };
 
   // Print single student
-  const handlePrintStudent = (student: StudentProgress) => {
-    setStudentsToPrint([student]);
-    setPrintTitle(`${student.name} 학생 롤모델 챗봇 결과 보고서`);
+  const handlePrintStudent = async (student: StudentProgress) => {
+    try {
+      const detail = await fetchStudentDetail(student.studentKey);
+      setStudentsToPrint([detail || student]);
+    } catch {
+      setStudentsToPrint([student]);
+    }
+    setPrintTitle(`${student.grade}학년 ${student.classNum}반 ${student.number}번 ${student.name} - 롤모델 챗봇 결과`);
   };
 
   // Print multiple students
-  const handlePrintMultiple = (students: StudentProgress[], title: string) => {
-    setStudentsToPrint(students);
-    setPrintTitle(title);
+  const handlePrintMultiple = async (students: StudentProgress[], title: string) => {
+    try {
+      const detailedStudents = await Promise.all(
+        students.map(async (s) => {
+          if (s.step1?.roleModelReason || s.step6?.finalPrompt || s.step6?.initialPrompt) {
+            return s;
+          }
+          try {
+            const d = await fetchStudentDetail(s.studentKey);
+            return d || s;
+          } catch {
+            return s;
+          }
+        })
+      );
+      setStudentsToPrint(detailedStudents);
+    } catch {
+      setStudentsToPrint(students);
+    }
+    setPrintTitle(title || '롤모델 챗봇 만들기 - 최종 결과');
   };
 
   // 1. PRINT VIEW MODE
@@ -245,43 +309,76 @@ export default function App() {
               <button
                 type="button"
                 onClick={loadAdminData}
-                className="px-4 py-2 bg-white hover:bg-[#F1F4EF] border border-[#E1E4D8] rounded-xl text-xs font-bold text-[#2C362B] shadow-2xs transition-colors cursor-pointer"
+                disabled={adminLoading}
+                className="px-4 py-2 bg-white hover:bg-[#F1F4EF] border border-[#E1E4D8] rounded-xl text-xs font-bold text-[#2C362B] shadow-2xs transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-60"
               >
-                새로고침
+                <RefreshCw className={`w-3.5 h-3.5 text-[#4B6344] ${adminLoading ? 'animate-spin' : ''}`} />
+                <span>새로고침</span>
               </button>
             </div>
           </div>
 
-          {/* Metrics Overview */}
-          {adminStats && (
-            <AdminDashboard
-              stats={adminStats}
-              selectedGrade={adminGradeFilter}
-              selectedClass={adminClassFilter}
-              onFilterClass={(grade, classNum) => {
-                setAdminGradeFilter(grade);
-                setAdminClassFilter(classNum);
-              }}
-            />
-          )}
+          {/* Loading Indicator */}
+          {adminLoading ? (
+            <div className="flex flex-col items-center justify-center py-24 space-y-3 bg-white rounded-3xl border border-[#E1E4D8] shadow-xs">
+              <RefreshCw className="w-8 h-8 text-[#4B6344] animate-spin" />
+              <p className="text-sm font-bold text-[#2C362B]">데이터를 불러오는 중...</p>
+              <p className="text-xs text-[#6B7280]">Google Sheets에서 학생 명단과 진행 현황을 조회하고 있습니다.</p>
+            </div>
+          ) : adminError ? (
+            /* Error State */
+            <div className="bg-white rounded-3xl border border-rose-200 p-8 text-center max-w-lg mx-auto space-y-4 shadow-sm my-8">
+              <div className="w-12 h-12 rounded-full bg-rose-50 border border-rose-200 text-rose-600 flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="font-bold text-[#2C362B] text-base">학생 데이터를 불러오지 못했습니다. 다시 시도해 주세요.</h3>
+                {adminError && adminError !== '학생 데이터를 불러오지 못했습니다. 다시 시도해 주세요.' && (
+                  <p className="text-xs text-rose-600 mt-1">{adminError}</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={loadAdminData}
+                className="px-5 py-2.5 bg-[#4B6344] hover:bg-[#3D5237] text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shadow-xs"
+              >
+                다시 시도
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Metrics Overview */}
+              {adminStats && (
+                <AdminDashboard
+                  stats={adminStats}
+                  selectedGrade={adminGradeFilter}
+                  selectedClass={adminClassFilter}
+                  onFilterClass={(grade, classNum) => {
+                    setAdminGradeFilter(grade);
+                    setAdminClassFilter(classNum);
+                  }}
+                />
+              )}
 
-          {/* Student List & Batch Actions */}
-          <AdminStudentList
-            students={allStudentsProgress}
-            roster={roster}
-            selectedGrade={adminGradeFilter}
-            selectedClass={adminClassFilter}
-            onFilterClass={(grade, classNum) => {
-              setAdminGradeFilter(grade);
-              setAdminClassFilter(classNum);
-            }}
-            onSelectStudentDetail={(student) => setSelectedStudentDetail(student)}
-            onPreviewStudentMode={handlePreviewStudent}
-            onPrintStudent={handlePrintStudent}
-            onPrintMultiple={handlePrintMultiple}
-            onOpenRosterManager={() => setShowRosterManager(true)}
-            onOpenGasIntegration={() => setShowGasIntegration(true)}
-          />
+              {/* Student List & Batch Actions */}
+              <AdminStudentList
+                students={allStudentsProgress}
+                roster={roster}
+                selectedGrade={adminGradeFilter}
+                selectedClass={adminClassFilter}
+                onFilterClass={(grade, classNum) => {
+                  setAdminGradeFilter(grade);
+                  setAdminClassFilter(classNum);
+                }}
+                onSelectStudentDetail={handleSelectStudentDetail}
+                onPreviewStudentMode={handlePreviewStudent}
+                onPrintStudent={handlePrintStudent}
+                onPrintMultiple={handlePrintMultiple}
+                onOpenRosterManager={() => setShowRosterManager(true)}
+                onOpenGasIntegration={() => setShowGasIntegration(true)}
+              />
+            </>
+          )}
 
           {/* Modals */}
           {selectedStudentDetail && (
@@ -326,6 +423,13 @@ export default function App() {
           {currentStudent.currentStep === 1 && (
             <Step1RoleModel
               data={currentStudent.step1}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step1) =>
                 updateProgress({
@@ -342,6 +446,13 @@ export default function App() {
             <Step2Purpose
               data={currentStudent.step2}
               roleModel={currentStudent.step1}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step2) =>
                 updateProgress({
@@ -358,6 +469,13 @@ export default function App() {
           {currentStudent.currentStep === 3 && (
             <Step3Personality
               data={currentStudent.step3}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step3) =>
                 updateProgress({
@@ -374,6 +492,13 @@ export default function App() {
           {currentStudent.currentStep === 4 && (
             <Step4ResponseStyle
               data={currentStudent.step4}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step4) =>
                 updateProgress({
@@ -391,6 +516,13 @@ export default function App() {
             <Step5SafetyRules
               data={currentStudent.step5}
               roleModel={currentStudent.step1}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step5) =>
                 updateProgress({
@@ -411,6 +543,13 @@ export default function App() {
               purpose={currentStudent.step2}
               personality={currentStudent.step3}
               responseStyle={currentStudent.step4}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step6) =>
                 updateProgress({
@@ -429,6 +568,13 @@ export default function App() {
           {currentStudent.currentStep === 7 && (
             <Step7GeminiGuide
               promptData={currentStudent.step6}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onNext={() => handleStepChange(8)}
               onPrev={() => handleStepChange(6)}
@@ -439,6 +585,13 @@ export default function App() {
           {currentStudent.currentStep === 8 && (
             <Step8ChatbotTest
               data={currentStudent.step8}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step8) =>
                 updateProgress({
@@ -457,6 +610,13 @@ export default function App() {
             <Step9PromptRevision
               promptData={currentStudent.step6}
               testData={currentStudent.step8}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChangePrompt={(step6) =>
                 updateProgress({
@@ -480,6 +640,13 @@ export default function App() {
             <Step10Submission
               data={currentStudent.step10}
               progress={currentStudent}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step10) =>
                 updateProgress({

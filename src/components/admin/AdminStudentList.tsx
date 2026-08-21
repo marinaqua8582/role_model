@@ -11,7 +11,7 @@ import {
   Eye,
   Sparkles,
 } from 'lucide-react';
-import { exportProgressToExcel, exportSubmissionsToExcel } from '../../utils/excel';
+import { exportProgressToExcel, exportSubmissionsToExcel, getStudentPrompt } from '../../utils/excel';
 import { STEP_NAMES } from '../common/StepProgressBar';
 
 interface AdminStudentListProps {
@@ -46,13 +46,21 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
   const [statusFilter, setStatusFilter] = useState<'all' | 'submitted' | 'promptDone' | 'inProgress' | 'notStarted'>('all');
   const [selectedKeys, setSelectedKeys] = useState<Set<string>>(new Set());
 
-  // Distinct grades and classes for filter dropdowns
-  const grades = Array.from(new Set<number>(roster.map((r) => r.grade))).sort((a, b) => a - b);
+  // Distinct grades and classes for filter dropdowns (from roster or loaded students)
+  const allGrades = Array.from(
+    new Set<number>([
+      ...roster.map((r) => r.grade),
+      ...students.map((s) => s.grade),
+    ].filter(Boolean))
+  ).sort((a, b) => a - b);
+  const grades = allGrades.length > 0 ? allGrades : [1, 2, 3];
+
   const classesForGrade = Array.from(
     new Set<number>(
-      roster
+      [...roster, ...students]
         .filter((r) => (selectedGrade === 'all' ? true : r.grade === selectedGrade))
         .map((r) => r.classNum)
+        .filter(Boolean)
     )
   ).sort((a, b) => a - b);
 
@@ -102,7 +110,27 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
   const handlePrintSelected = () => {
     const selectedList = students.filter((s) => selectedKeys.has(s.studentKey));
     if (selectedList.length === 0) return;
-    onPrintMultiple(selectedList, `선택 학생 (${selectedList.length}명) 롤모델 챗봇 결과 보고서`);
+
+    const finishedStudents = selectedList.filter((s) => Boolean(getStudentPrompt(s)));
+    const uncompletedCount = selectedList.length - finishedStudents.length;
+
+    if (finishedStudents.length === 0) {
+      alert(`선택한 학생 ${selectedList.length}명 중 작성된 프롬프트가 있는 학생이 없습니다.`);
+      return;
+    }
+
+    const message =
+      `선택 학생 ${selectedList.length}명 중\n` +
+      `프롬프트 완성 ${finishedStudents.length}명\n` +
+      `미완성 ${uncompletedCount}명\n\n` +
+      `${finishedStudents.length}명의 결과물을 인쇄하시겠습니까?`;
+
+    if (window.confirm(message)) {
+      onPrintMultiple(
+        finishedStudents,
+        `선택 학생 (${finishedStudents.length}명) 롤모델 챗봇 결과 보고서`
+      );
+    }
   };
 
   const handlePrintCurrentClass = () => {
@@ -113,18 +141,28 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
     const classStudents = students.filter(
       (s) => s.grade === selectedGrade && s.classNum === selectedClass
     );
-    const finishedStudents = classStudents.filter((s) => s.isPromptCompleted || s.isFinalSubmitted);
+    if (classStudents.length === 0) {
+      alert(`${selectedGrade}학년 ${selectedClass}반에 해당하는 학생 데이터가 없습니다.`);
+      return;
+    }
 
-    const proceed = window.confirm(
+    const finishedStudents = classStudents.filter((s) => Boolean(getStudentPrompt(s)));
+    const uncompletedCount = classStudents.length - finishedStudents.length;
+
+    if (finishedStudents.length === 0) {
+      alert(`${selectedGrade}학년 ${selectedClass}반 총 ${classStudents.length}명 중 작성된 프롬프트가 있는 학생이 없습니다.`);
+      return;
+    }
+
+    const message =
       `${selectedGrade}학년 ${selectedClass}반 총 ${classStudents.length}명 중\n` +
-      `프롬프트 완성: ${finishedStudents.length}명\n` +
-      `미완성: ${classStudents.length - finishedStudents.length}명\n\n` +
-      `완성된 ${finishedStudents.length}명의 결과물을 인쇄하시겠습니까?`
-    );
+      `프롬프트 완성 ${finishedStudents.length}명\n` +
+      `미완성 ${uncompletedCount}명\n\n` +
+      `${finishedStudents.length}명의 결과물을 인쇄하시겠습니까?`;
 
-    if (proceed) {
+    if (window.confirm(message)) {
       onPrintMultiple(
-        finishedStudents.length > 0 ? finishedStudents : classStudents,
+        finishedStudents,
         `${selectedGrade}학년 ${selectedClass}반 롤모델 챗봇 결과 보고서`
       );
     }
@@ -212,9 +250,10 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
               type="button"
               onClick={handlePrintCurrentClass}
               className="px-3.5 py-2.5 bg-[#F1F4EF] hover:bg-[#EAECE6] text-[#4B6344] border border-[#DCE2D7] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
+              title="현재 선택된 반의 프롬프트 완성 학생 일괄 인쇄"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>현재 반 전체 인쇄</span>
+              <span>현재 반 전체 프롬프트 인쇄</span>
             </button>
           )}
 
@@ -224,9 +263,10 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
               type="button"
               onClick={handlePrintSelected}
               className="px-3.5 py-2.5 bg-[#4B6344] hover:bg-[#3D5237] text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+              title="선택한 학생 중 프롬프트 완성 학생 일괄 인쇄"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>선택 인쇄 ({selectedKeys.size}명)</span>
+              <span>선택 학생 프롬프트 인쇄 ({selectedKeys.size}명)</span>
             </button>
           )}
 
@@ -235,10 +275,10 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
             type="button"
             onClick={() => exportProgressToExcel(students)}
             className="px-3.5 py-2.5 bg-[#F9FAF8] hover:bg-[#F1F4EF] text-[#2C362B] border border-[#E1E4D8] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="진행 현황 엑셀 다운로드"
+            title="전체 학생 진행 현황 다운로드 (.xlsx)"
           >
             <Download className="w-3.5 h-3.5 text-[#4B6344]" />
-            <span>진행현황 .xlsx</span>
+            <span>진행 현황 .xlsx</span>
           </button>
 
           {/* Excel Export Submissions */}
@@ -246,10 +286,10 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
             type="button"
             onClick={() => exportSubmissionsToExcel(students)}
             className="px-3.5 py-2.5 bg-[#F9FAF8] hover:bg-[#F1F4EF] text-[#2C362B] border border-[#E1E4D8] rounded-xl text-xs font-bold flex items-center gap-1.5 transition-colors cursor-pointer"
-            title="최종 제출물 엑셀 다운로드"
+            title="최종 제출 결과 다운로드 (.xlsx)"
           >
             <Download className="w-3.5 h-3.5 text-[#4B6344]" />
-            <span>제출결과 .xlsx</span>
+            <span>제출 결과 .xlsx</span>
           </button>
 
           {/* Roster Management Button */}

@@ -26,6 +26,45 @@ function normalizeName(name: any): string {
 
 // API Routes
 
+// 0. Google Apps Script Proxy Route (handles CORS and 302 redirects safely)
+app.post('/api/gas-proxy', async (req, res) => {
+  try {
+    const { gasUrl: customGasUrl, ...payload } = req.body || {};
+    const targetUrl =
+      customGasUrl ||
+      process.env.VITE_GAS_URL ||
+      process.env.GAS_URL ||
+      'https://script.google.com/macros/s/AKfycbzmtB28cj27SglDkQepd1DGlRRrv57LIRLipACLXRS1rSSiT0fPVtdrcNebKFg9X3nl/exec';
+
+    if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('http')) {
+      return res.status(400).json({ success: false, message: '유효한 Google Apps Script URL이 설정되지 않았습니다.' });
+    }
+
+    const response = await fetch(targetUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'text/plain;charset=utf-8',
+      },
+      body: JSON.stringify(payload),
+      redirect: 'follow',
+    });
+
+    const text = await response.text();
+    try {
+      const data = JSON.parse(text);
+      return res.json(data);
+    } catch {
+      return res.status(response.status).send(text);
+    }
+  } catch (err: any) {
+    console.error('GAS proxy error:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Google Apps Script 연결 중 오류가 발생했습니다: ' + (err?.message || 'Server error'),
+    });
+  }
+});
+
 // 1. Get Dropdown Options (grades, classes, numbers) strictly from saved roster - No student names returned
 app.get('/api/roster/options', (req, res) => {
   const gradesSet = new Set<number>();

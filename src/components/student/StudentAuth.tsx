@@ -54,12 +54,9 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
       return computeOptionsFromRoster(roster);
     }
     return {
-      grades: [3],
-      classesByGrade: { 3: [1, 2] },
-      numbersByClass: {
-        '3-1': Array.from({ length: 28 }, (_, i) => i + 1),
-        '3-2': Array.from({ length: 28 }, (_, i) => i + 1),
-      },
+      grades: [],
+      classesByGrade: {},
+      numbersByClass: {},
     };
   });
 
@@ -69,6 +66,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
   const [name, setName] = useState<string>('');
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isFetchingOptions, setIsFetchingOptions] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
   // Confirmation modal state for existing vs new
@@ -85,14 +83,17 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     classesByGrade: Record<number, number[]>;
     numbersByClass: Record<string, number[]>;
   }) => {
-    if (!data.grades || data.grades.length === 0) return;
+    if (!data.grades) return;
     setOptions(data);
 
     setSelectedGrade((prevGrade) => {
-      if (prevGrade !== '' && !data.grades.includes(prevGrade)) {
-        return '';
+      if (prevGrade !== '' && data.grades.includes(prevGrade)) {
+        return prevGrade;
       }
-      return prevGrade;
+      if (data.grades.length === 1) {
+        return data.grades[0];
+      }
+      return '';
     });
 
     setSelectedClass((prevClass) => {
@@ -116,17 +117,26 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
       const computed = computeOptionsFromRoster(roster);
       applyNewOptions(computed);
     } else {
+      let isMounted = true;
       async function loadOptions() {
+        setIsFetchingOptions(true);
         try {
           const data = await getRosterOptions();
-          if (data.grades.length > 0) {
+          if (isMounted) {
             applyNewOptions(data);
           }
         } catch (e) {
           console.error('Failed to load roster options', e);
+        } finally {
+          if (isMounted) {
+            setIsFetchingOptions(false);
+          }
         }
       }
       loadOptions();
+      return () => {
+        isMounted = false;
+      };
     }
   }, [roster]);
 
@@ -205,17 +215,11 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     }
   };
 
-  const handleStartFresh = async () => {
+  const handleStartFresh = () => {
     if (!verifiedState) return;
-    setIsLoading(true);
-    try {
-      const newProgress = await resetStudentProgress(verifiedState.student);
-      onAuthenticated(newProgress, newProgress);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsLoading(false);
-    }
+    const fresh = createInitialStudentProgress(verifiedState.student);
+    setShowResetConfirm(false);
+    onAuthenticated(fresh, fresh);
   };
 
   const handleContinue = () => {
@@ -254,14 +258,21 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
             </div>
           )}
 
-          {!isLoading && options.grades.length === 0 && (
+          {!isLoading && !isFetchingOptions && options.grades.length === 0 && (
             <div className="mb-6 p-4 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl flex items-start gap-3 text-[#2C362B] text-xs sm:text-sm">
               <BookOpen className="w-5 h-5 text-[#4B6344] shrink-0 mt-0.5" />
               <div className="leading-relaxed">
                 <strong>등록된 학생 명단이 없습니다.</strong>
                 <br />
-                선생님께서는 우측 상단의 <strong>[선생님 모드]</strong>에 로그인하여 엑셀 업로드 또는 직접 입력으로 학생 명단을 먼저 등록해 주세요.
+                선생님께서는 Google Sheets의 <strong>Roster</strong> 시트에 학생 명단을 등록하시거나, 우측 상단 <strong>[선생님 모드]</strong>에서 명단을 등록해 주세요.
               </div>
+            </div>
+          )}
+
+          {isFetchingOptions && (
+            <div className="mb-6 p-3.5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl flex items-center justify-center gap-2 text-xs text-[#5D6B58] font-medium animate-pulse">
+              <div className="w-3.5 h-3.5 border-2 border-[#4B6344] border-t-transparent rounded-full animate-spin"></div>
+              <span>Google Sheets에서 학생 명단 정보를 불러오는 중입니다...</span>
             </div>
           )}
 
@@ -489,7 +500,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
               처음부터 다시 시작하시겠습니까?
             </h3>
             <p className="text-[#5D6B58] text-sm text-center mb-6 leading-relaxed">
-              지금까지 작성한 롤모델 정보, 프롬프트, 테스트 결과가 모두 초기화됩니다. 이 작업은 되돌릴 수 없습니다.
+              기존에 작성한 내용을 초기화하고 처음부터 다시 시작하시겠습니까?
             </p>
             <div className="flex gap-3">
               <button
@@ -504,7 +515,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
                 onClick={handleStartFresh}
                 className="flex-1 py-2.5 px-4 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-sm shadow-md shadow-rose-100 transition-colors cursor-pointer"
               >
-                초기화 후 새로 시작
+                처음부터 다시 시작
               </button>
             </div>
           </div>

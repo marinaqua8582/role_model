@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { PromptData } from '../../types';
-import { Sparkles, Copy, ExternalLink, Check, ArrowRight, ArrowLeft, Layers, PlayCircle } from 'lucide-react';
+import { PromptData, StudentInfo } from '../../types';
+import { Sparkles, Copy, ExternalLink, Check, ArrowRight, ArrowLeft, Layers, PlayCircle, AlertCircle } from 'lucide-react';
+import { updateCurrentStep } from '../../api/client';
 
 interface Step7GeminiGuideProps {
   promptData: PromptData;
+  student?: StudentInfo;
   onNext: () => void;
   onPrev: () => void;
   isReadOnly?: boolean;
@@ -49,14 +51,17 @@ const GUIDE_STEPS = [
 
 export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
   promptData,
+  student,
   onNext,
   onPrev,
   isReadOnly = false,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleCopy = () => {
-    const text = promptData.finalPrompt || promptData.initialPrompt;
+    const text = promptData.finalPrompt || promptData.revisedPrompt || promptData.initialPrompt;
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -64,6 +69,29 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
 
   const handleOpenGemini = () => {
     window.open('https://gemini.google.com/gems', '_blank');
+  };
+
+  const handleSaveAndNext = async () => {
+    if (isReadOnly || !student) {
+      onNext();
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const res = await updateCurrentStep(student, 7);
+      if (res.success) {
+        onNext();
+      } else {
+        setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
+      setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -113,7 +141,7 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
               className="flex-1 sm:flex-none px-5 py-3 bg-[#4B6344] hover:bg-[#3D5237] text-white font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-[#4B6344]/20 cursor-pointer"
             >
               {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
-              <span>{copied ? '복사 완료!' : '최종 프롬프트 복사'}</span>
+              <span>{copied ? '프롬프트를 복사했습니다.' : '최종 프롬프트 복사'}</span>
             </button>
 
             <button
@@ -160,12 +188,36 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
         </div>
       </div>
 
+      {/* Error message */}
+      {saveError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl flex items-start justify-between gap-3 text-sm animate-in fade-in duration-200">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">저장에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
+              {saveError !== '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.' && (
+                <p className="text-xs text-rose-600 mt-0.5">{saveError}</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveAndNext}
+            disabled={isSaving}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold rounded-lg shrink-0 transition-colors cursor-pointer"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+
       {/* Navigation Footer */}
       <div className="flex items-center justify-between pt-2">
         <button
           type="button"
           onClick={onPrev}
-          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
+          disabled={isSaving}
+          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>이전 STEP</span>
@@ -173,13 +225,24 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
 
         <button
           type="button"
-          onClick={onNext}
+          onClick={handleSaveAndNext}
+          disabled={isSaving}
           className="px-8 py-3 bg-[#4B6344] hover:bg-[#3D5237] text-white font-bold rounded-xl text-sm shadow-md shadow-[#4B6344]/20 flex items-center gap-2 transition-all cursor-pointer"
         >
-          <span>Gem 제작 완료 & STEP 8 테스트하기</span>
-          <ArrowRight className="w-4 h-4" />
+          {isSaving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>저장 중...</span>
+            </>
+          ) : (
+            <>
+              <span>Gem 제작 완료 & STEP 8 테스트하기</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </div>
     </div>
   );
 };
+

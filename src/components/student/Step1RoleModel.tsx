@@ -1,9 +1,23 @@
 import React, { useState } from 'react';
-import { RoleModelData } from '../../types';
-import { User, Briefcase, Heart, ArrowRight, ArrowLeft, Info, Sparkles, Check } from 'lucide-react';
+import { RoleModelData, StudentInfo } from '../../types';
+import { saveStep1Progress } from '../../api/client';
+import {
+  User,
+  Briefcase,
+  Heart,
+  ArrowRight,
+  ArrowLeft,
+  Info,
+  Sparkles,
+  Check,
+  Loader2,
+  AlertCircle,
+  RefreshCw,
+} from 'lucide-react';
 
 interface Step1RoleModelProps {
   data: RoleModelData;
+  student?: StudentInfo;
   onChange: (data: RoleModelData) => void;
   onNext: () => void;
   onPrev?: () => void;
@@ -49,12 +63,15 @@ const VALUE_OPTIONS = [
 
 export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
   data,
+  student,
   onChange,
   onNext,
   onPrev,
   isReadOnly = false,
 }) => {
   const [subStep, setSubStep] = useState<1 | 2 | 3>(1);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const updateField = <K extends keyof RoleModelData>(field: K, value: RoleModelData[K]) => {
     if (isReadOnly) return;
@@ -85,17 +102,44 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
     (data.values.length > 0 || data.valueCustom.trim())
   );
 
+  const handleSaveAndNext = async () => {
+    if (!isSubStep3Valid || isSaving) return;
+
+    if (isReadOnly || !student) {
+      onNext();
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const res = await saveStep1Progress(student, data);
+      if (res.success) {
+        onNext();
+      } else {
+        setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err) {
+      console.error(err);
+      setSaveError('저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const handleNextSubStep = () => {
     if (subStep === 1 && isSubStep1Valid) {
       setSubStep(2);
     } else if (subStep === 2 && isSubStep2Valid) {
       setSubStep(3);
     } else if (subStep === 3 && isSubStep3Valid) {
-      onNext();
+      handleSaveAndNext();
     }
   };
 
   const handlePrevSubStep = () => {
+    if (isSaving) return;
     if (subStep > 1) {
       setSubStep((prev) => (prev - 1) as 1 | 2 | 3);
     } else if (onPrev) {
@@ -123,6 +167,7 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
             <button
               key={item.step}
               type="button"
+              disabled={isSaving}
               onClick={() => {
                 if (
                   item.step === 1 ||
@@ -133,7 +178,7 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
                   setSubStep(item.step as 1 | 2 | 3);
                 }
               }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50 ${
                 subStep === item.step
                   ? 'bg-[#F1F4EF] text-[#4B6344] border border-[#DCE2D7]'
                   : 'text-[#6B7280] hover:text-[#2C362B] hover:bg-[#F9FAF8]'
@@ -448,6 +493,28 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
                 </div>
               </div>
             </div>
+
+            {/* Error Message & Retry Alert */}
+            {saveError && (
+              <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-rose-800 text-xs sm:text-sm animate-in fade-in">
+                <div className="flex items-start gap-2.5">
+                  <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <strong className="font-bold text-rose-900">저장에 실패했습니다. 잠시 후 다시 시도해 주세요.</strong>
+                    <p className="text-xs text-rose-700 mt-0.5">{saveError}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleSaveAndNext}
+                  disabled={isSaving}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 shadow-xs"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isSaving ? 'animate-spin' : ''}`} />
+                  <span>다시 시도</span>
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -457,7 +524,8 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
         <button
           type="button"
           onClick={handlePrevSubStep}
-          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
+          disabled={isSaving}
+          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] disabled:opacity-50 text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>{subStep === 1 ? '이전 단계' : '이전 항목'}</span>
@@ -467,14 +535,36 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
           type="button"
           onClick={handleNextSubStep}
           disabled={
+            isSaving ||
             (subStep === 1 && !isSubStep1Valid) ||
             (subStep === 2 && !isSubStep2Valid) ||
             (subStep === 3 && !isSubStep3Valid)
           }
-          className="px-8 py-3 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 text-white font-bold rounded-xl text-sm shadow-md shadow-[#4B6344]/20 flex items-center gap-2 transition-all cursor-pointer"
+          className="px-8 py-3 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 text-white font-bold rounded-xl text-sm shadow-md shadow-[#4B6344]/20 flex items-center gap-2 transition-all cursor-pointer min-w-[140px] justify-center"
         >
-          <span>{subStep === 3 ? '다음 STEP으로 저장 및 이동' : '다음 항목'}</span>
-          <ArrowRight className="w-4 h-4" />
+          {isSaving ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>저장 중...</span>
+            </>
+          ) : subStep === 3 ? (
+            saveError ? (
+              <>
+                <RefreshCw className="w-4 h-4" />
+                <span>다시 시도</span>
+              </>
+            ) : (
+              <>
+                <span>다음 STEP으로 저장 및 이동</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )
+          ) : (
+            <>
+              <span>다음 항목</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </div>
     </div>

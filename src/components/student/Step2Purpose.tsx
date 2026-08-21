@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { ChatbotPurposeData, RoleModelData } from '../../types';
-import { Target, Users, Sparkles, ArrowRight, ArrowLeft, Check, Edit3, RotateCcw } from 'lucide-react';
+import { ChatbotPurposeData, RoleModelData, StudentInfo } from '../../types';
+import { Target, Users, Sparkles, ArrowRight, ArrowLeft, Check, Edit3, RotateCcw, AlertCircle } from 'lucide-react';
 import { buildChatbotPurposeSentence } from '../../utils/promptGenerator';
+import { saveStep2Progress } from '../../api/client';
 
 interface Step2PurposeProps {
   data: ChatbotPurposeData;
   roleModel: RoleModelData;
+  student?: StudentInfo;
   onChange: (data: ChatbotPurposeData) => void;
   onNext: () => void;
   onPrev: () => void;
@@ -34,12 +36,15 @@ const TARGET_OPTIONS = [
 export const Step2Purpose: React.FC<Step2PurposeProps> = ({
   data,
   roleModel,
+  student,
   onChange,
   onNext,
   onPrev,
   isReadOnly = false,
 }) => {
   const [isEditingSentence, setIsEditingSentence] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const updateField = <K extends keyof ChatbotPurposeData>(field: K, value: ChatbotPurposeData[K]) => {
     if (isReadOnly) return;
@@ -78,6 +83,30 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
     data.chatbotPurposes.length <= 4 &&
     Boolean(data.targetUser) &&
     (data.targetUser !== '기타' || Boolean(data.targetUserCustom.trim()));
+
+  const handleSaveAndNext = async () => {
+    if (!isValid) return;
+    if (isReadOnly || !student) {
+      onNext();
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const res = await saveStep2Progress(student, data);
+      if (res.success) {
+        onNext();
+      } else {
+        setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
+      setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -258,12 +287,36 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
         </div>
       </div>
 
+      {/* Error message */}
+      {saveError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl flex items-start justify-between gap-3 text-sm animate-in fade-in duration-200">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">저장에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
+              {saveError !== '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.' && (
+                <p className="text-xs text-rose-600 mt-0.5">{saveError}</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveAndNext}
+            disabled={isSaving}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold rounded-lg shrink-0 transition-colors cursor-pointer"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+
       {/* Navigation Footer */}
       <div className="flex items-center justify-between pt-2">
         <button
           type="button"
           onClick={onPrev}
-          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
+          disabled={isSaving}
+          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>이전 STEP</span>
@@ -271,12 +324,21 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
 
         <button
           type="button"
-          onClick={onNext}
-          disabled={!isValid}
+          onClick={handleSaveAndNext}
+          disabled={!isValid || isSaving}
           className="px-8 py-3 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 text-white font-bold rounded-xl text-sm shadow-md shadow-[#4B6344]/20 flex items-center gap-2 transition-all cursor-pointer"
         >
-          <span>다음 STEP으로 저장 및 이동</span>
-          <ArrowRight className="w-4 h-4" />
+          {isSaving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>저장 중...</span>
+            </>
+          ) : (
+            <>
+              <span>다음 STEP으로 저장 및 이동</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </div>
     </div>

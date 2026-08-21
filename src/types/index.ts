@@ -135,6 +135,17 @@ export interface RosterValidationError {
   data?: Partial<RosterItem>;
 }
 
+export interface RosterRowPreview {
+  rowNum: number;
+  gradeRaw: any;
+  classRaw: any;
+  numberRaw: any;
+  nameRaw: any;
+  isValid: boolean;
+  errorReason?: string;
+  item?: RosterItem;
+}
+
 export interface RosterDiff {
   totalExisting: number;
   totalNew: number;
@@ -142,6 +153,15 @@ export interface RosterDiff {
   toRemove: RosterItem[];
   unchanged: RosterItem[];
   changed: { before: RosterItem; after: RosterItem }[];
+}
+
+export interface RosterValidationResult {
+  totalCount: number;
+  validCount: number;
+  errorCount: number;
+  rows: RosterRowPreview[];
+  validItems: RosterItem[];
+  errors: RosterValidationError[];
 }
 
 export interface DashboardStats {

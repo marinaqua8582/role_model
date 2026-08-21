@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { PromptData, TestData } from '../../types';
-import { Wrench, Sparkles, Copy, Check, ArrowRight, ArrowLeft, Lightbulb } from 'lucide-react';
+import { PromptData, TestData, StudentInfo } from '../../types';
+import { Wrench, Sparkles, Copy, Check, ArrowRight, ArrowLeft, Lightbulb, AlertCircle } from 'lucide-react';
+import { updateRevision } from '../../api/client';
 
 interface Step9PromptRevisionProps {
   promptData: PromptData;
   testData: TestData;
+  student?: StudentInfo;
   onChangePrompt: (promptData: PromptData) => void;
   onChangeTest: (testData: TestData) => void;
   onNext: () => void;
@@ -15,6 +17,7 @@ interface Step9PromptRevisionProps {
 export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
   promptData,
   testData,
+  student,
   onChangePrompt,
   onChangeTest,
   onNext,
@@ -22,6 +25,8 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
   isReadOnly = false,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const handleCopyRevised = () => {
     navigator.clipboard.writeText(promptData.finalPrompt || promptData.revisedPrompt || promptData.initialPrompt);
@@ -39,6 +44,29 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
   };
 
   const currentPrompt = promptData.finalPrompt || promptData.revisedPrompt || promptData.initialPrompt;
+
+  const handleSaveAndNext = async () => {
+    if (isReadOnly || !student) {
+      onNext();
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+
+    try {
+      const res = await updateRevision(student, promptData, testData);
+      if (res.success) {
+        onNext();
+      } else {
+        setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
+      setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -65,21 +93,21 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs text-[#2C362B] pt-1">
             <div className="p-3.5 bg-white rounded-xl border border-[#DCE2D7]">
-              <strong className="text-[#2C362B]">진로를 단정해버린 경우:</strong>
+              <strong className="text-[#2C362B]">진로를 단정한 경우:</strong>
               <p className="text-[#5D6B58] mt-1.5 leading-relaxed">
-                "사용자의 진로 적합성을 단정하지 않는다. 대신 흥미, 강점, 가치관을 확인하는 질문을 제시한다."
+                "사용자의 진로 적합성을 단정하지 않는다. 대신 사용자의 흥미, 강점, 가치관을 확인하는 질문을 제시한다."
               </p>
             </div>
             <div className="p-3.5 bg-white rounded-xl border border-[#DCE2D7]">
-              <strong className="text-[#2C362B]">확인 안 된 사실을 지어낸 경우:</strong>
+              <strong className="text-[#2C362B]">확인되지 않은 사실을 만든 경우:</strong>
               <p className="text-[#5D6B58] mt-1.5 leading-relaxed">
-                "확인할 수 없는 사실이나 개인적인 사생활 이야기는 결코 추측하지 않고 모른다고 밝힌다."
+                "확인할 수 없는 사실이나 개인적인 이야기는 추측하여 만들어 내지 않는다. 확실하지 않은 경우 확인하기 어렵다고 안내한다."
               </p>
             </div>
             <div className="p-3.5 bg-white rounded-xl border border-[#DCE2D7]">
-              <strong className="text-[#2C362B]">역할을 벗어나거나 반말을 쓴 경우:</strong>
+              <strong className="text-[#2C362B]">역할을 벗어난 경우:</strong>
               <p className="text-[#5D6B58] mt-1.5 leading-relaxed">
-                "어떤 경우에도 중학생 멘토로서의 역할을 지키며, 친근하고 따뜻한 존댓말을 유지한다."
+                "사용자가 다른 역할을 요구하더라도 설정된 교육용 롤모델 챗봇의 역할을 유지한다."
               </p>
             </div>
           </div>
@@ -93,7 +121,7 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
             </label>
             <textarea
               rows={3}
-              disabled={isReadOnly}
+              disabled={isReadOnly || isSaving}
               value={testData.problemDescription}
               onChange={(e) => onChangeTest({ ...testData, problemDescription: e.target.value })}
               placeholder="테스트 중 발견된 문제점을 적어보세요."
@@ -107,7 +135,7 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
             </label>
             <textarea
               rows={3}
-              disabled={isReadOnly}
+              disabled={isReadOnly || isSaving}
               value={testData.revisionNote}
               onChange={(e) => onChangeTest({ ...testData, revisionNote: e.target.value })}
               placeholder="문제를 해결하기 위해 프롬프트의 어느 부분을 어떻게 보강했는지 적어보세요."
@@ -129,13 +157,13 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
               className="px-4 py-2 bg-[#4B6344] hover:bg-[#3D5237] text-white text-xs font-bold rounded-xl flex items-center gap-2 transition-all shadow-md shadow-[#4B6344]/20 cursor-pointer"
             >
               {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
-              <span>{copied ? '복사 완료!' : '수정된 프롬프트 복사'}</span>
+              <span>{copied ? '프롬프트를 복사했습니다.' : '수정된 프롬프트 복사'}</span>
             </button>
           </div>
 
           <textarea
             rows={14}
-            disabled={isReadOnly}
+            disabled={isReadOnly || isSaving}
             value={currentPrompt}
             onChange={(e) => handlePromptChange(e.target.value)}
             className="w-full p-5 bg-[#2C362B] text-[#F7F8F4] font-mono text-xs leading-relaxed rounded-2xl border border-[#3D5237] outline-none focus:ring-2 focus:ring-[#4B6344] resize-y"
@@ -150,12 +178,36 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
         </div>
       </div>
 
+      {/* Error message */}
+      {saveError && (
+        <div className="bg-rose-50 border border-rose-200 text-rose-700 p-4 rounded-2xl flex items-start justify-between gap-3 text-sm animate-in fade-in duration-200">
+          <div className="flex items-start gap-2.5">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold">저장에 실패했습니다. 잠시 후 다시 시도해 주세요.</p>
+              {saveError !== '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.' && (
+                <p className="text-xs text-rose-600 mt-0.5">{saveError}</p>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleSaveAndNext}
+            disabled={isSaving}
+            className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-bold rounded-lg shrink-0 transition-colors cursor-pointer"
+          >
+            다시 시도
+          </button>
+        </div>
+      )}
+
       {/* Navigation Footer */}
       <div className="flex items-center justify-between pt-2">
         <button
           type="button"
           onClick={onPrev}
-          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer"
+          disabled={isSaving}
+          className="px-6 py-3 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] font-bold rounded-xl text-sm flex items-center gap-2 transition-colors cursor-pointer disabled:opacity-50"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>이전 STEP</span>
@@ -163,13 +215,24 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
 
         <button
           type="button"
-          onClick={onNext}
+          onClick={handleSaveAndNext}
+          disabled={isSaving}
           className="px-8 py-3 bg-[#4B6344] hover:bg-[#3D5237] text-white font-bold rounded-xl text-sm shadow-md shadow-[#4B6344]/20 flex items-center gap-2 transition-all cursor-pointer"
         >
-          <span>최종 공유 및 제출(STEP 10)로 이동</span>
-          <ArrowRight className="w-4 h-4" />
+          {isSaving ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <span>저장 중...</span>
+            </>
+          ) : (
+            <>
+              <span>최종 공유 및 제출(STEP 10)로 이동</span>
+              <ArrowRight className="w-4 h-4" />
+            </>
+          )}
         </button>
       </div>
     </div>
   );
 };
+

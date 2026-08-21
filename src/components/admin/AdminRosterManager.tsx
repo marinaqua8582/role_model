@@ -1,5 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { RosterItem, RosterValidationError, RosterDiff } from '../../types';
+import {
+  RosterItem,
+  RosterDiff,
+  RosterValidationResult,
+} from '../../types';
 import {
   downloadRosterTemplateFile,
   parseAndValidateRosterFile,
@@ -17,9 +21,12 @@ import {
   FileSpreadsheet,
   X,
   Plus,
-  Trash2,
   Edit3,
   Users,
+  Search,
+  ArrowRight,
+  ShieldCheck,
+  AlertCircle,
 } from 'lucide-react';
 
 interface AdminRosterManagerProps {
@@ -37,12 +44,16 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
 
   // Excel state
   const [file, setFile] = useState<File | null>(null);
-  const [parsedItems, setParsedItems] = useState<RosterItem[]>([]);
-  const [errors, setErrors] = useState<RosterValidationError[]>([]);
+  const [validationResult, setValidationResult] = useState<RosterValidationResult | null>(null);
   const [diff, setDiff] = useState<RosterDiff | null>(null);
   const [applyMode, setApplyMode] = useState<'replace' | 'append'>('replace');
   const [isApplying, setIsApplying] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+
+  // Preview filtering & search
+  const [previewFilter, setPreviewFilter] = useState<'all' | 'valid' | 'error'>('all');
+  const [previewSearch, setPreviewSearch] = useState('');
 
   // Direct single entry state
   const [inputGrade, setInputGrade] = useState<string>('3');
@@ -64,40 +75,48 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
 
     setFile(uploadedFile);
     setSuccessMessage('');
-    const reader = new FileReader();
+    setErrorMessage('');
+    setPreviewFilter('all');
+    setPreviewSearch('');
 
+    const reader = new FileReader();
     reader.onload = (evt) => {
       const buffer = evt.target?.result as ArrayBuffer;
       if (buffer) {
-        const { validItems, errors: parseErrors } = parseAndValidateRosterFile(buffer);
-        setParsedItems(validItems);
-        setErrors(parseErrors);
+        const result = parseAndValidateRosterFile(buffer);
+        setValidationResult(result);
 
-        if (parseErrors.length === 0 && validItems.length > 0) {
-          const diffResult = computeRosterDiff(currentRoster, validItems);
+        if (result.errorCount === 0 && result.validItems.length > 0) {
+          const diffResult = computeRosterDiff(currentRoster, result.validItems);
           setDiff(diffResult);
         } else {
           setDiff(null);
         }
       }
     };
-
     reader.readAsArrayBuffer(uploadedFile);
   };
 
   const handleApplyRoster = async () => {
-    if (parsedItems.length === 0 || errors.length > 0) return;
+    if (!validationResult || validationResult.errorCount > 0 || validationResult.validItems.length === 0) {
+      return;
+    }
+
     setIsApplying(true);
+    setSuccessMessage('');
+    setErrorMessage('');
 
     try {
-      await updateAdminRoster(parsedItems, applyMode);
-      setSuccessMessage(`총 ${parsedItems.length}명의 학생 명단이 성공적으로 반영되었습니다!`);
-      onRosterUpdated();
-      setTimeout(() => {
-        onClose();
-      }, 1500);
-    } catch (err) {
-      console.error(err);
+      const res = await updateAdminRoster(validationResult.validItems, applyMode);
+      if (res && res.success) {
+        setSuccessMessage('학생 명단이 Google Sheets에 정상적으로 반영되었습니다.');
+        onRosterUpdated();
+      } else {
+        setErrorMessage('학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
+      console.error('Failed to update roster', err);
+      setErrorMessage(err?.message || '학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setIsApplying(false);
     }
@@ -108,6 +127,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
     e.preventDefault();
     setSingleAddError('');
     setSuccessMessage('');
+    setErrorMessage('');
 
     const g = Number(inputGrade);
     const c = Number(inputClass);
@@ -140,14 +160,18 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
 
     setIsApplying(true);
     try {
-      await updateAdminRoster([newItem], 'append');
-      setSuccessMessage(`${g}학년 ${c}반 ${n}번 ${trimmedName} 학생이 등록되었습니다!`);
-      setInputNumber(String(n + 1));
-      setInputName('');
-      onRosterUpdated();
-    } catch (err) {
+      const res = await updateAdminRoster([newItem], 'append');
+      if (res && res.success) {
+        setSuccessMessage(`${g}학년 ${c}반 ${n}번 ${trimmedName} 학생이 Google Sheets에 등록되었습니다.`);
+        setInputNumber(String(n + 1));
+        setInputName('');
+        onRosterUpdated();
+      } else {
+        setSingleAddError('학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
       console.error(err);
-      setSingleAddError('학생 등록 중 오류가 발생했습니다.');
+      setSingleAddError(err?.message || '학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setIsApplying(false);
     }
@@ -157,6 +181,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
   const handleAddBatchStudents = async () => {
     setBatchError('');
     setSuccessMessage('');
+    setErrorMessage('');
 
     if (!batchText.trim()) {
       setBatchError('학생 정보를 입력해 주세요.');
@@ -166,15 +191,15 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
     const lines = batchText.trim().split('\n');
     const newItems: RosterItem[] = [];
     const parseErrors: string[] = [];
+    const seen = new Set<string>();
 
     lines.forEach((line, idx) => {
       const cleanLine = line.trim();
       if (!cleanLine) return;
 
-      // Split by tab, comma, slash, or space
       const parts = cleanLine.split(/[\t,/\s]+/).filter(Boolean);
       if (parts.length < 4) {
-        parseErrors.push(`${idx + 1}번째 줄: 학년, 반, 번호, 이름 4개 항목이 필요합니다. ("${cleanLine}")`);
+        parseErrors.push(`${idx + 1}행: [학년 반 번호 이름] 4개 항목이 필요합니다. ("${cleanLine}")`);
         return;
       }
 
@@ -183,10 +208,17 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
       const n = parseInt(parts[2], 10);
       const studentName = parts.slice(3).join(' ').trim();
 
-      if (isNaN(g) || isNaN(c) || isNaN(n) || !studentName) {
-        parseErrors.push(`${idx + 1}번째 줄: 숫자/이름 형식이 맞지 않습니다. ("${cleanLine}")`);
+      if (isNaN(g) || isNaN(c) || isNaN(n) || g <= 0 || c <= 0 || n <= 0 || !studentName) {
+        parseErrors.push(`${idx + 1}행: 숫자/이름 형식이 맞지 않습니다. ("${cleanLine}")`);
         return;
       }
+
+      const key = `${g}-${c}-${n}`;
+      if (seen.has(key)) {
+        parseErrors.push(`${idx + 1}행: ${g}학년 ${c}반 ${n}번 - 중복된 학년/반/번호입니다.`);
+        return;
+      }
+      seen.add(key);
 
       newItems.push({
         grade: g,
@@ -208,13 +240,17 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
 
     setIsApplying(true);
     try {
-      await updateAdminRoster(newItems, batchMode);
-      setSuccessMessage(`총 ${newItems.length}명의 학생 정보가 성공적으로 반영되었습니다!`);
-      setBatchText('');
-      onRosterUpdated();
-    } catch (err) {
+      const res = await updateAdminRoster(newItems, batchMode);
+      if (res && res.success) {
+        setSuccessMessage(`총 ${newItems.length}명의 학생 정보가 Google Sheets에 반영되었습니다.`);
+        setBatchText('');
+        onRosterUpdated();
+      } else {
+        setBatchError('학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+      }
+    } catch (err: any) {
       console.error(err);
-      setBatchError('명단 등록 중 오류가 발생했습니다.');
+      setBatchError(err?.message || '학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
       setIsApplying(false);
     }
@@ -223,7 +259,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
   const handleClearAllRoster = async () => {
     if (currentRoster.length === 0) return;
     const confirmed = window.confirm(
-      `현재 등록된 학생 ${currentRoster.length}명의 명단을 모두 삭제하시겠습니까?\n(새로운 학생 명단으로 교체하기 위해 비웁니다.)`
+      `현재 등록된 학생 ${currentRoster.length}명의 명단을 Roster 시트에서 모두 삭제하시겠습니까?\n\n(※ 학생들의 Progress, Tests, Submissions 데이터는 안전하게 보존되며 Roster 시트만 초기화됩니다.)`
     );
     if (!confirmed) return;
 
@@ -232,30 +268,47 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
       await updateAdminRoster([], 'replace');
       setSuccessMessage('모든 학생 명단이 삭제되었습니다.');
       onRosterUpdated();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('명단 초기화 중 오류가 발생했습니다.');
+      alert(err?.message || '명단 초기화 중 오류가 발생했습니다.');
     } finally {
       setIsApplying(false);
     }
   };
 
+  // Filtered rows for the preview table
+  const filteredRows = (validationResult?.rows || []).filter((r) => {
+    if (previewFilter === 'valid' && !r.isValid) return false;
+    if (previewFilter === 'error' && r.isValid) return false;
+    if (previewSearch.trim()) {
+      const q = previewSearch.toLowerCase();
+      const match =
+        String(r.gradeRaw).toLowerCase().includes(q) ||
+        String(r.classRaw).toLowerCase().includes(q) ||
+        String(r.numberRaw).toLowerCase().includes(q) ||
+        String(r.nameRaw).toLowerCase().includes(q) ||
+        (r.errorReason && r.errorReason.toLowerCase().includes(q));
+      if (!match) return false;
+    }
+    return true;
+  });
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2C362B]/50 backdrop-blur-xs">
-      <div className="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-[#E1E4D8] animate-in fade-in zoom-in-95 duration-150">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2C362B]/60 backdrop-blur-xs">
+      <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[92vh] flex flex-col shadow-2xl border border-[#E1E4D8] animate-in fade-in zoom-in-95 duration-150 overflow-hidden">
         {/* Header */}
-        <div className="p-5 sm:p-6 border-b border-[#E1E4D8] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="p-5 sm:p-6 border-b border-[#E1E4D8] flex items-center justify-between shrink-0 bg-[#FAFBF9]">
+          <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-[#4B6344] text-white flex items-center justify-center shadow-xs">
               <FileSpreadsheet className="w-5 h-5" />
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-bold text-[#2C362B]">
-                학생 명단 관리 (Roster)
+                학생 명단 관리 (Google Sheets Roster 연동)
               </h3>
               <div className="flex items-center gap-2 mt-0.5">
-                <p className="text-xs text-[#6B7280]">
-                  현재 등록된 학생 수: <strong className="text-[#4B6344]">{currentRoster.length}명</strong>
+                <p className="text-xs text-[#5D6B58]">
+                  현재 시트 등록 학생: <strong className="text-[#4B6344]">{currentRoster.length}명</strong>
                 </p>
                 {currentRoster.length > 0 && (
                   <button
@@ -264,7 +317,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                     disabled={isApplying}
                     className="text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-md transition-colors cursor-pointer"
                   >
-                    명단 전체 비우기
+                    명단 비우기
                   </button>
                 )}
               </div>
@@ -274,25 +327,25 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="p-2 text-[#6B7280] hover:text-[#2C362B] hover:bg-[#F9FAF8] rounded-xl transition-colors cursor-pointer"
+            className="p-2 text-[#6B7280] hover:text-[#2C362B] hover:bg-white rounded-xl transition-colors cursor-pointer border border-transparent hover:border-[#E1E4D8]"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex border-b border-[#E1E4D8] px-6 bg-[#F9FAF8] shrink-0">
+        <div className="flex border-b border-[#E1E4D8] px-6 bg-[#F1F4EF]/60 shrink-0">
           <button
             type="button"
             onClick={() => setActiveTab('excel')}
             className={`py-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'excel'
-                ? 'border-[#4B6344] text-[#4B6344] bg-white rounded-t-xl'
+                ? 'border-[#4B6344] text-[#4B6344] bg-white rounded-t-xl shadow-2xs'
                 : 'border-transparent text-[#6B7280] hover:text-[#2C362B]'
             }`}
           >
             <FileSpreadsheet className="w-4 h-4" />
-            <span>엑셀 파일 업로드</span>
+            <span>엑셀(.xlsx) 파일 업로드 & 검증</span>
           </button>
 
           <button
@@ -300,36 +353,60 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
             onClick={() => setActiveTab('direct')}
             className={`py-3 px-4 font-bold text-xs flex items-center gap-2 border-b-2 transition-all cursor-pointer ${
               activeTab === 'direct'
-                ? 'border-[#4B6344] text-[#4B6344] bg-white rounded-t-xl'
+                ? 'border-[#4B6344] text-[#4B6344] bg-white rounded-t-xl shadow-2xs'
                 : 'border-transparent text-[#6B7280] hover:text-[#2C362B]'
             }`}
           >
             <Edit3 className="w-4 h-4" />
-            <span>직접 입력하여 추가</span>
+            <span>수기 직접 등록</span>
           </button>
         </div>
 
         {/* Scrollable Body */}
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+          {/* Success Banner */}
           {successMessage && (
-            <div className="p-4 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl text-[#4B6344] font-bold flex items-center gap-2 animate-in fade-in">
-              <CheckCircle2 className="w-5 h-5 text-[#4B6344] shrink-0" />
-              <span>{successMessage}</span>
+            <div className="p-4 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl text-[#4B6344] font-bold flex items-center justify-between gap-2 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-5 h-5 text-[#4B6344] shrink-0" />
+                <span>{successMessage}</span>
+              </div>
+              <span className="text-[11px] font-normal text-[#5D6B58]">
+                학생 로그인 및 대시보드에 즉시 반영됩니다.
+              </span>
+            </div>
+          )}
+
+          {/* Error Banner */}
+          {errorMessage && (
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl text-rose-900 font-bold flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-in fade-in">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+                <span>{errorMessage}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyRoster}
+                disabled={isApplying}
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-colors cursor-pointer shrink-0"
+              >
+                다시 시도
+              </button>
             </div>
           )}
 
           {/* TAB 1: EXCEL UPLOAD */}
           {activeTab === 'excel' && (
             <div className="space-y-6">
-              {/* Step 1: Download Template */}
-              <div className="p-5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              {/* Section 1: Template Download */}
+              <div className="p-4 sm:p-5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
                 <div className="space-y-0.5">
                   <div className="font-bold text-[#2C362B] text-sm flex items-center gap-1.5">
                     <Download className="w-4 h-4 text-[#4B6344]" />
-                    <span>1. 학생 명단 엑셀 표준 양식 다운로드</span>
+                    <span>1. 학생 명단 엑셀 양식 다운로드</span>
                   </div>
-                  <p className="text-[#5D6B58]">
-                    열 순서: [학년, 반, 번호, 이름] 형식으로 구성된 .xlsx 템플릿입니다.
+                  <p className="text-[#5D6B58] text-[11px]">
+                    열 순서: [<strong>학년</strong>, <strong>반</strong>, <strong>번호</strong>, <strong>이름</strong>] 빈 양식(.xlsx)을 다운로드하여 학생 정보를 입력하세요.
                   </p>
                 </div>
 
@@ -338,21 +415,28 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                   onClick={downloadRosterTemplateFile}
                   className="px-4 py-2.5 bg-white hover:bg-[#F1F4EF] border border-[#E1E4D8] text-[#2C362B] font-bold rounded-xl text-xs flex items-center justify-center gap-1.5 shadow-2xs transition-colors shrink-0 cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" />
+                  <Download className="w-3.5 h-3.5 text-[#4B6344]" />
                   <span>양식 다운로드 (.xlsx)</span>
                 </button>
               </div>
 
-              {/* Step 2: Upload Excel File */}
-              <div className="space-y-3">
-                <div className="font-bold text-[#2C362B] text-sm flex items-center gap-1.5">
-                  <Upload className="w-4 h-4 text-[#4B6344]" />
-                  <span>2. 작성한 학생 명단 엑셀 파일 업로드</span>
+              {/* Section 2: Upload File Area */}
+              <div className="space-y-2">
+                <div className="font-bold text-[#2C362B] text-sm flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Upload className="w-4 h-4 text-[#4B6344]" />
+                    <span>2. 작성한 학생 명단 엑셀 파일 업로드</span>
+                  </div>
+                  {file && (
+                    <span className="text-[11px] text-[#4B6344] font-medium">
+                      선택된 파일: <strong>{file.name}</strong> ({(file.size / 1024).toFixed(1)} KB)
+                    </span>
+                  )}
                 </div>
 
                 <div
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-[#E1E4D8] hover:border-[#4B6344] bg-[#F9FAF8] hover:bg-[#F1F4EF] rounded-2xl p-6 text-center cursor-pointer transition-all"
+                  className="border-2 border-dashed border-[#CCD4C5] hover:border-[#4B6344] bg-[#F9FAF8] hover:bg-[#F1F4EF] rounded-2xl p-6 text-center cursor-pointer transition-all shadow-2xs"
                 >
                   <input
                     ref={fileInputRef}
@@ -361,115 +445,330 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                     onChange={handleFileUpload}
                     className="hidden"
                   />
-                  <FileSpreadsheet className="w-8 h-8 text-[#4B6344] mx-auto mb-2" />
+                  <FileSpreadsheet className="w-9 h-9 text-[#4B6344] mx-auto mb-2" />
                   <p className="font-bold text-[#2C362B] text-xs sm:text-sm">
-                    {file ? file.name : '클릭하여 엑셀(.xlsx) 파일을 선택하세요'}
+                    {file ? '다른 엑셀 파일로 다시 올리려면 클릭하세요' : '클릭하여 엑셀(.xlsx) 파일을 선택하세요'}
                   </p>
                   <p className="text-[11px] text-[#6B7280] mt-1">
-                    파일을 올리면 데이터 오류 검증 및 기존 명단과의 비교 결과가 자동으로 표시됩니다.
+                    파일을 업로드하면 웹앱에서 데이터를 먼저 검증하고 미리보기를 표시합니다. (Google Sheets에 바로 저장되지 않습니다)
                   </p>
                 </div>
               </div>
 
-              {/* Validation Errors */}
-              {errors.length > 0 && (
-                <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-2 text-rose-800 animate-in fade-in">
-                  <div className="flex items-center gap-2 font-bold text-rose-900 text-xs">
-                    <AlertTriangle className="w-4 h-4 text-rose-600" />
-                    <span>엑셀 파일에서 {errors.length}개의 오류가 발견되었습니다. (수정 후 다시 업로드해 주세요)</span>
-                  </div>
-                  <ul className="list-disc list-inside space-y-1 text-[11px] max-h-36 overflow-y-auto">
-                    {errors.map((err, i) => (
-                      <li key={i}>
-                        {err.row > 0 ? `${err.row}번째 행: ` : ''}
-                        {err.reason}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-
-              {/* Diff Comparison & Preview */}
-              {diff && errors.length === 0 && (
+              {/* Section 3: Validation Summary Badges */}
+              {validationResult && (
                 <div className="space-y-4 animate-in fade-in">
-                  <div className="p-4 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl flex items-center gap-2 text-[#4B6344] font-bold text-xs">
-                    <CheckCircle2 className="w-4 h-4 text-[#4B6344] shrink-0" />
-                    <span>검증 성공! 총 {diff.totalNew}명의 유효한 학생 명단이 확인되었습니다.</span>
+                  {/* Summary Metric Cards */}
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="p-3.5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl text-center">
+                      <span className="text-[#6B7280] block text-[11px] mb-0.5">전체 학생 수</span>
+                      <strong className="text-base font-bold text-[#2C362B]">
+                        {validationResult.totalCount}명
+                      </strong>
+                    </div>
+
+                    <div className="p-3.5 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl text-center">
+                      <span className="text-[#4B6344] font-bold block text-[11px] mb-0.5 flex items-center justify-center gap-1">
+                        <CheckCircle2 className="w-3.5 h-3.5" /> 정상 학생 수
+                      </span>
+                      <strong className="text-base font-bold text-[#4B6344]">
+                        {validationResult.validCount}명
+                      </strong>
+                    </div>
+
+                    <div className={`p-3.5 rounded-2xl text-center border ${
+                      validationResult.errorCount > 0
+                        ? 'bg-rose-50 border-rose-200 text-rose-800'
+                        : 'bg-[#F9FAF8] border-[#E1E4D8] text-[#6B7280]'
+                    }`}>
+                      <span className="block text-[11px] mb-0.5 font-bold flex items-center justify-center gap-1">
+                        {validationResult.errorCount > 0 ? (
+                          <>
+                            <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                            <span className="text-rose-700">오류 학생 수</span>
+                          </>
+                        ) : (
+                          <span>오류 학생 수</span>
+                        )}
+                      </span>
+                      <strong className={`text-base font-bold ${validationResult.errorCount > 0 ? 'text-rose-600' : 'text-[#2C362B]'}`}>
+                        {validationResult.errorCount}명
+                      </strong>
+                    </div>
                   </div>
 
-                  {/* Diff Stats Box */}
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                    <div className="p-3.5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl">
-                      <span className="text-[#6B7280] block mb-0.5">기존 학생</span>
-                      <strong className="text-[#2C362B] text-sm">{diff.totalExisting}명</strong>
+                  {/* Errors Notice Box */}
+                  {validationResult.errorCount > 0 && (
+                    <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl space-y-2 text-rose-900 animate-in fade-in">
+                      <div className="flex items-center gap-2 font-bold text-xs">
+                        <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+                        <span>엑셀 파일에서 {validationResult.errorCount}건의 데이터 오류가 발견되었습니다. 수정 후 다시 업로드해 주세요.</span>
+                      </div>
+                      <p className="text-[11px] text-rose-700">
+                        ※ 오류가 있는 학생이 1건이라도 존재하면 학생 명단을 Google Sheets에 반영할 수 없습니다.
+                      </p>
+                      <ul className="list-disc list-inside space-y-1 text-[11px] max-h-36 overflow-y-auto bg-white/70 p-2.5 rounded-xl border border-rose-200 font-medium">
+                        {validationResult.errors.map((err, i) => (
+                          <li key={i}>
+                            {err.row > 0 ? `[${err.row}행] ` : ''}
+                            {err.reason}
+                          </li>
+                        ))}
+                      </ul>
                     </div>
-                    <div className="p-3.5 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl">
-                      <span className="text-[#4B6344] block mb-0.5 flex items-center gap-1 font-bold">
-                        <UserPlus className="w-3 h-3" /> 새로 추가
-                      </span>
-                      <strong className="text-[#4B6344] text-sm">{diff.toAdd.length}명</strong>
-                    </div>
-                    <div className="p-3.5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl">
-                      <span className="text-[#6B7280] block mb-0.5">동일 학생</span>
-                      <strong className="text-[#2C362B] text-sm">{diff.unchanged.length}명</strong>
-                    </div>
-                    <div className="p-3.5 bg-amber-50 border border-amber-200 rounded-2xl">
-                      <span className="text-amber-700 block mb-0.5 flex items-center gap-1 font-bold">
-                        <UserMinus className="w-3 h-3" /> 기존 제외
-                      </span>
-                      <strong className="text-amber-900 text-sm">{diff.toRemove.length}명</strong>
-                    </div>
-                  </div>
+                  )}
 
-                  {/* Mode Selection */}
-                  <div className="p-4 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl space-y-2">
-                    <span className="font-bold text-[#2C362B] block text-xs">반영 방식 선택</span>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      <label
-                        onClick={() => setApplyMode('replace')}
-                        className={`p-3.5 rounded-xl border flex items-center gap-2.5 cursor-pointer transition-all ${
-                          applyMode === 'replace'
-                            ? 'bg-[#F1F4EF] border-[#4B6344] text-[#2C362B] font-bold'
-                            : 'bg-white border-[#E1E4D8] text-[#5D6B58]'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="applyMode"
-                          checked={applyMode === 'replace'}
-                          onChange={() => setApplyMode('replace')}
-                          className="accent-[#4B6344]"
-                        />
-                        <div>
-                          <div>기존 명단 교체 (권장)</div>
-                          <div className="text-[10px] text-[#6B7280] font-normal">
-                            업로드한 엑셀 파일의 명단으로 전체를 새로 교체합니다.
+                  {/* Diff Comparison & Mode Selection (Only when 0 errors) */}
+                  {validationResult.errorCount === 0 && diff && (
+                    <div className="space-y-4 animate-in fade-in">
+                      {/* Comparison with Current Roster */}
+                      <div className="p-4.5 bg-[#FAFBF9] border border-[#E1E4D8] rounded-2xl space-y-3">
+                        <div className="font-bold text-[#2C362B] text-xs flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-[#4B6344]" />
+                            <span>기존 Google Sheets Roster와 비교 현황</span>
+                          </span>
+                          <span className="text-[11px] text-[#5D6B58] font-normal">
+                            (Progress, Tests, Submissions 시트는 안전하게 보호됩니다)
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+                          <div className="p-2.5 bg-white border border-[#E1E4D8] rounded-xl text-center">
+                            <span className="text-[10px] text-[#6B7280] block">현재 등록</span>
+                            <strong className="text-xs font-bold text-[#2C362B]">{diff.totalExisting}명</strong>
+                          </div>
+                          <div className="p-2.5 bg-white border border-[#E1E4D8] rounded-xl text-center">
+                            <span className="text-[10px] text-[#6B7280] block">업로드</span>
+                            <strong className="text-xs font-bold text-[#4B6344]">{diff.totalNew}명</strong>
+                          </div>
+                          <div className="p-2.5 bg-[#F1F4EF] border border-[#DCE2D7] rounded-xl text-center">
+                            <span className="text-[10px] text-[#4B6344] block font-bold">그대로 유지</span>
+                            <strong className="text-xs font-bold text-[#4B6344]">{diff.unchanged.length}명</strong>
+                          </div>
+                          <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
+                            <span className="text-[10px] text-emerald-700 block font-bold flex items-center justify-center gap-0.5">
+                              <UserPlus className="w-3 h-3" /> 새로 추가
+                            </span>
+                            <strong className="text-xs font-bold text-emerald-800">{diff.toAdd.length}명</strong>
+                          </div>
+                          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-center">
+                            <span className="text-[10px] text-amber-700 block font-bold flex items-center justify-center gap-0.5">
+                              <UserMinus className="w-3 h-3" /> 기존 제외
+                            </span>
+                            <strong className="text-xs font-bold text-amber-900">{diff.toRemove.length}명</strong>
+                          </div>
+                          <div className="p-2.5 bg-sky-50 border border-sky-200 rounded-xl text-center">
+                            <span className="text-[10px] text-sky-700 block font-bold">이름 변경</span>
+                            <strong className="text-xs font-bold text-sky-800">{diff.changed.length}명</strong>
                           </div>
                         </div>
-                      </label>
 
-                      <label
-                        onClick={() => setApplyMode('append')}
-                        className={`p-3.5 rounded-xl border flex items-center gap-2.5 cursor-pointer transition-all ${
-                          applyMode === 'append'
-                            ? 'bg-[#F1F4EF] border-[#4B6344] text-[#2C362B] font-bold'
-                            : 'bg-white border-[#E1E4D8] text-[#5D6B58]'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="applyMode"
-                          checked={applyMode === 'append'}
-                          onChange={() => setApplyMode('append')}
-                          className="accent-[#4B6344]"
-                        />
-                        <div>
-                          <div>새 학생만 추가</div>
-                          <div className="text-[10px] text-[#6B7280] font-normal">
-                            기존 명단을 유지하면서 신규 학생만 추가합니다.
+                        {/* Name change warnings */}
+                        {diff.changed.length > 0 && (
+                          <div className="p-3 bg-sky-50 border border-sky-200 rounded-xl text-[11px] text-sky-900 space-y-1">
+                            <span className="font-bold block">
+                              동일 학년/반/번호인데 이름이 다른 학생 ({diff.changed.length}명):
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              {diff.changed.map((c, i) => (
+                                <span key={i} className="inline-flex items-center gap-1 bg-white px-2 py-0.5 rounded border border-sky-200">
+                                  <span>{c.before.grade}학년 {c.before.classNum}반 {c.before.number}번:</span>
+                                  <span className="text-[#6B7280] line-through">{c.before.name}</span>
+                                  <ArrowRight className="w-3 h-3 text-sky-600" />
+                                  <strong className="text-sky-900">{c.after.name}</strong>
+                                </span>
+                              ))}
+                            </div>
                           </div>
+                        )}
+                      </div>
+
+                      {/* Mode Selection */}
+                      <div className="p-4.5 bg-[#FAFBF9] border border-[#E1E4D8] rounded-2xl space-y-2.5">
+                        <div className="font-bold text-[#2C362B] text-xs flex items-center gap-1.5">
+                          <span>3. 반영 방식 선택</span>
                         </div>
-                      </label>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                          <label
+                            onClick={() => setApplyMode('replace')}
+                            className={`p-3.5 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                              applyMode === 'replace'
+                                ? 'bg-white border-[#4B6344] ring-2 ring-[#4B6344]/20 text-[#2C362B] shadow-2xs'
+                                : 'bg-[#F9FAF8] border-[#E1E4D8] text-[#5D6B58] hover:bg-white'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="applyMode"
+                              checked={applyMode === 'replace'}
+                              onChange={() => setApplyMode('replace')}
+                              className="accent-[#4B6344] mt-0.5"
+                            />
+                            <div>
+                              <div className="font-bold text-xs text-[#2C362B]">기존 명단 교체 (권장)</div>
+                              <div className="text-[11px] text-[#6B7280] mt-0.5">
+                                Google Sheets Roster 시트 2행 이하를 삭제하고 업로드한 전체 명단({validationResult.validItems.length}명)으로 새로 교체합니다.
+                              </div>
+                            </div>
+                          </label>
+
+                          <label
+                            onClick={() => setApplyMode('append')}
+                            className={`p-3.5 rounded-xl border flex items-start gap-2.5 cursor-pointer transition-all ${
+                              applyMode === 'append'
+                                ? 'bg-white border-[#4B6344] ring-2 ring-[#4B6344]/20 text-[#2C362B] shadow-2xs'
+                                : 'bg-[#F9FAF8] border-[#E1E4D8] text-[#5D6B58] hover:bg-white'
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="applyMode"
+                              checked={applyMode === 'append'}
+                              onChange={() => setApplyMode('append')}
+                              className="accent-[#4B6344] mt-0.5"
+                            />
+                            <div>
+                              <div className="font-bold text-xs text-[#2C362B]">새 학생만 추가</div>
+                              <div className="text-[11px] text-[#6B7280] mt-0.5">
+                                기존 Roster를 유지하고 기존에 존재하지 않는 학년/반/번호 학생({diff.toAdd.length}명)만 추가합니다.
+                              </div>
+                            </div>
+                          </label>
+                        </div>
+
+                        {applyMode === 'append' && diff.changed.length > 0 && (
+                          <p className="text-[11px] text-amber-700 bg-amber-50 p-2.5 rounded-xl border border-amber-200">
+                            ⚠️ 학년/반/번호가 같지만 이름이 다른 {diff.changed.length}명의 학생은 '새 학생만 추가' 모드에서 기존 이름이 유지됩니다.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Section 4: Student Preview Table */}
+                  <div className="space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <span className="font-bold text-[#2C362B] text-xs">
+                        업로드 학생 목록 미리보기 ({filteredRows.length}명 표시)
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        {/* Status Filter */}
+                        <div className="flex items-center bg-[#F1F4EF] p-0.5 rounded-xl border border-[#E1E4D8]">
+                          <button
+                            type="button"
+                            onClick={() => setPreviewFilter('all')}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                              previewFilter === 'all'
+                                ? 'bg-white text-[#2C362B] shadow-2xs'
+                                : 'text-[#6B7280] hover:text-[#2C362B]'
+                            }`}
+                          >
+                            전체 ({validationResult.rows.length})
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setPreviewFilter('valid')}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                              previewFilter === 'valid'
+                                ? 'bg-white text-[#4B6344] shadow-2xs'
+                                : 'text-[#6B7280] hover:text-[#4B6344]'
+                            }`}
+                          >
+                            정상 ({validationResult.validCount})
+                          </button>
+                          {validationResult.errorCount > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setPreviewFilter('error')}
+                              className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                                previewFilter === 'error'
+                                  ? 'bg-white text-rose-600 shadow-2xs'
+                                  : 'text-[#6B7280] hover:text-rose-600'
+                              }`}
+                            >
+                              오류 ({validationResult.errorCount})
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Search Input */}
+                        <div className="relative">
+                          <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF]" />
+                          <input
+                            type="text"
+                            placeholder="미리보기 검색..."
+                            value={previewSearch}
+                            onChange={(e) => setPreviewSearch(e.target.value)}
+                            className="pl-8 pr-3 py-1 bg-white border border-[#E1E4D8] rounded-xl text-[11px] text-[#2C362B] placeholder-[#9CA3AF] focus:border-[#4B6344] outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="border border-[#E1E4D8] rounded-2xl overflow-hidden shadow-2xs">
+                      <div className="max-h-60 overflow-y-auto">
+                        <table className="w-full text-left border-collapse text-[11px]">
+                          <thead className="bg-[#F9FAF8] border-b border-[#E1E4D8] sticky top-0 z-10">
+                            <tr>
+                              <th className="py-2 px-3 font-bold text-[#5D6B58] w-12 text-center">행</th>
+                              <th className="py-2 px-3 font-bold text-[#5D6B58] w-16 text-center">학년</th>
+                              <th className="py-2 px-3 font-bold text-[#5D6B58] w-16 text-center">반</th>
+                              <th className="py-2 px-3 font-bold text-[#5D6B58] w-16 text-center">번호</th>
+                              <th className="py-2 px-3 font-bold text-[#5D6B58]">이름</th>
+                              <th className="py-2 px-3 font-bold text-[#5D6B58] text-right">상태</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-[#E1E4D8]">
+                            {filteredRows.length === 0 ? (
+                              <tr>
+                                <td colSpan={6} className="py-6 text-center text-[#9CA3AF]">
+                                  조건에 맞는 학생 정보가 없습니다.
+                                </td>
+                              </tr>
+                            ) : (
+                              filteredRows.map((r, idx) => (
+                                <tr
+                                  key={idx}
+                                  className={`hover:bg-[#F9FAF8] transition-colors ${
+                                    !r.isValid ? 'bg-rose-50/50' : ''
+                                  }`}
+                                >
+                                  <td className="py-2 px-3 text-center text-[#9CA3AF] font-mono">
+                                    {r.rowNum}
+                                  </td>
+                                  <td className="py-2 px-3 text-center font-medium text-[#2C362B]">
+                                    {r.gradeRaw || <span className="text-rose-500 font-bold">누락</span>}
+                                  </td>
+                                  <td className="py-2 px-3 text-center font-medium text-[#2C362B]">
+                                    {r.classRaw || <span className="text-rose-500 font-bold">누락</span>}
+                                  </td>
+                                  <td className="py-2 px-3 text-center font-medium text-[#2C362B]">
+                                    {r.numberRaw || <span className="text-rose-500 font-bold">누락</span>}
+                                  </td>
+                                  <td className="py-2 px-3 font-bold text-[#2C362B]">
+                                    {r.nameRaw || <span className="text-rose-500 font-bold">누락</span>}
+                                  </td>
+                                  <td className="py-2 px-3 text-right">
+                                    {r.isValid ? (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-[#F1F4EF] text-[#4B6344] font-bold text-[10px]">
+                                        <CheckCircle2 className="w-3 h-3" /> 정상
+                                      </span>
+                                    ) : (
+                                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 font-bold text-[10px]" title={r.errorReason}>
+                                        <AlertTriangle className="w-3 h-3 text-rose-600 shrink-0" />
+                                        <span>{r.errorReason}</span>
+                                      </span>
+                                    )}
+                                  </td>
+                                </tr>
+                              ))
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -566,7 +865,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                     className="px-4 py-2 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-2xs transition-all cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5" />
-                    <span>학생 1명 추가하기</span>
+                    <span>학생 1명 시트에 추가하기</span>
                   </button>
                 </div>
               </form>
@@ -638,12 +937,12 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                     {isApplying ? (
                       <>
                         <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                        <span>반영 중...</span>
+                        <span>Google Sheets 반영 중...</span>
                       </>
                     ) : (
                       <>
                         <UserPlus className="w-3.5 h-3.5" />
-                        <span>입력한 명단 일괄 등록</span>
+                        <span>입력한 명단 시트에 일괄 등록</span>
                       </>
                     )}
                   </button>
@@ -654,7 +953,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-5 border-t border-[#E1E4D8] bg-[#F9FAF8] flex items-center justify-between shrink-0">
+        <div className="p-4 sm:p-5 border-t border-[#E1E4D8] bg-[#FAFBF9] flex items-center justify-between shrink-0">
           <button
             type="button"
             onClick={onClose}
@@ -664,28 +963,42 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
           </button>
 
           {activeTab === 'excel' && (
-            <button
-              type="button"
-              disabled={parsedItems.length === 0 || errors.length > 0 || isApplying}
-              onClick={handleApplyRoster}
-              className="px-6 py-2.5 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 text-white font-bold rounded-xl text-xs shadow-md shadow-[#4B6344]/20 flex items-center gap-1.5 transition-all cursor-pointer"
-            >
-              {isApplying ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                  <span>반영 중...</span>
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>학생 명단 반영하기 ({parsedItems.length}명)</span>
-                </>
+            <div className="flex items-center gap-2">
+              {validationResult && validationResult.errorCount > 0 && (
+                <span className="text-[11px] font-bold text-rose-600 hidden sm:inline">
+                  오류 {validationResult.errorCount}건을 수정한 후 다시 업로드해 주세요.
+                </span>
               )}
-            </button>
+              <button
+                type="button"
+                disabled={
+                  !validationResult ||
+                  validationResult.errorCount > 0 ||
+                  validationResult.validItems.length === 0 ||
+                  isApplying
+                }
+                onClick={handleApplyRoster}
+                className="px-6 py-2.5 bg-[#4B6344] hover:bg-[#3D5237] disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold rounded-xl text-xs shadow-md shadow-[#4B6344]/20 flex items-center gap-1.5 transition-all cursor-pointer"
+              >
+                {isApplying ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Google Sheets 반영 중...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>
+                      학생 명단 반영하기 (
+                      {validationResult?.validItems.length || 0}명)
+                    </span>
+                  </>
+                )}
+              </button>
+            </div>
           )}
         </div>
       </div>
     </div>
   );
 };
-

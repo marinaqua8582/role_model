@@ -20,17 +20,17 @@ const GUIDE_STEPS = [
   {
     num: 2,
     title: 'Gems 메뉴로 이동',
-    desc: 'Gemini 화면 왼쪽 메뉴에서 [Gems 관리] 또는 [Gems 탐색]을 클릭합니다.',
+    desc: '새 탭에서 Gemini가 열리면 왼쪽 사이드바에서 [Gems]를 클릭합니다. Gem을 처음 만드는 경우 [설정 및 도움말] → [Gems]에서 들어갈 수도 있습니다.',
   },
   {
     num: 3,
     title: '새 Gem 만들기',
-    desc: '[+ 새 Gem 만들기] 버튼을 클릭하여 새로운 챗봇 생성 화면으로 들어갑니다.',
+    desc: '[Gems] → [새 Gem]을 클릭하여 새로운 챗봇 생성 화면으로 들어갑니다.',
   },
   {
     num: 4,
     title: '챗봇 이름 입력',
-    desc: '설계한 챗봇 이름(예: ○○○ 진로 멘토)을 Gem 이름 항목에 입력합니다.',
+    desc: '웹앱에서 복사한 챗봇 이름(예: ○○○ 진로 멘토)을 Gem 이름 항목에 입력합니다.',
   },
   {
     num: 5,
@@ -65,10 +65,6 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
     navigator.clipboard.writeText(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleOpenGemini = () => {
-    window.open('https://gemini.google.com/gems', '_blank');
   };
 
   const handleSaveAndNext = async () => {
@@ -144,14 +140,15 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
               <span>{copied ? '프롬프트를 복사했습니다.' : '최종 프롬프트 복사'}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={handleOpenGemini}
-              className="flex-1 sm:flex-none px-5 py-3 bg-white hover:bg-[#F9FAF8] text-[#2C362B] border border-[#E1E4D8] font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-2xs cursor-pointer"
+            <a
+              href="https://gemini.google.com/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex-1 sm:flex-none px-5 py-3 bg-white hover:bg-[#F9FAF8] text-[#2C362B] border border-[#E1E4D8] font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-2xs cursor-pointer inline-flex"
             >
               <ExternalLink className="w-4 h-4 text-[#4B6344]" />
               <span>Gemini 열기</span>
-            </button>
+            </a>
           </div>
         </div>
 

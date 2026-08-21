@@ -88,20 +88,21 @@ export default function App() {
     checkAdminSession().then((isValid) => {
       if (isValid) {
         setIsAdminLoggedIn(true);
+        setIsAdminView(true);
       } else {
         setIsAdminLoggedIn(false);
+        setIsAdminView(false);
+        // Check if student was logged in locally
+        const savedKey = localStorage.getItem('rolemodel_current_student_key');
+        if (savedKey) {
+          fetchStudentProgress(savedKey).then((progress) => {
+            if (progress) {
+              setCurrentStudent(progress);
+            }
+          });
+        }
       }
     });
-
-    // Check if student was logged in locally
-    const savedKey = localStorage.getItem('rolemodel_current_student_key');
-    if (savedKey) {
-      fetchStudentProgress(savedKey).then((progress) => {
-        if (progress) {
-          setCurrentStudent(progress);
-        }
-      });
-    }
   }, []);
 
   const handleAdminLogout = async () => {

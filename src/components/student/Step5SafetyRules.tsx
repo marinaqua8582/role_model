@@ -57,23 +57,23 @@ export const Step5SafetyRules: React.FC<Step5SafetyRulesProps> = ({
     if (data.checkedFactualityRules && data.checkedFactualityRules.length === 5) {
       return data.checkedFactualityRules;
     }
-    // If previously marked agreedToRules, default to true
-    return data.agreedToRules ? [true, true, true, true, true] : [false, false, false, false, false];
+    return [false, false, false, false, false];
   });
 
   const [disclaimerCheck, setDisclaimerCheck] = useState<boolean>(() => {
-    return data.checkedDisclaimer !== undefined ? data.checkedDisclaimer : Boolean(data.agreedToRules);
+    return Boolean(data.checkedDisclaimer);
   });
 
   const [safetyChecks, setSafetyChecks] = useState<boolean[]>(() => {
     if (data.checkedSafetyRules && data.checkedSafetyRules.length === 4) {
       return data.checkedSafetyRules;
     }
-    return data.agreedToRules ? [true, true, true, true] : [false, false, false, false];
+    return [false, false, false, false];
   });
 
-  const [selectedQuiz, setSelectedQuiz] = useState<string>(data.quizAnswer || '');
-  const [hasSubmittedQuiz, setHasSubmittedQuiz] = useState<boolean>(data.quizPassed);
+  // Quiz must start completely unselected whenever entering STEP 5
+  const [selectedQuiz, setSelectedQuiz] = useState<string>('');
+  const [hasSubmittedQuiz, setHasSubmittedQuiz] = useState<boolean>(false);
 
   const roleModelName = roleModel.roleModelName || '롤모델';
 
@@ -173,18 +173,16 @@ export const Step5SafetyRules: React.FC<Step5SafetyRulesProps> = ({
     syncState(factualityChecks, disclaimerCheck, updated, selectedQuiz);
   };
 
+  // Bulk check applies to the 10 rule items; quiz must be chosen directly by the student
   const handleSelectAllRules = () => {
     if (isReadOnly) return;
     const allFact = [true, true, true, true, true];
     const allDisc = true;
     const allSafe = [true, true, true, true];
-    const newQuiz = selectedQuiz || 'C'; // set to C if not selected
     setFactualityChecks(allFact);
     setDisclaimerCheck(allDisc);
     setSafetyChecks(allSafe);
-    setSelectedQuiz(newQuiz);
-    setHasSubmittedQuiz(true);
-    syncState(allFact, allDisc, allSafe, newQuiz);
+    syncState(allFact, allDisc, allSafe, selectedQuiz);
   };
 
   const handleSelectQuizOption = (opt: string) => {

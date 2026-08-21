@@ -35,12 +35,12 @@ export const Step6FinalPrompt: React.FC<Step6FinalPromptProps> = ({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [checklist, setChecklist] = useState<{ [key: string]: boolean }>({
-    roleModel: true,
-    purpose: true,
-    personality: true,
-    response: true,
-    factuality: true,
-    careerAdvice: true,
+    roleModel: false,
+    purpose: false,
+    personality: false,
+    response: false,
+    factuality: false,
+    careerAdvice: false,
   });
 
   // Auto-generate initial prompt if not set or when inputs change

@@ -109,12 +109,9 @@ export function extractAdminToken(req: any): string | undefined {
  * Call Google Apps Script securely from server with ADMIN_API_SECRET
  */
 export async function callServerGas(payload: Record<string, any>): Promise<any> {
-  const targetUrl =
-    process.env.GAS_URL ||
-    process.env.VITE_GAS_URL ||
-    'https://script.google.com/macros/s/AKfycbzmtB28cj27SglDkQepd1DGlRRrv57LIRLipACLXRS1rSSiT0fPVtdrcNebKFg9X3nl/exec';
+  const targetUrl = process.env.GAS_URL || process.env.VITE_GAS_URL;
 
-  if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('http')) {
+  if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('https://')) {
     throw new Error('GAS_URL 환경변수가 설정되지 않았습니다.');
   }
 

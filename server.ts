@@ -53,7 +53,7 @@ function normalizeName(name: any): string {
 // 0. Student GAS Proxy (Students only access non-admin actions)
 app.post('/api/gas-proxy', async (req, res) => {
   try {
-    const { gasUrl: customGasUrl, ...payload } = req.body || {};
+    const payload = req.body || {};
     const action = payload.action;
 
     // Block client attempts to run admin actions through public proxy
@@ -64,14 +64,13 @@ app.post('/api/gas-proxy', async (req, res) => {
       });
     }
 
-    const targetUrl =
-      customGasUrl ||
-      process.env.VITE_GAS_URL ||
-      process.env.GAS_URL ||
-      'https://script.google.com/macros/s/AKfycbzmtB28cj27SglDkQepd1DGlRRrv57LIRLipACLXRS1rSSiT0fPVtdrcNebKFg9X3nl/exec';
+    const targetUrl = process.env.GAS_URL || process.env.VITE_GAS_URL;
 
-    if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('http')) {
-      return res.status(400).json({ success: false, message: '유효한 Google Apps Script URL이 설정되지 않았습니다.' });
+    if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('https://')) {
+      return res.status(500).json({
+        success: false,
+        message: 'GAS_URL 환경변수가 설정되지 않았습니다.',
+      });
     }
 
     const response = await fetch(targetUrl, {

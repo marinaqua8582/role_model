@@ -29,8 +29,7 @@ const GAS_URL_KEY = `${STORAGE_PREFIX}gas_url`;
 // Default roster starts empty (no dummy data)
 export const DEFAULT_ROSTER: RosterItem[] = [];
 
-export const DEFAULT_GAS_URL =
-  'https://script.google.com/macros/s/AKfycbzmtB28cj27SglDkQepd1DGlRRrv57LIRLipACLXRS1rSSiT0fPVtdrcNebKFg9X3nl/exec';
+export const DEFAULT_GAS_URL = '';
 
 export function getEffectiveGasUrl(): string {
   const envUrl = ((import.meta as any)?.env?.VITE_GAS_URL as string | undefined)?.trim();
@@ -39,7 +38,7 @@ export function getEffectiveGasUrl(): string {
   const stored = getStoredGasUrl().trim();
   if (stored) return stored;
 
-  return DEFAULT_GAS_URL;
+  return '';
 }
 
 /**
@@ -48,11 +47,6 @@ export function getEffectiveGasUrl(): string {
  * and falls back to direct client fetch if needed.
  */
 export async function callGasApi(payload: Record<string, any>): Promise<any> {
-  const gasUrl = getEffectiveGasUrl();
-  if (!gasUrl) {
-    throw new Error('Google Apps Script URL이 설정되지 않았습니다.');
-  }
-
   // 1. Primary: Use backend server proxy to reliably handle Google Apps Script 302 redirect & CORS
   try {
     const proxyRes = await fetch('/api/gas-proxy', {
@@ -60,10 +54,7 @@ export async function callGasApi(payload: Record<string, any>): Promise<any> {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        gasUrl,
-        ...payload,
-      }),
+      body: JSON.stringify(payload),
     });
 
     if (proxyRes.ok) {
@@ -74,17 +65,22 @@ export async function callGasApi(payload: Record<string, any>): Promise<any> {
     console.warn('Backend GAS proxy failed, attempting direct fetch fallback:', proxyErr);
   }
 
-  // 2. Direct browser fetch fallback
-  const directRes = await fetch(gasUrl, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
+  // 2. Direct browser fetch fallback (if VITE_GAS_URL is provided in client)
+  const gasUrl = getEffectiveGasUrl();
+  if (gasUrl) {
+    const directRes = await fetch(gasUrl, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
 
-  if (directRes.ok) {
-    return await directRes.json();
+    if (directRes.ok) {
+      return await directRes.json();
+    }
+
+    throw new Error(`Google Apps Script 서버 응답 오류 (HTTP ${directRes.status})`);
   }
 
-  throw new Error(`Google Apps Script 서버 응답 오류 (HTTP ${directRes.status})`);
+  throw new Error('Google Apps Script 서버 주소가 설정되지 않았습니다.');
 }
 
 function getStoredRoster(): RosterItem[] {
@@ -232,12 +228,9 @@ export async function getRosterOptions(): Promise<{
   classesByGrade: Record<number, number[]>;
   numbersByClass: Record<string, number[]>;
 }> {
-  const gasUrl = getEffectiveGasUrl();
-
   // 1. Primary: Query Google Apps Script (Google Sheets Roster)
-  if (gasUrl) {
-    try {
-      const json = await callGasApi({ action: 'getRosterOptions' });
+  try {
+    const json = await callGasApi({ action: 'getRosterOptions' });
 
       // Standard format: { success: true, data: { grades, classesByGrade, numbersByClass } }
       if (json && json.success && json.data && Array.isArray(json.data.grades)) {
@@ -288,7 +281,6 @@ export async function getRosterOptions(): Promise<{
     } catch (e) {
       console.warn('Error fetching roster options from Google Apps Script:', e);
     }
-  }
 
   // 2. Fallback: check local server API or local storage
   try {
@@ -563,81 +555,74 @@ export async function verifyStudentAuth(params: {
 }> {
   const cleanName = params.name.trim();
   const studentKey = `${params.grade}-${params.classNum}-${params.number}`;
-  const gasUrl = getEffectiveGasUrl();
 
-  // 1. When Google Apps Script URL is set: Authenticate directly against Google Sheets Roster
-  if (gasUrl) {
-    try {
-      const payload = {
-        action: 'verifyStudent',
-        grade: Number(params.grade),
-        classNo: Number(params.classNum),
-        classNum: Number(params.classNum),
-        number: Number(params.number),
-        name: cleanName,
+  // 1. Primary: Authenticate directly against Google Sheets Roster via GAS
+  try {
+    const payload = {
+      action: 'verifyStudent',
+      grade: Number(params.grade),
+      classNo: Number(params.classNum),
+      classNum: Number(params.classNum),
+      number: Number(params.number),
+      name: cleanName,
+    };
+
+    const data = await callGasApi(payload);
+
+    if (data && data.success && data.student) {
+      const student: StudentInfo = {
+        grade: Number(data.student.grade || params.grade),
+        classNum: Number(data.student.classNum || data.student.classNo || params.classNum),
+        number: Number(data.student.number || params.number),
+        name: data.student.name || cleanName,
+        studentKey: data.student.studentKey || studentKey,
       };
 
-      const data = await callGasApi(payload);
+      // Call loadProgress action to get fresh progress from Progress sheet
+      const loadRes = await loadStudentProgress(student.studentKey);
 
-      if (data && data.success && data.student) {
-        const student: StudentInfo = {
-          grade: Number(data.student.grade || params.grade),
-          classNum: Number(data.student.classNum || data.student.classNo || params.classNum),
-          number: Number(data.student.number || params.number),
-          name: data.student.name || cleanName,
-          studentKey: data.student.studentKey || studentKey,
-        };
+      let finalProgress = loadRes.progress;
+      const localMap = getStoredProgressMap();
+      const localExisting = localMap[student.studentKey];
 
-        // Call loadProgress action to get fresh progress from Progress sheet
-        const loadRes = await loadStudentProgress(student.studentKey);
-
-        let finalProgress = loadRes.progress;
-        const localMap = getStoredProgressMap();
-        const localExisting = localMap[student.studentKey];
-
-        if (!finalProgress && data.progress) {
-          finalProgress = mapSheetDataToProgress(data.progress);
-        } else if (!finalProgress && localExisting) {
-          finalProgress = localExisting;
-        }
-
-        const hasExisting = Boolean(
-          loadRes.found ||
-            data.hasExisting ||
-            (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1))
-        );
-
-        if (!finalProgress) {
-          finalProgress = createInitialStudentProgress(student);
-        }
-
-        // Cache verified progress in local storage
-        localMap[student.studentKey] = finalProgress;
-        saveStoredProgressMap(localMap);
-
-        return {
-          success: true,
-          student,
-          hasExisting,
-          progress: finalProgress,
-        };
-      } else {
-        // Explicit failure from Google Sheets verification
-        return {
-          success: false,
-          message: data?.message || '학생 정보를 확인할 수 없습니다.\n학년, 반, 번호, 이름을 다시 확인해 주세요.',
-        };
+      if (!finalProgress && data.progress) {
+        finalProgress = mapSheetDataToProgress(data.progress);
+      } else if (!finalProgress && localExisting) {
+        finalProgress = localExisting;
       }
-    } catch (err: any) {
-      console.error('Error verifying student with Google Apps Script:', err);
+
+      const hasExisting = Boolean(
+        loadRes.found ||
+          data.hasExisting ||
+          (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1))
+      );
+
+      if (!finalProgress) {
+        finalProgress = createInitialStudentProgress(student);
+      }
+
+      // Cache verified progress in local storage
+      localMap[student.studentKey] = finalProgress;
+      saveStoredProgressMap(localMap);
+
+      return {
+        success: true,
+        student,
+        hasExisting,
+        progress: finalProgress,
+      };
+    } else if (data && data.success === false) {
+      // Explicit failure from Google Sheets verification
       return {
         success: false,
-        message: 'Google Apps Script 연결 중 오류가 발생했습니다: ' + (err?.message || '잠시 후 다시 시도해 주세요.'),
+        message: data?.message || '학생 정보를 확인할 수 없습니다.\n학년, 반, 번호, 이름을 다시 확인해 주세요.',
       };
     }
+  } catch (err: any) {
+    console.warn('GAS verifyStudent unavailable, trying fallback:', err?.message);
   }
 
-  // 2. Standalone fallback (only if NO GAS URL is configured)
+  // 2. Standalone fallback (local server / storage)
   const normalizedInputName = normalizeKoreanName(cleanName);
   const localMap = getStoredProgressMap();
   const localExisting = localMap[studentKey];
@@ -732,39 +717,32 @@ export async function verifyStudentAuth(params: {
 export async function saveProgressPayload(
   payload: Record<string, any>
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
-  const gasUrl = getEffectiveGasUrl();
   const studentKey = payload.studentKey;
 
-  // 1. Google Apps Script is configured: Must verify real Google Sheets response
-  if (gasUrl) {
-    try {
-      const res = await callGasApi({
-        action: 'saveProgress',
-        ...payload,
-      });
+  // 1. Google Apps Script: Attempt to save to Google Sheets via GAS
+  try {
+    const res = await callGasApi({
+      action: 'saveProgress',
+      ...payload,
+    });
 
-      if (res && res.success) {
-        return {
-          success: true,
-          message: res.message || '진행 상황이 저장되었습니다.',
-          studentKey,
-        };
-      } else {
-        return {
-          success: false,
-          message: res?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-        };
-      }
-    } catch (err: any) {
-      console.error('Error saving progress to Google Apps Script:', err);
+    if (res && res.success) {
+      return {
+        success: true,
+        message: res.message || '진행 상황이 저장되었습니다.',
+        studentKey,
+      };
+    } else if (res && res.success === false) {
       return {
         success: false,
-        message: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+        message: res?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
       };
     }
+  } catch (err: any) {
+    console.warn('saveProgress to GAS skipped/failed, saving locally:', err?.message);
   }
 
-  // 2. Standalone fallback (only when no GAS URL is set)
+  // 2. Standalone fallback
   return {
     success: true,
     message: '진행 상황이 저장되었습니다.',
@@ -1097,23 +1075,16 @@ export async function saveTests(
     testedAt: now,
   };
 
-  const gasUrl = getEffectiveGasUrl();
-  if (gasUrl) {
-    try {
-      const res = await callGasApi(payload);
-      if (!res || !res.success) {
-        return {
-          success: false,
-          message: res?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-        };
-      }
-    } catch (err: any) {
-      console.error('Error saving tests to GAS:', err);
+  try {
+    const res = await callGasApi(payload);
+    if (!res || !res.success) {
       return {
         success: false,
-        message: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+        message: res?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
       };
     }
+  } catch (err: any) {
+    console.warn('saveTests to GAS skipped/failed:', err?.message);
   }
 
   // Update local storage
@@ -1164,38 +1135,31 @@ export async function updateRevision(
     revisionNote,
   };
 
-  const gasUrl = getEffectiveGasUrl();
-  if (gasUrl) {
-    try {
-      const res = await callGasApi(payload);
-      if (!res || !res.success) {
-        // Fallback: try saveProgress if updateRevision is not explicitly in older GAS
-        const fallbackRes = await saveProgressPayload({
-          action: 'saveProgress',
-          studentKey,
-          grade: Number(student.grade),
-          class: Number(student.classNum),
-          number: Number(student.number),
-          name: (student.name || '').trim(),
-          currentStep: 9,
-          chatbotName,
-          revisedPrompt,
-          finalPrompt,
-        });
-        if (!fallbackRes.success) {
-          return {
-            success: false,
-            message: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-          };
-        }
+  try {
+    const res = await callGasApi(payload);
+    if (!res || !res.success) {
+      // Fallback: try saveProgress if updateRevision is not explicitly in older GAS
+      const fallbackRes = await saveProgressPayload({
+        action: 'saveProgress',
+        studentKey,
+        grade: Number(student.grade),
+        class: Number(student.classNum),
+        number: Number(student.number),
+        name: (student.name || '').trim(),
+        currentStep: 9,
+        chatbotName,
+        revisedPrompt,
+        finalPrompt,
+      });
+      if (!fallbackRes.success) {
+        return {
+          success: false,
+          message: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+        };
       }
-    } catch (err: any) {
-      console.error('Error saving revision to GAS:', err);
-      return {
-        success: false,
-        message: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-      };
     }
+  } catch (err: any) {
+    console.warn('updateRevision to GAS skipped/failed:', err?.message);
   }
 
   // Update local storage
@@ -1257,23 +1221,16 @@ export async function submitFinal(
     submittedAt: submission.submittedAt || now,
   };
 
-  const gasUrl = getEffectiveGasUrl();
-  if (gasUrl) {
-    try {
-      const res = await callGasApi(payload);
-      if (!res || !res.success) {
-        return {
-          success: false,
-          message: res?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-        };
-      }
-    } catch (err: any) {
-      console.error('Error submitting final to GAS:', err);
+  try {
+    const res = await callGasApi(payload);
+    if (!res || !res.success) {
       return {
         success: false,
-        message: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+        message: res?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
       };
     }
+  } catch (err: any) {
+    console.warn('submitFinal to GAS skipped/failed:', err?.message);
   }
 
   // Update local storage

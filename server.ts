@@ -8,7 +8,7 @@ import {
   verifyAdminSessionToken,
   extractAdminToken,
   callServerGas,
-} from './api/_lib';
+} from './api/_lib.js';
 
 dotenv.config();
 

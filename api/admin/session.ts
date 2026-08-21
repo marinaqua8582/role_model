@@ -1,4 +1,4 @@
-import { extractAdminToken, verifyAdminSessionToken } from '../_lib';
+import { extractAdminToken, verifyAdminSessionToken } from '../_lib.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'GET') {

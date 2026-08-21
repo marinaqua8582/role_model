@@ -1376,17 +1376,20 @@ export async function verifyAdminPassword(password: string): Promise<{ success: 
 }
 
 /**
- * Map raw data from GAS getStudentDetail / loadProgress to rich StudentProgress
+ * Map raw data from GAS getStudentDetail / loadProgress / getAdminDashboard to rich StudentProgress
  */
 export function mapFullStudentDetail(raw: any): StudentProgress {
   if (!raw) return createInitialStudentProgress({ grade: 1, classNum: 1, number: 1, name: '학생', studentKey: '1-1-1' });
 
-  const grade = Number(raw.grade) || 1;
-  const classNum = Number(raw.class !== undefined ? raw.class : raw.classNum) || 1;
-  const number = Number(raw.number) || 1;
-  const name = String(raw.name || '').trim();
-  const studentKey = String(raw.studentKey || `${grade}-${classNum}-${number}`);
-
+  // Handle various potential nested shapes:
+  // 1. { data: { student, progress, tests, submission } } or { student, progress, tests, submission }
+  // 2. { step1, step2, ... } (StudentProgress format)
+  // 3. Flat row object (from getAdminDashboard or getAllProgress)
+  const studentObj = (raw && typeof raw === 'object' && raw.student) ? raw.student : (raw?.data?.student || {});
+  const progressObj = (raw && typeof raw === 'object' && raw.progress) ? raw.progress : (raw?.data?.progress || {});
+  const testsObjRaw = (raw && typeof raw === 'object' && raw.tests) ? raw.tests : (raw?.data?.tests || {});
+  const submissionObj = (raw && typeof raw === 'object' && raw.submission) ? raw.submission : (raw?.data?.submission || {});
+  
   const step1Raw = raw.step1 || {};
   const step2Raw = raw.step2 || {};
   const step3Raw = raw.step3 || {};
@@ -1396,36 +1399,100 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
   const step8Raw = raw.step8 || {};
   const step10Raw = raw.step10 || {};
 
-  const competencies = normalizeCompetencies(step1Raw.competencies || raw.competencies);
-  const strengths = normalizeStrengths(step1Raw.strengths || raw.strengths);
-  const values = normalizeValues(step1Raw.values || raw.values);
-  const chatbotPurposes = normalizeChatbotPurposes(step2Raw.chatbotPurposes || raw.chatbotPurposes);
-  const personalities = normalizePersonalities(step3Raw.personalities || raw.personality || raw.personalities);
-  const answerElements = normalizeAnswerElements(step4Raw.answerElements || raw.answerElements);
+  // Grade, Class, Number, Name, StudentKey
+  const rawKey = String(
+    studentObj.studentKey ||
+    progressObj.studentKey ||
+    submissionObj.studentKey ||
+    raw.studentKey ||
+    ''
+  ).trim();
 
-  let answerLength: 'short' | 'medium' | 'detailed' = 'medium';
-  const rawLen = String(step4Raw.answerLength || raw.answerLength || '');
-  if (rawLen.includes('short') || rawLen.includes('2~3') || rawLen.includes('짧고')) {
-    answerLength = 'short';
-  } else if (rawLen.includes('detailed') || rawLen.includes('자세')) {
-    answerLength = 'detailed';
-  } else {
-    answerLength = 'medium';
-  }
+  const grade = Number(studentObj.grade || progressObj.grade || submissionObj.grade || raw.grade) || 1;
+  const classNum = Number(
+    studentObj.class !== undefined ? studentObj.class : (studentObj.classNum !== undefined ? studentObj.classNum : (progressObj.class !== undefined ? progressObj.class : (progressObj.classNum !== undefined ? progressObj.classNum : (submissionObj.class !== undefined ? submissionObj.class : (submissionObj.classNum !== undefined ? submissionObj.classNum : (raw.class !== undefined ? raw.class : raw.classNum))))))
+  ) || 1;
+  const number = Number(studentObj.number || progressObj.number || submissionObj.number || raw.number) || 1;
+  const name = String(studentObj.name || progressObj.name || submissionObj.name || raw.name || '').trim();
+  const studentKey = rawKey || `${grade}-${classNum}-${number}`;
 
-  let honorificStyle: '친근한 존댓말' | '차분한 존댓말' | '정중한 존댓말' = '친근한 존댓말';
-  const rawHon = String(step3Raw.honorificStyle || raw.honorificStyle || '');
-  if (rawHon.includes('차분한')) {
-    honorificStyle = '차분한 존댓말';
-  } else if (rawHon.includes('정중한')) {
-    honorificStyle = '정중한 존댓말';
-  } else {
-    honorificStyle = '친근한 존댓말';
-  }
+  // STEP 1: Role Model details
+  const roleModelName = String(
+    progressObj.roleModelName ||
+    step1Raw.roleModelName ||
+    submissionObj.roleModelName ||
+    raw.roleModelName ||
+    ''
+  ).trim();
 
-  const currentStep = Number(raw.currentStep) || (step10Raw.gemUrl || raw.gemUrl ? 10 : (step8Raw.testedAt || raw.testedAt ? 8 : 1));
+  const roleModelJob = String(
+    progressObj.roleModelJob ||
+    step1Raw.roleModelJob ||
+    submissionObj.roleModelJob ||
+    raw.roleModelJob ||
+    ''
+  ).trim();
 
-  const targetUserRaw = String(step2Raw.targetUser || raw.targetUser || '').trim();
+  const roleModelReason = String(
+    progressObj.roleModelReason ||
+    step1Raw.roleModelReason ||
+    raw.roleModelReason ||
+    ''
+  ).trim();
+
+  const jobDescription = String(
+    progressObj.jobDescription ||
+    step1Raw.jobDescription ||
+    raw.jobDescription ||
+    ''
+  ).trim();
+
+  const competencies = normalizeCompetencies(
+    progressObj.competencies ||
+    step1Raw.competencies ||
+    raw.competencies
+  );
+
+  const careerHistory = String(
+    progressObj.careerHistory ||
+    step1Raw.careerHistory ||
+    raw.careerHistory ||
+    ''
+  ).trim();
+
+  const strengths = normalizeStrengths(
+    progressObj.strengths ||
+    step1Raw.strengths ||
+    raw.strengths
+  );
+
+  const values = normalizeValues(
+    progressObj.values ||
+    step1Raw.values ||
+    raw.values
+  );
+
+  const challengeExperience = String(
+    progressObj.challengeExperience ||
+    step1Raw.challengeExperience ||
+    raw.challengeExperience ||
+    ''
+  ).trim();
+
+  // STEP 2: Chatbot Purpose & Target
+  const chatbotPurposes = normalizeChatbotPurposes(
+    progressObj.chatbotPurposes ||
+    step2Raw.chatbotPurposes ||
+    raw.chatbotPurposes
+  );
+
+  const targetUserRaw = String(
+    progressObj.targetUser ||
+    step2Raw.targetUser ||
+    raw.targetUser ||
+    ''
+  ).trim();
+
   let targetUser = targetUserRaw || '이 직업에 관심 있는 중학생';
   let targetUserCustom = step2Raw.targetUserCustom || '';
   const knownTargets = [
@@ -1439,44 +1506,296 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     targetUserCustom = targetUserRaw;
   }
 
-  const initialPrompt = String(step6Raw.initialPrompt || raw.initialPrompt || '').trim();
-  const revisedPrompt = String(step6Raw.revisedPrompt || raw.revisedPrompt || '').trim();
-  const finalPrompt = String(step6Raw.finalPrompt || raw.finalPrompt || '').trim();
-  const chatbotName = String(step6Raw.chatbotName || raw.chatbotName || '').trim();
+  const expectedOutcome = String(
+    progressObj.expectedOutcome ||
+    step2Raw.expectedOutcome ||
+    raw.expectedOutcome ||
+    ''
+  ).trim();
 
-  // Test data parsing
-  const testsObj: Record<string, { result: 'good' | 'needs_fix' | ''; note: string }> = {};
-  const rawTests = step8Raw.tests || raw.tests || {};
-  for (let i = 1; i <= 6; i++) {
-    const key = `test${i}`;
-    const item = rawTests[key] || {};
-    const rawResult = raw[`${key}Result`] || item.result || '';
-    let result: 'good' | 'needs_fix' | '' = '';
-    if (rawResult === 'good' || rawResult === 'well' || rawResult === 'pass' || rawResult === '잘 작동함') {
-      result = 'good';
-    } else if (rawResult === 'needs_fix' || rawResult === 'fail' || rawResult === '수정 필요') {
-      result = 'needs_fix';
-    }
-    testsObj[key] = {
-      result,
-      note: String(item.note || raw[`${key}Note`] || ''),
-    };
+  const purposeSummarySentence = String(
+    progressObj.purposeSummarySentence ||
+    step2Raw.purposeSummarySentence ||
+    raw.purposeSummarySentence ||
+    ''
+  ).trim();
+
+  // STEP 3: Personality & Tone
+  const personalities = normalizePersonalities(
+    progressObj.personality ||
+    progressObj.personalities ||
+    step3Raw.personalities ||
+    raw.personality ||
+    raw.personalities
+  );
+
+  const speakingStyle = String(
+    progressObj.speakingStyle ||
+    step3Raw.speakingStyle ||
+    raw.speakingStyle ||
+    '멘토처럼 따뜻하게'
+  ).trim();
+
+  let honorificStyle: '친근한 존댓말' | '차분한 존댓말' | '정중한 존댓말' = '친근한 존댓말';
+  const rawHon = String(
+    progressObj.honorificStyle ||
+    step3Raw.honorificStyle ||
+    raw.honorificStyle ||
+    ''
+  );
+  if (rawHon.includes('차분한')) {
+    honorificStyle = '차분한 존댓말';
+  } else if (rawHon.includes('정중한')) {
+    honorificStyle = '정중한 존댓말';
+  } else {
+    honorificStyle = '친근한 존댓말';
   }
 
-  const gemUrl = String(step10Raw.gemUrl || raw.gemUrl || '').trim();
-  const sampleQuestion1 = String(step10Raw.sampleQuestion1 || raw.sampleQuestion1 || '').trim();
-  const sampleAnswer1 = String(step10Raw.sampleAnswer1 || raw.sampleAnswer1 || '').trim();
-  const sampleQuestion2 = String(step10Raw.sampleQuestion2 || raw.sampleQuestion2 || '').trim();
-  const sampleAnswer2 = String(step10Raw.sampleAnswer2 || raw.sampleAnswer2 || '').trim();
-  const sampleQuestion3 = String(step10Raw.sampleQuestion3 || raw.sampleQuestion3 || '').trim();
-  const sampleAnswer3 = String(step10Raw.sampleAnswer3 || raw.sampleAnswer3 || '').trim();
-  const revisionSummary = String(step10Raw.revisionSummary || raw.revisionSummary || '').trim();
-  const reflection = String(step10Raw.reflection || raw.reflection || '').trim();
-  const submittedAt = String(step10Raw.submittedAt || raw.submittedAt || '').trim();
+  const desiredFeeling = String(
+    progressObj.desiredFeeling ||
+    step3Raw.desiredFeeling ||
+    raw.desiredFeeling ||
+    ''
+  ).trim();
 
-  const isFinalSubmitted = Boolean(raw.isFinalSubmitted || raw.submitted || submittedAt || gemUrl);
-  const isTestCompleted = Boolean(raw.isTestCompleted || raw.testCompleted || step8Raw.testedAt || raw.testedAt || currentStep >= 9);
-  const isPromptCompleted = Boolean(raw.isPromptCompleted || raw.promptCompleted || finalPrompt || initialPrompt || currentStep >= 6);
+  // STEP 4: Response Style
+  let answerLength: 'short' | 'medium' | 'detailed' = 'medium';
+  const rawLen = String(
+    progressObj.answerLength ||
+    step4Raw.answerLength ||
+    raw.answerLength ||
+    ''
+  );
+  if (rawLen.includes('short') || rawLen.includes('2~3') || rawLen.includes('짧고') || rawLen.includes('간결')) {
+    answerLength = 'short';
+  } else if (rawLen.includes('detailed') || rawLen.includes('자세') || rawLen.includes('풍부')) {
+    answerLength = 'detailed';
+  } else {
+    answerLength = 'medium';
+  }
+
+  const answerElements = normalizeAnswerElements(
+    progressObj.answerElements ||
+    step4Raw.answerElements ||
+    raw.answerElements
+  );
+
+  // STEP 6: Prompts & Chatbot Name
+  const chatbotName = String(
+    progressObj.chatbotName ||
+    submissionObj.chatbotName ||
+    step6Raw.chatbotName ||
+    raw.chatbotName ||
+    ''
+  ).trim();
+
+  const initialPrompt = String(
+    progressObj.initialPrompt ||
+    step6Raw.initialPrompt ||
+    raw.initialPrompt ||
+    ''
+  ).trim();
+
+  const revisedPrompt = String(
+    progressObj.revisedPrompt ||
+    step6Raw.revisedPrompt ||
+    raw.revisedPrompt ||
+    ''
+  ).trim();
+
+  // Final Prompt Priority: 1. finalPrompt, 2. revisedPrompt, 3. initialPrompt
+  const finalPrompt = String(
+    progressObj.finalPrompt ||
+    submissionObj.finalPrompt ||
+    step6Raw.finalPrompt ||
+    raw.finalPrompt ||
+    revisedPrompt ||
+    initialPrompt ||
+    ''
+  ).trim();
+
+  // STEP 8: Tests
+  const testsObj: Record<string, { result: 'good' | 'needs_fix' | ''; note: string }> = {};
+  const innerTests = testsObjRaw.tests || step8Raw.tests || raw.tests || {};
+  for (let i = 1; i <= 6; i++) {
+    const key = `test${i}`;
+    const item = innerTests[key] || testsObjRaw[key] || {};
+    const rawResult = String(
+      testsObjRaw[`${key}Result`] ||
+      raw[`${key}Result`] ||
+      item.result ||
+      ''
+    ).trim();
+
+    let result: 'good' | 'needs_fix' | '' = '';
+    if (
+      rawResult === 'good' ||
+      rawResult === 'well' ||
+      rawResult === 'pass' ||
+      rawResult === '잘 작동함' ||
+      rawResult.includes('잘 작동') ||
+      rawResult.includes('성공')
+    ) {
+      result = 'good';
+    } else if (
+      rawResult === 'needs_fix' ||
+      rawResult === 'fail' ||
+      rawResult === '수정 필요' ||
+      rawResult.includes('수정') ||
+      rawResult.includes('실패')
+    ) {
+      result = 'needs_fix';
+    }
+
+    const note = String(
+      item.note ||
+      testsObjRaw[`${key}Note`] ||
+      raw[`${key}Note`] ||
+      ''
+    ).trim();
+
+    testsObj[key] = { result, note };
+  }
+
+  const problemDescription = String(
+    testsObjRaw.problemDescription ||
+    step8Raw.problemDescription ||
+    raw.problemDescription ||
+    ''
+  ).trim();
+
+  const revisionNote = String(
+    testsObjRaw.revisionNote ||
+    step8Raw.revisionNote ||
+    raw.revisionNote ||
+    submissionObj.revisionSummary ||
+    ''
+  ).trim();
+
+  const testedAt = String(
+    testsObjRaw.testedAt ||
+    step8Raw.testedAt ||
+    raw.testedAt ||
+    ''
+  ).trim();
+
+  // STEP 10: Final Submission
+  const gemUrl = String(
+    submissionObj.gemUrl ||
+    step10Raw.gemUrl ||
+    raw.gemUrl ||
+    ''
+  ).trim();
+
+  const sampleQuestion1 = String(
+    submissionObj.sampleQuestion1 ||
+    step10Raw.sampleQuestion1 ||
+    raw.sampleQuestion1 ||
+    ''
+  ).trim();
+
+  const sampleAnswer1 = String(
+    submissionObj.sampleAnswer1 ||
+    step10Raw.sampleAnswer1 ||
+    raw.sampleAnswer1 ||
+    ''
+  ).trim();
+
+  const sampleQuestion2 = String(
+    submissionObj.sampleQuestion2 ||
+    step10Raw.sampleQuestion2 ||
+    raw.sampleQuestion2 ||
+    ''
+  ).trim();
+
+  const sampleAnswer2 = String(
+    submissionObj.sampleAnswer2 ||
+    step10Raw.sampleAnswer2 ||
+    raw.sampleAnswer2 ||
+    ''
+  ).trim();
+
+  const sampleQuestion3 = String(
+    submissionObj.sampleQuestion3 ||
+    step10Raw.sampleQuestion3 ||
+    raw.sampleQuestion3 ||
+    ''
+  ).trim();
+
+  const sampleAnswer3 = String(
+    submissionObj.sampleAnswer3 ||
+    step10Raw.sampleAnswer3 ||
+    raw.sampleAnswer3 ||
+    ''
+  ).trim();
+
+  const revisionSummary = String(
+    submissionObj.revisionSummary ||
+    step10Raw.revisionSummary ||
+    raw.revisionSummary ||
+    revisionNote ||
+    ''
+  ).trim();
+
+  const reflection = String(
+    submissionObj.reflection ||
+    step10Raw.reflection ||
+    raw.reflection ||
+    ''
+  ).trim();
+
+  const submittedAt = String(
+    submissionObj.submittedAt ||
+    step10Raw.submittedAt ||
+    raw.submittedAt ||
+    ''
+  ).trim();
+
+  // Determine currentStep priority:
+  // 1. data.progress.currentStep (exact progress from DB)
+  // 2. root raw.currentStep
+  // 3. Fallback estimations based on submitted status
+  let currentStep = 1;
+  if (progressObj.currentStep !== undefined && progressObj.currentStep !== null && Number(progressObj.currentStep) > 0) {
+    currentStep = Number(progressObj.currentStep);
+  } else if (raw.currentStep !== undefined && raw.currentStep !== null && Number(raw.currentStep) > 0) {
+    currentStep = Number(raw.currentStep);
+  } else if (gemUrl || submittedAt) {
+    currentStep = 10;
+  } else if (testedAt) {
+    currentStep = 8;
+  } else if (finalPrompt || initialPrompt) {
+    currentStep = 6;
+  }
+
+  const isFinalSubmitted = Boolean(
+    submissionObj.submittedAt ||
+    submissionObj.gemUrl ||
+    raw.isFinalSubmitted ||
+    raw.submitted ||
+    submittedAt ||
+    gemUrl
+  );
+
+  const hasAnyTestEvaluated = Object.values(testsObj).some((t) => t.result !== '');
+  const isTestCompleted = Boolean(
+    raw.isTestCompleted ||
+    raw.testCompleted ||
+    hasAnyTestEvaluated ||
+    testedAt ||
+    currentStep >= 9 ||
+    isFinalSubmitted
+  );
+
+  const isPromptCompleted = Boolean(
+    raw.isPromptCompleted ||
+    raw.promptCompleted ||
+    finalPrompt ||
+    revisedPrompt ||
+    initialPrompt ||
+    currentStep >= 6 ||
+    isFinalSubmitted
+  );
 
   return {
     studentKey,
@@ -1486,31 +1805,31 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     name,
     currentStep,
     step1: {
-      roleModelName: String(step1Raw.roleModelName || raw.roleModelName || '').trim(),
-      roleModelJob: String(step1Raw.roleModelJob || raw.roleModelJob || '').trim(),
-      roleModelReason: String(step1Raw.roleModelReason || raw.roleModelReason || '').trim(),
-      jobDescription: String(step1Raw.jobDescription || raw.jobDescription || '').trim(),
+      roleModelName,
+      roleModelJob,
+      roleModelReason,
+      jobDescription,
       competencies,
       competencyCustom: step1Raw.competencyCustom || '',
-      careerHistory: String(step1Raw.careerHistory || raw.careerHistory || '').trim(),
+      careerHistory,
       strengths,
       strengthCustom: step1Raw.strengthCustom || '',
       values,
       valueCustom: step1Raw.valueCustom || '',
-      challengeExperience: String(step1Raw.challengeExperience || raw.challengeExperience || '').trim(),
+      challengeExperience,
     },
     step2: {
       chatbotPurposes,
       targetUser,
       targetUserCustom,
-      expectedOutcome: String(step2Raw.expectedOutcome || raw.expectedOutcome || '').trim(),
-      purposeSummarySentence: String(step2Raw.purposeSummarySentence || raw.purposeSummarySentence || '').trim(),
+      expectedOutcome,
+      purposeSummarySentence,
     },
     step3: {
       personalities,
-      speakingStyle: String(step3Raw.speakingStyle || raw.speakingStyle || '멘토처럼 따뜻하게').trim(),
+      speakingStyle,
       honorificStyle,
-      desiredFeeling: String(step3Raw.desiredFeeling || raw.desiredFeeling || '').trim(),
+      desiredFeeling,
       personalityRulesSummary: '',
     },
     step4: {
@@ -1518,26 +1837,26 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
       answerElements,
     },
     step5: {
-      quizAnswer: '',
-      quizPassed: false,
-      agreedToRules: false,
-      checkedFactualityRules: [false, false, false, false, false],
-      checkedDisclaimer: false,
-      checkedSafetyRules: [false, false, false, false],
-      allRulesChecked: false,
+      quizAnswer: step5Raw.quizAnswer || 'C',
+      quizPassed: step5Raw.quizPassed !== undefined ? step5Raw.quizPassed : currentStep >= 5,
+      agreedToRules: step5Raw.agreedToRules !== undefined ? step5Raw.agreedToRules : currentStep >= 5,
+      checkedFactualityRules: step5Raw.checkedFactualityRules || [true, true, true, true, true],
+      checkedDisclaimer: step5Raw.checkedDisclaimer !== undefined ? step5Raw.checkedDisclaimer : true,
+      checkedSafetyRules: step5Raw.checkedSafetyRules || [true, true, true, true],
+      allRulesChecked: step5Raw.allRulesChecked !== undefined ? step5Raw.allRulesChecked : currentStep >= 5,
     },
     step6: {
       chatbotName,
       initialPrompt,
       revisedPrompt,
-      finalPrompt: finalPrompt || initialPrompt,
+      finalPrompt,
       isConfirmed: Boolean(finalPrompt || initialPrompt),
     },
     step8: {
       tests: testsObj,
-      problemDescription: String(step8Raw.problemDescription || raw.problemDescription || '').trim(),
-      revisionNote: String(step8Raw.revisionNote || raw.revisionNote || '').trim(),
-      testedAt: String(step8Raw.testedAt || raw.testedAt || '').trim(),
+      problemDescription,
+      revisionNote,
+      testedAt,
     },
     step10: {
       gemUrl,
@@ -1551,8 +1870,8 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
       reflection,
       submittedAt,
     },
-    createdAt: raw.createdAt || submittedAt || new Date().toISOString(),
-    updatedAt: submittedAt || raw.updatedAt || new Date().toISOString(),
+    createdAt: progressObj.createdAt || raw.createdAt || submittedAt || new Date().toISOString(),
+    updatedAt: submittedAt || progressObj.updatedAt || testedAt || raw.updatedAt || new Date().toISOString(),
     isPromptCompleted,
     isTestCompleted,
     isGemSubmitted: Boolean(gemUrl),
@@ -1564,53 +1883,65 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
  * Fetch complete student detail via getStudentDetail or getProgress GAS action
  */
 export async function fetchStudentDetail(studentKey: string): Promise<StudentProgress> {
+  const cleanKey = String(studentKey || '').trim();
   const gasUrl = getEffectiveGasUrl();
   if (gasUrl) {
-    // 1. Try getStudentDetail
+    // 1. Primary: Try getStudentDetail
     try {
       const res = await callGasApi({
         action: 'getStudentDetail',
-        studentKey,
+        studentKey: cleanKey,
       });
 
       if (res && res.success) {
-        if (res.data) {
-          return mapFullStudentDetail(res.data);
-        } else if (res.progress) {
-          return mapFullStudentDetail(res.progress);
+        const rawData = res.data !== undefined ? res.data : res;
+        const mapped = mapFullStudentDetail(rawData);
+        
+        // Ensure studentKey is preserved from request
+        if (cleanKey && (!mapped.studentKey || mapped.studentKey === '1-1-1')) {
+          mapped.studentKey = cleanKey;
         }
+
+        // Cache in local storage
+        const localMap = getStoredProgressMap();
+        localMap[mapped.studentKey] = mapped;
+        saveStoredProgressMap(localMap);
+
+        return mapped;
       }
     } catch (err: any) {
       console.warn('getStudentDetail failed, trying fallback:', err);
     }
 
-    // 2. Fallback to getProgress / loadProgress (for older GAS deployments)
+    // 2. Fallback to loadProgress / getProgress ONLY if getStudentDetail failed
     try {
       const res = await callGasApi({
-        action: 'getProgress',
-        studentKey,
+        action: 'loadProgress',
+        studentKey: cleanKey,
       });
 
       if (res && res.success && res.data) {
-        return mapFullStudentDetail(res.data);
+        const mapped = mapFullStudentDetail(res.data);
+        if (cleanKey) mapped.studentKey = cleanKey;
+        return mapped;
       }
     } catch (err: any) {
-      console.warn('getProgress fallback failed:', err);
+      console.warn('loadProgress fallback failed:', err);
     }
   }
 
   // Fallback to local storage if no GAS URL configured or requests failed
   const localMap = getStoredProgressMap();
-  if (localMap[studentKey]) {
-    return localMap[studentKey];
+  if (localMap[cleanKey]) {
+    return localMap[cleanKey];
   }
-  const parts = studentKey.split('-');
+  const parts = cleanKey.split('-');
   return createInitialStudentProgress({
     grade: Number(parts[0]) || 1,
     classNum: Number(parts[1]) || 1,
     number: Number(parts[2]) || 1,
     name: '학생',
-    studentKey,
+    studentKey: cleanKey,
   });
 }
 

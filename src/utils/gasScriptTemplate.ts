@@ -868,29 +868,31 @@ function getAdminDashboard(ss) {
 }
 
 function getStudentDetail(ss, studentKey) {
-  studentKey = String(studentKey || '');
+  studentKey = String(studentKey || '').trim();
   if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
+
+  var parts = studentKey.split('-');
+  var parsedGrade = parts.length >= 3 ? Number(parts[0]) : 0;
+  var parsedClass = parts.length >= 3 ? Number(parts[1]) : 0;
+  var parsedNumber = parts.length >= 3 ? Number(parts[2]) : 0;
 
   var progressRes = loadProgress(ss, studentKey);
   var p = (progressRes && progressRes.data) || {};
 
-  var grade = p.grade;
-  var classNum = p.class;
-  var number = p.number;
-  var name = p.name;
+  var grade = Number(p.grade || parsedGrade || 1);
+  var classNum = Number(p.class || parsedClass || 1);
+  var number = Number(p.number || parsedNumber || 1);
+  var name = String(p.name || '').trim();
 
   if (!name) {
-    var parts = studentKey.split('-');
-    if (parts.length >= 3) {
-      grade = Number(parts[0]);
-      classNum = Number(parts[1]);
-      number = Number(parts[2]);
-    }
     var rosterSheet = ss.getSheetByName('Roster');
     if (rosterSheet) {
       var rData = rosterSheet.getDataRange().getValues();
       for (var i = 1; i < rData.length; i++) {
-        if (Number(rData[i][0]) === grade && Number(rData[i][1]) === classNum && Number(rData[i][2]) === number) {
+        if (
+          String(rData[i][0]) === studentKey ||
+          (Number(rData[i][0]) === grade && Number(rData[i][1]) === classNum && Number(rData[i][2]) === number)
+        ) {
           name = String(rData[i][3] || '').trim();
           break;
         }
@@ -915,7 +917,8 @@ function getStudentDetail(ss, studentKey) {
   if (testSheet) {
     var tData = testSheet.getDataRange().getValues();
     for (var j = 1; j < tData.length; j++) {
-      if (String(tData[j][0]) === studentKey) {
+      var rowKey = String(tData[j][0] || '').trim();
+      if (rowKey === studentKey || (parsedGrade && rowKey === (grade + '-' + classNum + '-' + number))) {
         testsObj.test1 = { result: String(tData[j][1] || ''), note: '' };
         testsObj.test2 = { result: String(tData[j][2] || ''), note: '' };
         testsObj.test3 = { result: String(tData[j][3] || ''), note: '' };
@@ -948,8 +951,12 @@ function getStudentDetail(ss, studentKey) {
   if (subSheet) {
     var sData = subSheet.getDataRange().getValues();
     for (var k = 1; k < sData.length; k++) {
-      if (String(sData[k][0]) === studentKey) {
-        if (!name) name = String(sData[k][4] || '');
+      var sRowKey = String(sData[k][0] || '').trim();
+      if (
+        sRowKey === studentKey ||
+        (parsedGrade && (Number(sData[k][1]) === grade && Number(sData[k][2]) === classNum && Number(sData[k][3]) === number))
+      ) {
+        if (!name) name = String(sData[k][4] || '').trim();
         subObj.gemUrl = String(sData[k][9] || '');
         subObj.sampleQuestion1 = String(sData[k][10] || '');
         subObj.sampleAnswer1 = String(sData[k][11] || '');
@@ -974,15 +981,65 @@ function getStudentDetail(ss, studentKey) {
   var currentStep = Number(p.currentStep || (subObj.gemUrl ? 10 : (testedAt ? 8 : 1)));
   var initialPrompt = p.initialPrompt || '';
   var revisedPrompt = p.revisedPrompt || '';
-  var finalPrompt = p.finalPrompt || (subObj && subSheet ? '' : '');
-  if (!finalPrompt && p.finalPrompt) finalPrompt = p.finalPrompt;
+  var finalPrompt = p.finalPrompt || '';
+  if (!finalPrompt && revisedPrompt) finalPrompt = revisedPrompt;
+  if (!finalPrompt && initialPrompt) finalPrompt = initialPrompt;
 
-  var studentDetail = {
+  var progressData = {
+    currentStep: currentStep,
+    roleModelName: p.roleModelName || '',
+    roleModelJob: p.roleModelJob || '',
+    roleModelReason: p.roleModelReason || '',
+    jobDescription: p.jobDescription || '',
+    competencies: toArr(p.competencies).join(', '),
+    careerHistory: p.careerHistory || '',
+    strengths: toArr(p.strengths).join(', '),
+    values: toArr(p.values).join(', '),
+    challengeExperience: p.challengeExperience || '',
+    chatbotPurposes: toArr(p.chatbotPurposes).join(', '),
+    targetUser: p.targetUser || '이 직업에 관심 있는 중학생',
+    expectedOutcome: p.expectedOutcome || '',
+    personality: toArr(p.personality).join(', '),
+    speakingStyle: p.speakingStyle || '멘토처럼 따뜻하게',
+    honorificStyle: p.honorificStyle || '친근한 존댓말',
+    desiredFeeling: p.desiredFeeling || '',
+    answerLength: p.answerLength || 'medium',
+    answerElements: toArr(p.answerElements).join(', '),
+    chatbotName: p.chatbotName || '',
+    initialPrompt: initialPrompt,
+    revisedPrompt: revisedPrompt,
+    finalPrompt: finalPrompt,
+    createdAt: p.createdAt || subObj.submittedAt || '',
+    updatedAt: subObj.submittedAt || p.updatedAt || testedAt || ''
+  };
+
+  var testsData = {
+    test1Result: testsObj.test1.result,
+    test2Result: testsObj.test2.result,
+    test3Result: testsObj.test3.result,
+    test4Result: testsObj.test4.result,
+    test5Result: testsObj.test5.result,
+    test6Result: testsObj.test6.result,
+    problemDescription: problemDescription,
+    revisionNote: revisionNote,
+    testedAt: testedAt
+  };
+
+  var studentInfo = {
+    grade: Number(grade || 1),
+    class: Number(classNum || 1),
+    classNum: Number(classNum || 1),
+    number: Number(number || 1),
+    name: String(name || '').trim(),
+    studentKey: studentKey
+  };
+
+  var studentDetailFull = {
     studentKey: studentKey,
     grade: Number(grade || 1),
     classNum: Number(classNum || 1),
     number: Number(number || 1),
-    name: String(name || ''),
+    name: String(name || '').trim(),
     currentStep: currentStep,
     step1: {
       roleModelName: p.roleModelName || '',
@@ -1029,7 +1086,7 @@ function getStudentDetail(ss, studentKey) {
       chatbotName: p.chatbotName || '',
       initialPrompt: initialPrompt,
       revisedPrompt: revisedPrompt,
-      finalPrompt: finalPrompt || initialPrompt,
+      finalPrompt: finalPrompt,
       isConfirmed: Boolean(finalPrompt || initialPrompt)
     },
     step8: {
@@ -1050,17 +1107,17 @@ function getStudentDetail(ss, studentKey) {
   return {
     success: true,
     studentKey: studentKey,
-    student: {
-      grade: studentDetail.grade,
-      classNum: studentDetail.classNum,
-      number: studentDetail.number,
-      name: studentDetail.name,
-      studentKey: studentKey
-    },
-    progress: studentDetail,
-    tests: { tests: testsObj, problemDescription: problemDescription, revisionNote: revisionNote, testedAt: testedAt },
+    student: studentInfo,
+    progress: progressData,
+    tests: testsData,
     submission: subObj,
-    data: studentDetail
+    data: {
+      student: studentInfo,
+      progress: progressData,
+      tests: testsData,
+      submission: subObj,
+      detail: studentDetailFull
+    }
   };
 }
 

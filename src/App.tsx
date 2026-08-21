@@ -74,6 +74,9 @@ export default function App() {
   // Auto-save debounce timer
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Constant key for session storage to remember if current tab was viewing admin dashboard
+  const ADMIN_VIEW_SESSION_KEY = 'rolemodel_admin_view_active';
+
   // Initial load of roster and localStorage session
   useEffect(() => {
     loadRoster();
@@ -86,13 +89,19 @@ export default function App() {
 
     // Check active server-side admin session
     checkAdminSession().then((isValid) => {
+      const adminViewActive = sessionStorage.getItem(ADMIN_VIEW_SESSION_KEY) === 'true';
+
       if (isValid) {
         setIsAdminLoggedIn(true);
-        setIsAdminView(true);
+        setIsAdminView(adminViewActive);
       } else {
         setIsAdminLoggedIn(false);
         setIsAdminView(false);
-        // Check if student was logged in locally
+        sessionStorage.removeItem(ADMIN_VIEW_SESSION_KEY);
+      }
+
+      // If not viewing admin dashboard (or not admin), restore student progress if available
+      if (!isValid || !adminViewActive) {
         const savedKey = localStorage.getItem('rolemodel_current_student_key');
         if (savedKey) {
           fetchStudentProgress(savedKey).then((progress) => {
@@ -106,6 +115,7 @@ export default function App() {
   }, []);
 
   const handleAdminLogout = async () => {
+    sessionStorage.removeItem(ADMIN_VIEW_SESSION_KEY);
     await logoutAdmin();
     setIsAdminLoggedIn(false);
     setIsAdminView(false);
@@ -158,6 +168,7 @@ export default function App() {
     if (isPreviewStudentMode) {
       setIsPreviewStudentMode(false);
       setIsAdminView(true);
+      sessionStorage.setItem(ADMIN_VIEW_SESSION_KEY, 'true');
       return;
     }
     localStorage.removeItem('rolemodel_current_student_key');
@@ -301,7 +312,13 @@ export default function App() {
           if (isPreviewStudentMode) {
             setIsPreviewStudentMode(false);
           }
-          setIsAdminView(!isAdminView);
+          const nextView = !isAdminView;
+          setIsAdminView(nextView);
+          if (nextView) {
+            sessionStorage.setItem(ADMIN_VIEW_SESSION_KEY, 'true');
+          } else {
+            sessionStorage.removeItem(ADMIN_VIEW_SESSION_KEY);
+          }
         }}
         onAdminLogout={handleAdminLogout}
         onStudentLogout={handleStudentLogout}
@@ -311,6 +328,7 @@ export default function App() {
       {showAdminLogin && (
         <AdminLogin
           onLoginSuccess={() => {
+            sessionStorage.setItem(ADMIN_VIEW_SESSION_KEY, 'true');
             setIsAdminLoggedIn(true);
             setShowAdminLogin(false);
             setIsAdminView(true);

@@ -11,6 +11,8 @@ import {
   saveStudentProgress,
   fetchAdminOverview,
   fetchStudentDetail,
+  checkAdminSession,
+  logoutAdmin,
 } from './api/client';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Header } from './components/common/Header';
@@ -76,6 +78,21 @@ export default function App() {
   useEffect(() => {
     loadRoster();
 
+    // Clean up any legacy admin auth localStorage keys
+    localStorage.removeItem('isAdmin');
+    localStorage.removeItem('adminAuthenticated');
+    localStorage.removeItem('adminPassword');
+    localStorage.removeItem('teacherAuth');
+
+    // Check active server-side admin session
+    checkAdminSession().then((isValid) => {
+      if (isValid) {
+        setIsAdminLoggedIn(true);
+      } else {
+        setIsAdminLoggedIn(false);
+      }
+    });
+
     // Check if student was logged in locally
     const savedKey = localStorage.getItem('rolemodel_current_student_key');
     if (savedKey) {
@@ -86,6 +103,13 @@ export default function App() {
       });
     }
   }, []);
+
+  const handleAdminLogout = async () => {
+    await logoutAdmin();
+    setIsAdminLoggedIn(false);
+    setIsAdminView(false);
+    setIsPreviewStudentMode(false);
+  };
 
   const loadRoster = async () => {
     try {
@@ -278,6 +302,7 @@ export default function App() {
           }
           setIsAdminView(!isAdminView);
         }}
+        onAdminLogout={handleAdminLogout}
         onStudentLogout={handleStudentLogout}
       />
 

@@ -59,7 +59,7 @@ export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClos
         <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
           {/* Guide Steps */}
           <div className="p-5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl space-y-2.5">
-            <div className="font-bold text-[#2C362B] text-sm">연동 3단계 가이드</div>
+            <div className="font-bold text-[#2C362B] text-sm">연동 가이드 및 보안 안내</div>
             <ol className="list-decimal list-inside space-y-1.5 text-[#5D6B58] leading-relaxed">
               <li>
                 새 <strong>Google Spreadsheet</strong>를 생성하고 상단 메뉴에서 <strong>[확장 프로그램] → [Apps Script]</strong>를 클릭합니다.
@@ -69,6 +69,9 @@ export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClos
               </li>
               <li>
                 상단 우측 <strong>[배포] → [새 배포]</strong> 클릭 후, 유형을 <strong>[웹 앱]</strong>으로 선택하고 액세스 권한을 <strong>[모든 사용자(Anyone)]</strong>로 설정하여 배포합니다.
+              </li>
+              <li>
+                <strong>관리자 보안 강화 (선택)</strong>: Apps Script의 [프로젝트 설정] → [스크립트 속성]에 <code>ADMIN_API_SECRET</code>을 등록하면 Vercel 서버 인증을 거친 관리자만 전체 학생 명단과 상세 데이터를 조회할 수 있습니다.
               </li>
             </ol>
           </div>

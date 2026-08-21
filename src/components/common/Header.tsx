@@ -10,6 +10,7 @@ interface HeaderProps {
   isPreviewMode?: boolean;
   onOpenAdminLogin: () => void;
   onToggleAdminView: () => void;
+  onAdminLogout?: () => void;
   onStudentLogout: () => void;
 }
 
@@ -21,6 +22,7 @@ export const Header: React.FC<HeaderProps> = ({
   isPreviewMode = false,
   onOpenAdminLogin,
   onToggleAdminView,
+  onAdminLogout,
   onStudentLogout,
 }) => {
   return (
@@ -144,14 +146,26 @@ export const Header: React.FC<HeaderProps> = ({
           )}
 
           {isAdminLoggedIn && (
-            <button
-              type="button"
-              onClick={onToggleAdminView}
-              className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-[#4B6344] text-white hover:bg-[#3D5237] transition-all shadow-sm shadow-[#4B6344]/20 cursor-pointer"
-            >
-              <Shield className="w-3.5 h-3.5" />
-              <span>{isAdminView ? '학생 화면 미리보기' : '관리자 대시보드'}</span>
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={onToggleAdminView}
+                className="flex items-center gap-1.5 text-xs font-bold px-3.5 py-2 rounded-xl bg-[#4B6344] text-white hover:bg-[#3D5237] transition-all shadow-sm shadow-[#4B6344]/20 cursor-pointer"
+              >
+                <Shield className="w-3.5 h-3.5" />
+                <span>{isAdminView ? '학생 화면 미리보기' : '관리자 대시보드'}</span>
+              </button>
+              {onAdminLogout && isAdminView && (
+                <button
+                  type="button"
+                  onClick={onAdminLogout}
+                  title="관리자 로그아웃"
+                  className="p-2 text-[#6B7280] hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer border border-[#E1E4D8]"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              )}
+            </div>
           )}
         </div>
       </div>

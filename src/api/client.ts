@@ -1353,26 +1353,77 @@ export async function resetStudentProgress(student: StudentInfo): Promise<Studen
 }
 
 /**
- * Admin: Verify password
+ * Admin: Verify password and establish secure session
  */
-export async function verifyAdminPassword(password: string): Promise<{ success: boolean; message?: string }> {
+export async function verifyAdminPassword(password: string): Promise<{ success: boolean; message?: string; token?: string }> {
   try {
     const res = await fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password }),
     });
-    if (res.ok) {
-      const data = await res.json();
+    
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.success) {
+      if (data.token) {
+        sessionStorage.setItem('rolemodel_admin_token', data.token);
+      }
       return data;
     }
-  } catch (e) {}
-
-  // Fallback check
-  if (password === 'admin') {
-    return { success: true };
+    return {
+      success: false,
+      message: data.message || '관리자 비밀번호가 올바르지 않습니다.',
+    };
+  } catch (e: any) {
+    return {
+      success: false,
+      message: '서버 연결에 실패했습니다: ' + (e?.message || '네트워크 오류'),
+    };
   }
-  return { success: false, message: '관리자 비밀번호가 올바르지 않습니다.' };
+}
+
+/**
+ * Admin: Check active session validity
+ */
+export async function checkAdminSession(): Promise<boolean> {
+  try {
+    const token = sessionStorage.getItem('rolemodel_admin_token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    const res = await fetch('/api/admin/session', {
+      method: 'GET',
+      headers,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return Boolean(data.authenticated);
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Admin: Logout session
+ */
+export async function logoutAdmin(): Promise<void> {
+  try {
+    const token = sessionStorage.getItem('rolemodel_admin_token');
+    const headers: Record<string, string> = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    sessionStorage.removeItem('rolemodel_admin_token');
+    await fetch('/api/admin/logout', {
+      method: 'POST',
+      headers,
+    });
+  } catch (e) {
+    console.warn('Admin logout fetch failed:', e);
+  }
 }
 
 /**
@@ -1880,361 +1931,188 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
 }
 
 /**
- * Fetch complete student detail via getStudentDetail or getProgress GAS action
+ * Admin: Fetch complete student detail via Vercel Server API (/api/admin/student-detail)
  */
 export async function fetchStudentDetail(studentKey: string): Promise<StudentProgress> {
   const cleanKey = String(studentKey || '').trim();
-  const gasUrl = getEffectiveGasUrl();
-  if (gasUrl) {
-    // 1. Primary: Try getStudentDetail
-    try {
-      const res = await callGasApi({
-        action: 'getStudentDetail',
-        studentKey: cleanKey,
-      });
-
-      if (res && res.success) {
-        const rawData = res.data !== undefined ? res.data : res;
-        const mapped = mapFullStudentDetail(rawData);
-        
-        // Ensure studentKey is preserved from request
-        if (cleanKey && (!mapped.studentKey || mapped.studentKey === '1-1-1')) {
-          mapped.studentKey = cleanKey;
-        }
-
-        // Cache in local storage
-        const localMap = getStoredProgressMap();
-        localMap[mapped.studentKey] = mapped;
-        saveStoredProgressMap(localMap);
-
-        return mapped;
-      }
-    } catch (err: any) {
-      console.warn('getStudentDetail failed, trying fallback:', err);
-    }
-
-    // 2. Fallback to loadProgress / getProgress ONLY if getStudentDetail failed
-    try {
-      const res = await callGasApi({
-        action: 'loadProgress',
-        studentKey: cleanKey,
-      });
-
-      if (res && res.success && res.data) {
-        const mapped = mapFullStudentDetail(res.data);
-        if (cleanKey) mapped.studentKey = cleanKey;
-        return mapped;
-      }
-    } catch (err: any) {
-      console.warn('loadProgress fallback failed:', err);
-    }
+  if (!cleanKey) {
+    throw new Error('학생 식별자가 전달되지 않았습니다.');
   }
 
-  // Fallback to local storage if no GAS URL configured or requests failed
-  const localMap = getStoredProgressMap();
-  if (localMap[cleanKey]) {
-    return localMap[cleanKey];
+  const token = sessionStorage.getItem('rolemodel_admin_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
-  const parts = cleanKey.split('-');
-  return createInitialStudentProgress({
-    grade: Number(parts[0]) || 1,
-    classNum: Number(parts[1]) || 1,
-    number: Number(parts[2]) || 1,
-    name: '학생',
-    studentKey: cleanKey,
+
+  const res = await fetch(`/api/admin/student-detail?studentKey=${encodeURIComponent(cleanKey)}`, {
+    method: 'GET',
+    headers,
   });
+
+  if (res.status === 401 || res.status === 403) {
+    sessionStorage.removeItem('rolemodel_admin_token');
+    throw new Error('관리자 인증이 만료되었습니다. 다시 로그인해 주세요.');
+  }
+
+  const json = await res.json().catch(() => ({}));
+  if (res.ok && json.success) {
+    const rawData = json.data !== undefined ? json.data : json;
+    const mapped = mapFullStudentDetail(rawData);
+    if (cleanKey && (!mapped.studentKey || mapped.studentKey === '1-1-1')) {
+      mapped.studentKey = cleanKey;
+    }
+    return mapped;
+  }
+
+  throw new Error(json.message || '학생 상세 정보를 불러올 수 없습니다. 잠시 후 다시 시도해 주세요.');
 }
 
 /**
- * Admin: Get Dashboard Stats & Student List with fallback support
+ * Admin: Get Dashboard Stats & Student List via Vercel Server API (/api/admin/dashboard)
  */
 export async function getAdminData(): Promise<{
   stats: DashboardStats;
   students: StudentProgress[];
   roster: RosterItem[];
 }> {
-  const gasUrl = getEffectiveGasUrl();
-
-  // 1. When Google Apps Script is configured: Try getAdminDashboard, fall back to getAllProgress
-  if (gasUrl) {
-    try {
-      const res = await callGasApi({ action: 'getAdminDashboard' });
-      if (res && res.success && res.data) {
-        const rawData = res.data;
-        const rawStudents = Array.isArray(rawData.students) ? rawData.students : [];
-
-        const students: StudentProgress[] = rawStudents.map((s: any) => mapFullStudentDetail(s));
-
-        const roster: RosterItem[] = students.map((s) => ({
-          grade: s.grade,
-          classNum: s.classNum,
-          number: s.number,
-          name: s.name,
-        }));
-
-        // Calculate or adapt byClass breakdown
-        let byClass = rawData.byClass;
-        if (!byClass || !Array.isArray(byClass) || byClass.length === 0) {
-          const classMap = new Map<string, any>();
-          students.forEach((s) => {
-            const cKey = `${s.grade}-${s.classNum}`;
-            if (!classMap.has(cKey)) {
-              classMap.set(cKey, {
-                grade: s.grade,
-                classNum: s.classNum,
-                total: 0,
-                notStarted: 0,
-                inProgress: 0,
-                promptCompleted: 0,
-                testing: 0,
-                submitted: 0,
-              });
-            }
-            const cStat = classMap.get(cKey)!;
-            cStat.total++;
-            const hasStarted = Boolean(s.step1?.roleModelName || s.currentStep > 1);
-            if (s.isFinalSubmitted) {
-              cStat.submitted++;
-            } else if (s.isTestCompleted || s.currentStep >= 8) {
-              cStat.testing++;
-            } else if (s.isPromptCompleted || s.currentStep >= 6) {
-              cStat.promptCompleted++;
-            } else if (hasStarted) {
-              cStat.inProgress++;
-            } else {
-              cStat.notStarted++;
-            }
-          });
-          byClass = Array.from(classMap.values()).sort((a, b) => {
-            if (a.grade !== b.grade) return a.grade - b.grade;
-            return a.classNum - b.classNum;
-          });
-        }
-
-        const totalStudents = rawData.totalStudents !== undefined ? rawData.totalStudents : students.length;
-        const startedStudents = rawData.startedStudents !== undefined ? rawData.startedStudents : students.filter((s) => s.step1?.roleModelName || s.currentStep > 1).length;
-        const promptCompletedStudents = rawData.promptCompletedStudents !== undefined ? rawData.promptCompletedStudents : students.filter((s) => s.isPromptCompleted).length;
-        const testCompletedStudents = rawData.testingStudents !== undefined ? rawData.testingStudents : (rawData.testCompletedStudents !== undefined ? rawData.testCompletedStudents : students.filter((s) => s.isTestCompleted).length);
-        const finalSubmittedStudents = rawData.submittedStudents !== undefined ? rawData.submittedStudents : (rawData.finalSubmittedStudents !== undefined ? rawData.finalSubmittedStudents : students.filter((s) => s.isFinalSubmitted).length);
-        const inProgressStudents = rawData.inProgressStudents !== undefined ? rawData.inProgressStudents : Math.max(0, startedStudents - promptCompletedStudents - finalSubmittedStudents);
-
-        const stats: DashboardStats = {
-          totalStudents,
-          startedStudents,
-          inProgressStudents,
-          promptCompletedStudents,
-          gemCreatedStudents: rawData.gemCreatedStudents ?? students.filter((s) => s.currentStep >= 7).length,
-          testCompletedStudents,
-          finalSubmittedStudents,
-          byClass,
-        };
-
-        return {
-          stats,
-          students,
-          roster,
-        };
-      }
-    } catch (e: any) {
-      console.warn('getAdminDashboard failed, attempting getAllProgress fallback:', e);
-    }
-
-    // Fallback: Try getAllProgress (compatible with previous GAS scripts)
-    try {
-      const fallbackRes = await callGasApi({ action: 'getAllProgress' });
-      if (fallbackRes && fallbackRes.success && (Array.isArray(fallbackRes.list) || Array.isArray(fallbackRes.data))) {
-        const rawList = fallbackRes.list || fallbackRes.data || [];
-        const students: StudentProgress[] = rawList.map((item: any) => mapSheetDataToProgress(item));
-        const roster: RosterItem[] = students.map((s) => ({
-          grade: s.grade,
-          classNum: s.classNum,
-          number: s.number,
-          name: s.name,
-        }));
-
-        const classMap = new Map<string, any>();
-        let startedStudents = 0;
-        let inProgressStudents = 0;
-        let promptCompletedStudents = 0;
-        let testCompletedStudents = 0;
-        let finalSubmittedStudents = 0;
-
-        students.forEach((s) => {
-          const cKey = `${s.grade}-${s.classNum}`;
-          if (!classMap.has(cKey)) {
-            classMap.set(cKey, {
-              grade: s.grade,
-              classNum: s.classNum,
-              total: 0,
-              notStarted: 0,
-              inProgress: 0,
-              promptCompleted: 0,
-              testing: 0,
-              submitted: 0,
-            });
-          }
-          const cStat = classMap.get(cKey)!;
-          cStat.total++;
-          const hasStarted = Boolean(s.step1?.roleModelName || s.currentStep > 1);
-          if (hasStarted) startedStudents++;
-          if (s.isFinalSubmitted) {
-            finalSubmittedStudents++;
-            cStat.submitted++;
-          } else if (s.isTestCompleted || s.currentStep >= 8) {
-            testCompletedStudents++;
-            cStat.testing++;
-          } else if (s.isPromptCompleted || s.currentStep >= 6) {
-            promptCompletedStudents++;
-            cStat.promptCompleted++;
-          } else if (hasStarted) {
-            inProgressStudents++;
-            cStat.inProgress++;
-          } else {
-            cStat.notStarted++;
-          }
-        });
-
-        const byClass = Array.from(classMap.values()).sort((a, b) => {
-          if (a.grade !== b.grade) return a.grade - b.grade;
-          return a.classNum - b.classNum;
-        });
-
-        const stats: DashboardStats = {
-          totalStudents: students.length,
-          startedStudents,
-          inProgressStudents,
-          promptCompletedStudents,
-          gemCreatedStudents: students.filter((s) => s.currentStep >= 7).length,
-          testCompletedStudents,
-          finalSubmittedStudents,
-          byClass,
-        };
-
-        return {
-          stats,
-          students,
-          roster,
-        };
-      }
-    } catch (fallbackErr: any) {
-      console.warn('getAllProgress fallback also failed:', fallbackErr);
-    }
+  const token = sessionStorage.getItem('rolemodel_admin_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
   }
 
-  // 2. Standalone fallback (when GAS is not responding or no GAS URL is configured)
-  try {
-    const res = await fetch('/api/admin/data');
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.data) {
-        return data.data;
-      }
-    }
-  } catch (e) {}
-
-  // Compute from local storage
-  const roster = getStoredRoster();
-  const map = getStoredProgressMap();
-
-  const students: StudentProgress[] = roster.map(r => {
-    const key = `${r.grade}-${r.classNum}-${r.number}`;
-    if (map[key]) return map[key];
-    const initial = createInitialStudentProgress({ ...r, studentKey: key });
-    return initial;
+  const res = await fetch('/api/admin/dashboard', {
+    method: 'GET',
+    headers,
   });
 
-  const totalStudents = students.length;
-  let startedStudents = 0;
-  let inProgressStudents = 0;
-  let promptCompletedStudents = 0;
-  let gemCreatedStudents = 0;
-  let testCompletedStudents = 0;
-  let finalSubmittedStudents = 0;
+  if (res.status === 401 || res.status === 403) {
+    sessionStorage.removeItem('rolemodel_admin_token');
+    throw new Error('관리자 인증이 만료되었습니다. 다시 로그인해 주세요.');
+  }
 
-  const classMap = new Map<string, {
-    grade: number;
-    classNum: number;
-    total: number;
-    notStarted: number;
-    inProgress: number;
-    promptCompleted: number;
-    testing: number;
-    submitted: number;
-  }>();
+  const json = await res.json().catch(() => ({}));
+  if (res.ok && json.success && json.data) {
+    const rawData = json.data;
+    const rawStudents = Array.isArray(rawData.students) ? rawData.students : [];
+    const students: StudentProgress[] = rawStudents.map((s: any) => mapFullStudentDetail(s));
 
-  students.forEach(s => {
-    const cKey = `${s.grade}-${s.classNum}`;
-    if (!classMap.has(cKey)) {
-      classMap.set(cKey, {
-        grade: s.grade,
-        classNum: s.classNum,
-        total: 0,
-        notStarted: 0,
-        inProgress: 0,
-        promptCompleted: 0,
-        testing: 0,
-        submitted: 0,
+    const roster: RosterItem[] = students.map((s) => ({
+      grade: s.grade,
+      classNum: s.classNum,
+      number: s.number,
+      name: s.name,
+    }));
+
+    let byClass = rawData.byClass;
+    if (!byClass || !Array.isArray(byClass) || byClass.length === 0) {
+      const classMap = new Map<string, any>();
+      students.forEach((s) => {
+        const cKey = `${s.grade}-${s.classNum}`;
+        if (!classMap.has(cKey)) {
+          classMap.set(cKey, {
+            grade: s.grade,
+            classNum: s.classNum,
+            total: 0,
+            notStarted: 0,
+            inProgress: 0,
+            promptCompleted: 0,
+            testing: 0,
+            submitted: 0,
+          });
+        }
+        const cStat = classMap.get(cKey)!;
+        cStat.total++;
+        const hasStarted = Boolean(s.step1?.roleModelName || s.currentStep > 1);
+        if (s.isFinalSubmitted) {
+          cStat.submitted++;
+        } else if (s.isTestCompleted || s.currentStep >= 8) {
+          cStat.testing++;
+        } else if (s.isPromptCompleted || s.currentStep >= 6) {
+          cStat.promptCompleted++;
+        } else if (hasStarted) {
+          cStat.inProgress++;
+        } else {
+          cStat.notStarted++;
+        }
+      });
+      byClass = Array.from(classMap.values()).sort((a, b) => {
+        if (a.grade !== b.grade) return a.grade - b.grade;
+        return a.classNum - b.classNum;
       });
     }
-    const cStat = classMap.get(cKey)!;
-    cStat.total++;
 
-    const hasStarted = Boolean(s.step1?.roleModelName || s.currentStep > 1);
-    if (hasStarted) {
-      startedStudents++;
-    } else {
-      cStat.notStarted++;
-    }
+    const totalStudents = rawData.totalStudents !== undefined ? rawData.totalStudents : students.length;
+    const startedStudents =
+      rawData.startedStudents !== undefined
+        ? rawData.startedStudents
+        : students.filter((s) => s.step1?.roleModelName || s.currentStep > 1).length;
+    const promptCompletedStudents =
+      rawData.promptCompletedStudents !== undefined
+        ? rawData.promptCompletedStudents
+        : students.filter((s) => s.isPromptCompleted).length;
+    const testCompletedStudents =
+      rawData.testingStudents !== undefined
+        ? rawData.testingStudents
+        : rawData.testCompletedStudents !== undefined
+        ? rawData.testCompletedStudents
+        : students.filter((s) => s.isTestCompleted).length;
+    const finalSubmittedStudents =
+      rawData.submittedStudents !== undefined
+        ? rawData.submittedStudents
+        : rawData.finalSubmittedStudents !== undefined
+        ? rawData.finalSubmittedStudents
+        : students.filter((s) => s.isFinalSubmitted).length;
+    const inProgressStudents =
+      rawData.inProgressStudents !== undefined
+        ? rawData.inProgressStudents
+        : Math.max(0, startedStudents - promptCompletedStudents - finalSubmittedStudents);
 
-    if (s.isFinalSubmitted) {
-      finalSubmittedStudents++;
-      cStat.submitted++;
-    } else if (s.isTestCompleted || s.currentStep >= 8) {
-      testCompletedStudents++;
-      cStat.testing++;
-    } else if (s.isPromptCompleted || s.currentStep >= 6) {
-      promptCompletedStudents++;
-      cStat.promptCompleted++;
-    } else if (hasStarted) {
-      inProgressStudents++;
-      cStat.inProgress++;
-    }
-  });
-
-  const byClass = Array.from(classMap.values()).sort((a, b) => {
-    if (a.grade !== b.grade) return a.grade - b.grade;
-    return a.classNum - b.classNum;
-  });
-
-  return {
-    stats: {
+    const stats: DashboardStats = {
       totalStudents,
       startedStudents,
       inProgressStudents,
       promptCompletedStudents,
-      gemCreatedStudents: students.filter(s => s.currentStep >= 7).length,
+      gemCreatedStudents: rawData.gemCreatedStudents ?? students.filter((s) => s.currentStep >= 7).length,
       testCompletedStudents,
       finalSubmittedStudents,
       byClass,
-    },
-    students,
-    roster,
-  };
+    };
+
+    return {
+      stats,
+      students,
+      roster,
+    };
+  }
+
+  throw new Error(json.message || '관리자 대시보드 데이터를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.');
 }
 
 /**
- * Admin: Update Roster (Replace or Append) in Google Sheets Roster sheet
+ * Admin: Update Roster (Replace or Append) via Vercel Server API (/api/admin/update-roster)
  */
 export async function updateAdminRoster(
   newRoster: RosterItem[],
   mode: 'replace' | 'append'
 ): Promise<{ success: boolean; count: number; message: string }> {
-  const gasUrl = getEffectiveGasUrl();
+  const token = sessionStorage.getItem('rolemodel_admin_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
-  // 1. When Google Apps Script is configured: Strictly call updateRoster on Google Sheets
-  if (gasUrl) {
-    const res = await callGasApi({
-      action: 'updateRoster',
+  const res = await fetch('/api/admin/update-roster', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
       mode,
       students: newRoster.map((item) => ({
         grade: Number(item.grade),
@@ -2242,16 +2120,20 @@ export async function updateAdminRoster(
         number: Number(item.number),
         name: String(item.name).trim(),
       })),
-    });
+    }),
+  });
 
-    if (!res || !res.success) {
-      throw new Error(
-        res?.message || '학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.'
-      );
-    }
+  if (res.status === 401 || res.status === 403) {
+    sessionStorage.removeItem('rolemodel_admin_token');
+    throw new Error('관리자 인증이 만료되었습니다. 다시 로그인해 주세요.');
   }
 
-  // Calculate new combined roster for local store synchronization
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json?.message || '학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+  }
+
+  // Sync to local student view cache if needed
   let finalRoster: RosterItem[] = [];
   if (mode === 'replace') {
     finalRoster = newRoster;
@@ -2266,20 +2148,7 @@ export async function updateAdminRoster(
       }
     });
   }
-
-  // Save to local storage for offline / quick fallback
   saveStoredRoster(finalRoster);
-
-  // Sync to local server proxy if available
-  try {
-    await fetch('/api/admin/roster/apply', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ roster: finalRoster, mode }),
-    });
-  } catch (e) {
-    // Non-critical local proxy failure
-  }
 
   return {
     success: true,

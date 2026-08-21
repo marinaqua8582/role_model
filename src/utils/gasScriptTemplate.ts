@@ -37,6 +37,17 @@ function handleRequest(e) {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     initSheetsIfNeeded(ss);
     
+    // Validate admin secret for privileged teacher/admin actions
+    if (action === 'getAdminDashboard' || action === 'getStudentDetail' || action === 'updateRoster' || action === 'getAllProgress') {
+      if (!isValidAdminRequest_(params)) {
+        output.setContent(JSON.stringify({
+          success: false,
+          message: '관리자 권한이 없습니다. (ADMIN_API_SECRET 불일치)'
+        }));
+        return output;
+      }
+    }
+
     var result = { success: true };
     
     if (action === 'verifyStudent') {
@@ -72,6 +83,15 @@ function handleRequest(e) {
   }
   
   return output;
+}
+
+function isValidAdminRequest_(data) {
+  var expected = PropertiesService.getScriptProperties().getProperty('ADMIN_API_SECRET');
+  // If no ADMIN_API_SECRET is configured in Script Properties yet, allow access during initial setup
+  if (!expected) {
+    return true;
+  }
+  return Boolean(data && data.adminSecret && String(data.adminSecret) === String(expected));
 }
 
 function initSheetsIfNeeded(ss) {

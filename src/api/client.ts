@@ -12,6 +12,14 @@ import {
   FinalSubmissionData,
   TestData,
 } from '../types';
+import {
+  normalizeCompetencies,
+  normalizeStrengths,
+  normalizeValues,
+  normalizeChatbotPurposes,
+  normalizePersonalities,
+  normalizeAnswerElements,
+} from '../utils/normalizer';
 
 const STORAGE_PREFIX = 'rolemodel_chatbot_';
 const ROSTER_KEY = `${STORAGE_PREFIX}roster`;
@@ -352,12 +360,12 @@ export function mapSheetDataToProgress(raw: any): StudentProgress {
   const name = String(raw.name || '').trim();
   const studentKey = String(raw.studentKey || `${grade}-${classNum}-${number}`);
 
-  const competencies = parseCommaArray(raw.competencies);
-  const strengths = parseCommaArray(raw.strengths);
-  const values = parseCommaArray(raw.values);
-  const chatbotPurposes = parseCommaArray(raw.chatbotPurposes);
-  const personalities = parseCommaArray(raw.personality || raw.personalities);
-  const answerElements = parseCommaArray(raw.answerElements);
+  const competencies = normalizeCompetencies(raw.competencies);
+  const strengths = normalizeStrengths(raw.strengths);
+  const values = normalizeValues(raw.values);
+  const chatbotPurposes = normalizeChatbotPurposes(raw.chatbotPurposes);
+  const personalities = normalizePersonalities(raw.personality || raw.personalities);
+  const answerElements = normalizeAnswerElements(raw.answerElements);
 
   let answerLength: 'short' | 'medium' | 'detailed' = 'medium';
   const rawLen = String(raw.answerLength || '');
@@ -1388,12 +1396,12 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
   const step8Raw = raw.step8 || {};
   const step10Raw = raw.step10 || {};
 
-  const competencies = parseCommaArray(step1Raw.competencies || raw.competencies);
-  const strengths = parseCommaArray(step1Raw.strengths || raw.strengths);
-  const values = parseCommaArray(step1Raw.values || raw.values);
-  const chatbotPurposes = parseCommaArray(step2Raw.chatbotPurposes || raw.chatbotPurposes);
-  const personalities = parseCommaArray(step3Raw.personalities || raw.personality || raw.personalities);
-  const answerElements = parseCommaArray(step4Raw.answerElements || raw.answerElements);
+  const competencies = normalizeCompetencies(step1Raw.competencies || raw.competencies);
+  const strengths = normalizeStrengths(step1Raw.strengths || raw.strengths);
+  const values = normalizeValues(step1Raw.values || raw.values);
+  const chatbotPurposes = normalizeChatbotPurposes(step2Raw.chatbotPurposes || raw.chatbotPurposes);
+  const personalities = normalizePersonalities(step3Raw.personalities || raw.personality || raw.personalities);
+  const answerElements = normalizeAnswerElements(step4Raw.answerElements || raw.answerElements);
 
   let answerLength: 'short' | 'medium' | 'detailed' = 'medium';
   const rawLen = String(step4Raw.answerLength || raw.answerLength || '');

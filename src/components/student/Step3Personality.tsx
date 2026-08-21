@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PersonalityData, StudentInfo } from '../../types';
 import { Smile, MessageSquare, HeartHandshake, ArrowRight, ArrowLeft, Check, Info, AlertCircle } from 'lucide-react';
 import { buildPersonalityRulesSummary } from '../../utils/promptGenerator';
 import { saveStep3Progress } from '../../api/client';
+import { PERSONALITY_OPTIONS, normalizeSinglePersonality } from '../../utils/normalizer';
 
 interface Step3PersonalityProps {
   data: PersonalityData;
@@ -12,23 +13,6 @@ interface Step3PersonalityProps {
   onPrev: () => void;
   isReadOnly?: boolean;
 }
-
-const PERSONALITY_OPTIONS = [
-  '친절한',
-  '따뜻한',
-  '차분한',
-  '진지한',
-  '긍정적인',
-  '자신감 있는',
-  '유쾌한',
-  '솔직한',
-  '겸손한',
-  '열정적인',
-  '현실적인',
-  '응원해 주는',
-  '논리적인',
-  '도전적인',
-];
 
 const TONE_OPTIONS = [
   '친구처럼 편안하게',
@@ -56,6 +40,33 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Compute valid selected personality traits
+  const validPersonalities = useMemo(() => {
+    const rawList = Array.isArray(data.personalities) ? data.personalities : [];
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const item of rawList) {
+      const normalized = normalizeSinglePersonality(item);
+      if (normalized && (PERSONALITY_OPTIONS as readonly string[]).includes(normalized) && !seen.has(normalized)) {
+        seen.add(normalized);
+        result.push(normalized);
+      }
+    }
+    return result;
+  }, [data.personalities]);
+
+  // Synchronize state if raw had unnormalized items
+  useEffect(() => {
+    const rawList = Array.isArray(data.personalities) ? data.personalities : [];
+    const isDifferent =
+      rawList.length !== validPersonalities.length ||
+      rawList.some((item, idx) => item !== validPersonalities[idx]);
+
+    if (isDifferent) {
+      onChange({ ...data, personalities: validPersonalities });
+    }
+  }, [validPersonalities]);
+
   const updateField = <K extends keyof PersonalityData>(field: K, value: PersonalityData[K]) => {
     if (isReadOnly) return;
     onChange({ ...data, [field]: value });
@@ -63,20 +74,19 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
 
   const togglePersonality = (item: string) => {
     if (isReadOnly) return;
-    const current = data.personalities || [];
-    if (current.includes(item)) {
-      onChange({ ...data, personalities: current.filter((p) => p !== item) });
+    if (validPersonalities.includes(item)) {
+      onChange({ ...data, personalities: validPersonalities.filter((p) => p !== item) });
     } else {
-      if (current.length >= 3) {
+      if (validPersonalities.length >= 3) {
         return; // Max 3
       }
-      onChange({ ...data, personalities: [...current, item] });
+      onChange({ ...data, personalities: [...validPersonalities, item] });
     }
   };
 
   const isValid =
-    data.personalities.length >= 2 &&
-    data.personalities.length <= 3 &&
+    validPersonalities.length >= 2 &&
+    validPersonalities.length <= 3 &&
     Boolean(data.speakingStyle) &&
     Boolean(data.honorificStyle);
 
@@ -91,7 +101,7 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
     setSaveError(null);
 
     try {
-      const res = await saveStep3Progress(student, data);
+      const res = await saveStep3Progress(student, { ...data, personalities: validPersonalities });
       if (res.success) {
         onNext();
       } else {
@@ -105,11 +115,11 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
   };
 
   useEffect(() => {
-    const summary = buildPersonalityRulesSummary(data);
+    const summary = buildPersonalityRulesSummary({ ...data, personalities: validPersonalities });
     if (summary !== data.personalityRulesSummary) {
       onChange({ ...data, personalityRulesSummary: summary });
     }
-  }, [data.personalities, data.speakingStyle, data.honorificStyle, data.desiredFeeling]);
+  }, [validPersonalities, data.speakingStyle, data.honorificStyle, data.desiredFeeling]);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -139,23 +149,23 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
             </div>
             <span
               className={`text-xs font-bold px-3 py-1 rounded-full ${
-                data.personalities.length >= 2 && data.personalities.length <= 3
+                validPersonalities.length >= 2 && validPersonalities.length <= 3
                   ? 'bg-[#F1F4EF] text-[#4B6344] border border-[#DCE2D7]'
                   : 'bg-[#F9FAF8] text-[#5D6B58] border border-[#E1E4D8]'
               }`}
             >
-              {data.personalities.length} / 3개 선택됨
+              {validPersonalities.length} / 3개 선택됨
             </span>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mt-4">
             {PERSONALITY_OPTIONS.map((trait) => {
-              const isSelected = data.personalities.includes(trait);
+              const isSelected = validPersonalities.includes(trait);
               return (
                 <button
                   key={trait}
                   type="button"
-                  disabled={isReadOnly || (!isSelected && data.personalities.length >= 3)}
+                  disabled={isReadOnly || (!isSelected && validPersonalities.length >= 3)}
                   onClick={() => togglePersonality(trait)}
                   className={`p-3.5 rounded-2xl text-xs font-bold border flex items-center justify-between transition-all cursor-pointer ${
                     isSelected

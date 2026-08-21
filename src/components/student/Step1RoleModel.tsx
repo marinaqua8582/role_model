@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { RoleModelData, StudentInfo } from '../../types';
 import { saveStep1Progress } from '../../api/client';
 import {
@@ -14,6 +14,14 @@ import {
   AlertCircle,
   RefreshCw,
 } from 'lucide-react';
+import {
+  COMPETENCY_OPTIONS,
+  STRENGTH_OPTIONS,
+  VALUE_OPTIONS,
+  normalizeSingleCompetency,
+  normalizeSingleStrength,
+  normalizeSingleValue,
+} from '../../utils/normalizer';
 
 interface Step1RoleModelProps {
   data: RoleModelData;
@@ -23,43 +31,6 @@ interface Step1RoleModelProps {
   onPrev?: () => void;
   isReadOnly?: boolean;
 }
-
-const COMPETENCY_OPTIONS = [
-  '의사소통',
-  '창의성',
-  '문제 해결',
-  '책임감',
-  '협업',
-  '끈기',
-  '리더십',
-  '자기관리',
-  '전문 지식',
-  '체력',
-];
-
-const STRENGTH_OPTIONS = [
-  '끈기',
-  '도전 정신',
-  '전문성',
-  '성실함',
-  '통찰력',
-  '공감 능력',
-  '추진력',
-  '긍정적 사고',
-];
-
-const VALUE_OPTIONS = [
-  '노력',
-  '책임',
-  '성장',
-  '도전',
-  '협력',
-  '창의',
-  '배려',
-  '정직',
-  '성취',
-  '사회적 기여',
-];
 
 export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
   data,
@@ -73,6 +44,69 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Compute valid selected options strictly matching corresponding constants
+  const validCompetencies = useMemo(() => {
+    const rawList = Array.isArray(data.competencies) ? data.competencies : [];
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const item of rawList) {
+      const normalized = normalizeSingleCompetency(item);
+      if (normalized && (COMPETENCY_OPTIONS as readonly string[]).includes(normalized) && !seen.has(normalized)) {
+        seen.add(normalized);
+        result.push(normalized);
+      }
+    }
+    return result;
+  }, [data.competencies]);
+
+  const validStrengths = useMemo(() => {
+    const rawList = Array.isArray(data.strengths) ? data.strengths : [];
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const item of rawList) {
+      const normalized = normalizeSingleStrength(item);
+      if (normalized && (STRENGTH_OPTIONS as readonly string[]).includes(normalized) && !seen.has(normalized)) {
+        seen.add(normalized);
+        result.push(normalized);
+      }
+    }
+    return result;
+  }, [data.strengths]);
+
+  const validValues = useMemo(() => {
+    const rawList = Array.isArray(data.values) ? data.values : [];
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const item of rawList) {
+      const normalized = normalizeSingleValue(item);
+      if (normalized && (VALUE_OPTIONS as readonly string[]).includes(normalized) && !seen.has(normalized)) {
+        seen.add(normalized);
+        result.push(normalized);
+      }
+    }
+    return result;
+  }, [data.values]);
+
+  // Synchronize arrays if raw contained unnormalized items
+  useEffect(() => {
+    const rawC = Array.isArray(data.competencies) ? data.competencies : [];
+    const rawS = Array.isArray(data.strengths) ? data.strengths : [];
+    const rawV = Array.isArray(data.values) ? data.values : [];
+
+    const cDiff = rawC.length !== validCompetencies.length || rawC.some((x, i) => x !== validCompetencies[i]);
+    const sDiff = rawS.length !== validStrengths.length || rawS.some((x, i) => x !== validStrengths[i]);
+    const vDiff = rawV.length !== validValues.length || rawV.some((x, i) => x !== validValues[i]);
+
+    if (cDiff || sDiff || vDiff) {
+      onChange({
+        ...data,
+        competencies: validCompetencies,
+        strengths: validStrengths,
+        values: validValues,
+      });
+    }
+  }, [validCompetencies, validStrengths, validValues]);
+
   const updateField = <K extends keyof RoleModelData>(field: K, value: RoleModelData[K]) => {
     if (isReadOnly) return;
     onChange({ ...data, [field]: value });
@@ -80,11 +114,21 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
 
   const toggleArrayItem = (field: 'competencies' | 'strengths' | 'values', item: string) => {
     if (isReadOnly) return;
-    const current = data[field] || [];
-    if (current.includes(item)) {
-      onChange({ ...data, [field]: current.filter((x) => x !== item) });
-    } else {
-      onChange({ ...data, [field]: [...current, item] });
+    if (field === 'competencies') {
+      const updated = validCompetencies.includes(item)
+        ? validCompetencies.filter((x) => x !== item)
+        : [...validCompetencies, item];
+      onChange({ ...data, competencies: updated });
+    } else if (field === 'strengths') {
+      const updated = validStrengths.includes(item)
+        ? validStrengths.filter((x) => x !== item)
+        : [...validStrengths, item];
+      onChange({ ...data, strengths: updated });
+    } else if (field === 'values') {
+      const updated = validValues.includes(item)
+        ? validValues.filter((x) => x !== item)
+        : [...validValues, item];
+      onChange({ ...data, values: updated });
     }
   };
 
@@ -94,12 +138,12 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
   );
 
   const isSubStep2Valid = Boolean(
-    data.jobDescription.trim() && (data.competencies.length > 0 || data.competencyCustom.trim())
+    data.jobDescription.trim() && (validCompetencies.length > 0 || data.competencyCustom.trim())
   );
 
   const isSubStep3Valid = Boolean(
-    (data.strengths.length > 0 || data.strengthCustom.trim()) &&
-    (data.values.length > 0 || data.valueCustom.trim())
+    (validStrengths.length > 0 || data.strengthCustom.trim()) &&
+    (validValues.length > 0 || data.valueCustom.trim())
   );
 
   const handleSaveAndNext = async () => {
@@ -114,7 +158,12 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
     setSaveError(null);
 
     try {
-      const res = await saveStep1Progress(student, data);
+      const res = await saveStep1Progress(student, {
+        ...data,
+        competencies: validCompetencies,
+        strengths: validStrengths,
+        values: validValues,
+      });
       if (res.success) {
         onNext();
       } else {
@@ -295,12 +344,12 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
                   필요한 핵심 역량 <span className="text-rose-500">*</span> (복수 선택)
                 </label>
                 <span className="text-xs text-[#4B6344] font-bold">
-                  {data.competencies.length}개 선택됨
+                  {validCompetencies.length}개 선택됨
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                 {COMPETENCY_OPTIONS.map((comp) => {
-                  const isSelected = data.competencies.includes(comp);
+                  const isSelected = validCompetencies.includes(comp);
                   return (
                     <button
                       key={comp}
@@ -375,12 +424,12 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
                   내가 닮고 싶은 강점 <span className="text-rose-500">*</span> (복수 선택)
                 </label>
                 <span className="text-xs text-[#4B6344] font-bold">
-                  {data.strengths.length}개 선택됨
+                  {validStrengths.length}개 선택됨
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                 {STRENGTH_OPTIONS.map((st) => {
-                  const isSelected = data.strengths.includes(st);
+                  const isSelected = validStrengths.includes(st);
                   return (
                     <button
                       key={st}
@@ -417,12 +466,12 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
                   중요하게 생각하는 가치 <span className="text-rose-500">*</span> (복수 선택)
                 </label>
                 <span className="text-xs text-[#4B6344] font-bold">
-                  {data.values.length}개 선택됨
+                  {validValues.length}개 선택됨
                 </span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                 {VALUE_OPTIONS.map((val) => {
-                  const isSelected = data.values.includes(val);
+                  const isSelected = validValues.includes(val);
                   return (
                     <button
                       key={val}

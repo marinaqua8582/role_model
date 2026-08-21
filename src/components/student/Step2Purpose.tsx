@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { ChatbotPurposeData, RoleModelData, StudentInfo } from '../../types';
 import { Target, Users, Sparkles, ArrowRight, ArrowLeft, Check, Edit3, RotateCcw, AlertCircle } from 'lucide-react';
 import { buildChatbotPurposeSentence } from '../../utils/promptGenerator';
 import { saveStep2Progress } from '../../api/client';
+import { PURPOSE_OPTIONS, normalizeSinglePurpose } from '../../utils/normalizer';
 
 interface Step2PurposeProps {
   data: ChatbotPurposeData;
@@ -13,17 +14,6 @@ interface Step2PurposeProps {
   onPrev: () => void;
   isReadOnly?: boolean;
 }
-
-const PURPOSE_OPTIONS = [
-  '롤모델의 직업을 소개한다.',
-  '이 직업에서 하는 일을 알려 준다.',
-  '이 직업에 필요한 역량을 알려 준다.',
-  '롤모델의 노력과 성장 과정을 소개한다.',
-  '실패나 어려움을 극복한 경험을 소개한다.',
-  '진로 준비 방법을 알려 준다.',
-  '진로 고민에 조언한다.',
-  '학생이 자신의 진로를 생각하도록 질문한다.',
-];
 
 const TARGET_OPTIONS = [
   '이 직업에 관심 있는 중학생',
@@ -46,6 +36,34 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Compute valid selected purposes strictly matching PURPOSE_OPTIONS
+  const validSelectedPurposes = useMemo(() => {
+    const rawList = Array.isArray(data.chatbotPurposes) ? data.chatbotPurposes : [];
+    const normalizedList: string[] = [];
+    const seen = new Set<string>();
+
+    for (const item of rawList) {
+      const normalized = normalizeSinglePurpose(item);
+      if (normalized && (PURPOSE_OPTIONS as readonly string[]).includes(normalized) && !seen.has(normalized)) {
+        seen.add(normalized);
+        normalizedList.push(normalized);
+      }
+    }
+    return normalizedList;
+  }, [data.chatbotPurposes]);
+
+  // Synchronize state if raw purposes had old tags or unnormalized strings
+  useEffect(() => {
+    const rawList = Array.isArray(data.chatbotPurposes) ? data.chatbotPurposes : [];
+    const isDifferent =
+      rawList.length !== validSelectedPurposes.length ||
+      rawList.some((item, idx) => item !== validSelectedPurposes[idx]);
+
+    if (isDifferent) {
+      onChange({ ...data, chatbotPurposes: validSelectedPurposes });
+    }
+  }, [validSelectedPurposes]);
+
   const updateField = <K extends keyof ChatbotPurposeData>(field: K, value: ChatbotPurposeData[K]) => {
     if (isReadOnly) return;
     onChange({ ...data, [field]: value });
@@ -53,14 +71,13 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
 
   const togglePurpose = (purpose: string) => {
     if (isReadOnly) return;
-    const current = data.chatbotPurposes || [];
-    if (current.includes(purpose)) {
-      onChange({ ...data, chatbotPurposes: current.filter((p) => p !== purpose) });
+    if (validSelectedPurposes.includes(purpose)) {
+      onChange({ ...data, chatbotPurposes: validSelectedPurposes.filter((p) => p !== purpose) });
     } else {
-      if (current.length >= 4) {
+      if (validSelectedPurposes.length >= 4) {
         return; // Max 4
       }
-      onChange({ ...data, chatbotPurposes: [...current, purpose] });
+      onChange({ ...data, chatbotPurposes: [...validSelectedPurposes, purpose] });
     }
   };
 
@@ -68,7 +85,7 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
   useEffect(() => {
     if (!data.purposeSummarySentence || !isEditingSentence) {
       const generated = buildChatbotPurposeSentence(
-        data,
+        { ...data, chatbotPurposes: validSelectedPurposes },
         roleModel.roleModelName,
         roleModel.roleModelJob
       );
@@ -76,11 +93,11 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
         onChange({ ...data, purposeSummarySentence: generated });
       }
     }
-  }, [data.chatbotPurposes, data.targetUser, data.targetUserCustom, data.expectedOutcome]);
+  }, [validSelectedPurposes, data.targetUser, data.targetUserCustom, data.expectedOutcome]);
 
   const isValid =
-    data.chatbotPurposes.length >= 1 &&
-    data.chatbotPurposes.length <= 4 &&
+    validSelectedPurposes.length >= 1 &&
+    validSelectedPurposes.length <= 4 &&
     Boolean(data.targetUser) &&
     (data.targetUser !== '기타' || Boolean(data.targetUserCustom.trim()));
 
@@ -95,7 +112,7 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
     setSaveError(null);
 
     try {
-      const res = await saveStep2Progress(student, data);
+      const res = await saveStep2Progress(student, { ...data, chatbotPurposes: validSelectedPurposes });
       if (res.success) {
         onNext();
       } else {
@@ -136,23 +153,23 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
             </div>
             <span
               className={`text-xs font-bold px-3 py-1 rounded-full ${
-                data.chatbotPurposes.length >= 3 && data.chatbotPurposes.length <= 4
+                validSelectedPurposes.length >= 3 && validSelectedPurposes.length <= 4
                   ? 'bg-[#F1F4EF] text-[#4B6344] border border-[#DCE2D7]'
                   : 'bg-[#F9FAF8] text-[#5D6B58] border border-[#E1E4D8]'
               }`}
             >
-              {data.chatbotPurposes.length} / 4개 선택됨
+              {validSelectedPurposes.length} / 4개 선택됨
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
             {PURPOSE_OPTIONS.map((item) => {
-              const isSelected = data.chatbotPurposes.includes(item);
+              const isSelected = validSelectedPurposes.includes(item);
               return (
                 <button
                   key={item}
                   type="button"
-                  disabled={isReadOnly || (!isSelected && data.chatbotPurposes.length >= 4)}
+                  disabled={isReadOnly || (!isSelected && validSelectedPurposes.length >= 4)}
                   onClick={() => togglePurpose(item)}
                   className={`p-3.5 rounded-2xl text-xs font-bold text-left border flex items-center justify-between transition-all cursor-pointer ${
                     isSelected

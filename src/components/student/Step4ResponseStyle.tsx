@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { ResponseStyleData, StudentInfo } from '../../types';
 import { AlignLeft, Layers, ArrowRight, ArrowLeft, Check, BookOpen, AlertCircle } from 'lucide-react';
 import { saveStep4Progress } from '../../api/client';
+import { COMPOSITION_OPTIONS, normalizeSingleAnswerElement } from '../../utils/normalizer';
 
 interface Step4ResponseStyleProps {
   data: ResponseStyleData;
@@ -36,17 +37,6 @@ const LENGTH_OPTIONS: Array<{
   },
 ];
 
-const COMPOSITION_OPTIONS = [
-  '질문에 대한 핵심 답부터 말하기',
-  '롤모델의 경험이나 사례 연결하기',
-  '직업의 실제 모습 설명하기',
-  '필요한 역량과 연결하기',
-  '준비 방법 알려 주기',
-  '장점뿐 아니라 어려운 점도 설명하기',
-  '학생이 생각할 질문 던지기',
-  '마지막에 격려 한마디 하기',
-];
-
 export const Step4ResponseStyle: React.FC<Step4ResponseStyleProps> = ({
   data,
   student,
@@ -58,21 +48,47 @@ export const Step4ResponseStyle: React.FC<Step4ResponseStyleProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  // Compute valid selected answer composition elements
+  const validAnswerElements = useMemo(() => {
+    const rawList = Array.isArray(data.answerElements) ? data.answerElements : [];
+    const result: string[] = [];
+    const seen = new Set<string>();
+    for (const item of rawList) {
+      const normalized = normalizeSingleAnswerElement(item);
+      if (normalized && (COMPOSITION_OPTIONS as readonly string[]).includes(normalized) && !seen.has(normalized)) {
+        seen.add(normalized);
+        result.push(normalized);
+      }
+    }
+    return result;
+  }, [data.answerElements]);
+
+  // Synchronize state if raw had unnormalized items
+  useEffect(() => {
+    const rawList = Array.isArray(data.answerElements) ? data.answerElements : [];
+    const isDifferent =
+      rawList.length !== validAnswerElements.length ||
+      rawList.some((item, idx) => item !== validAnswerElements[idx]);
+
+    if (isDifferent) {
+      onChange({ ...data, answerElements: validAnswerElements });
+    }
+  }, [validAnswerElements]);
+
   const toggleElement = (elem: string) => {
     if (isReadOnly) return;
-    const current = data.answerElements || [];
-    if (current.includes(elem)) {
-      onChange({ ...data, answerElements: current.filter((e) => e !== elem) });
+    if (validAnswerElements.includes(elem)) {
+      onChange({ ...data, answerElements: validAnswerElements.filter((e) => e !== elem) });
     } else {
-      if (current.length >= 4) return; // Max 4
-      onChange({ ...data, answerElements: [...current, elem] });
+      if (validAnswerElements.length >= 4) return; // Max 4
+      onChange({ ...data, answerElements: [...validAnswerElements, elem] });
     }
   };
 
   const isValid =
     Boolean(data.answerLength) &&
-    data.answerElements.length >= 1 &&
-    data.answerElements.length <= 4;
+    validAnswerElements.length >= 1 &&
+    validAnswerElements.length <= 4;
 
   const handleSaveAndNext = async () => {
     if (!isValid) return;
@@ -85,7 +101,7 @@ export const Step4ResponseStyle: React.FC<Step4ResponseStyleProps> = ({
     setSaveError(null);
 
     try {
-      const res = await saveStep4Progress(student, data);
+      const res = await saveStep4Progress(student, { ...data, answerElements: validAnswerElements });
       if (res.success) {
         onNext();
       } else {
@@ -164,32 +180,32 @@ export const Step4ResponseStyle: React.FC<Step4ResponseStyleProps> = ({
             </div>
             <span
               className={`text-xs font-bold px-3 py-1 rounded-full ${
-                data.answerElements.length >= 2 && data.answerElements.length <= 4
+                validAnswerElements.length >= 2 && validAnswerElements.length <= 4
                   ? 'bg-[#F1F4EF] text-[#4B6344] border border-[#DCE2D7]'
                   : 'bg-[#F9FAF8] text-[#5D6B58] border border-[#E1E4D8]'
               }`}
             >
-              {data.answerElements.length} / 4개 선택됨
+              {validAnswerElements.length} / 4개 선택됨
             </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4">
             {COMPOSITION_OPTIONS.map((elem) => {
-              const isSelected = data.answerElements.includes(elem);
+              const isSelected = validAnswerElements.includes(elem);
               return (
                 <button
                   key={elem}
                   type="button"
-                  disabled={isReadOnly || (!isSelected && data.answerElements.length >= 4)}
+                  disabled={isReadOnly || (!isSelected && validAnswerElements.length >= 4)}
                   onClick={() => toggleElement(elem)}
                   className={`p-3.5 rounded-2xl text-xs font-bold text-left border flex items-center justify-between transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-[#4B6344] text-white border-[#4B6344] shadow-xs'
-                      : 'bg-[#F9FAF8] text-[#5D6B58] border-[#E1E4D8] hover:bg-[#F1F4EF] disabled:opacity-40'
+                      : 'bg-[#F9FAF8] text-[#5D6B58] border-[#E1E4D8] hover:bg-[#F1F4EF] disabled:opacity-40 disabled:cursor-not-allowed'
                   }`}
                 >
-                  <span>{elem}</span>
-                  {isSelected && <Check className="w-4 h-4 shrink-0 ml-2" />}
+                  <span className="leading-snug">{elem}</span>
+                  {isSelected && <Check className="w-4 h-4 text-white shrink-0 ml-1.5" />}
                 </button>
               );
             })}

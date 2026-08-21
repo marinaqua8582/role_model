@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { FinalSubmissionData, StudentProgress, StudentInfo } from '../../types';
-import { Send, Sparkles, Award, ExternalLink, ArrowLeft, MessageSquare, RefreshCw, AlertCircle } from 'lucide-react';
+import { Send, Sparkles, Award, ExternalLink, ArrowLeft, MessageSquare, RefreshCw, AlertCircle, AlertTriangle, CheckCircle2, Lightbulb, Info } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { submitFinal } from '../../api/client';
 
@@ -13,6 +13,18 @@ interface Step10SubmissionProps {
   onPrev: () => void;
   isReadOnly?: boolean;
 }
+
+// Resilient Gemini URL validation (verifies https:// and gemini.google.com domain without enforcing specific path)
+const validateGeminiUrl = (url?: string): boolean => {
+  if (!url) return false;
+  const trimmed = url.trim();
+  try {
+    const parsed = new URL(trimmed);
+    return parsed.protocol === 'https:' && parsed.hostname.includes('gemini.google.com');
+  } catch {
+    return false;
+  }
+};
 
 export const Step10Submission: React.FC<Step10SubmissionProps> = ({
   data,
@@ -40,9 +52,17 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
     studentKey: progress.studentKey,
   };
 
+  const isGemUrlValid = validateGeminiUrl(data.gemUrl);
+  const showUrlWarning = Boolean(data.gemUrl && data.gemUrl.trim() && !isGemUrlValid);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (isReadOnly) return;
+    if (!isGemUrlValid) {
+      setSubmitError('https://gemini.google.com 으로 시작하는 올바른 Gemini Gem 공유 링크를 입력해 주세요.');
+      return;
+    }
+
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -73,7 +93,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
   };
 
   const isValid =
-    Boolean(data.gemUrl && data.gemUrl.trim()) &&
+    isGemUrlValid &&
     Boolean(data.sampleQuestion1 && data.sampleQuestion1.trim()) &&
     Boolean(data.sampleAnswer1 && data.sampleAnswer1.trim()) &&
     Boolean(data.reflection && data.reflection.trim());
@@ -176,21 +196,77 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
           </div>
 
           {/* Gem URL */}
-          <div className="space-y-1.5">
-            <label className="block text-xs font-bold text-[#4B6344]">
-              Gemini Gem 공유 링크 <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="url"
-              disabled={isReadOnly || isSubmitting}
-              value={data.gemUrl}
-              onChange={(e) => updateField('gemUrl', e.target.value)}
-              placeholder="https://gemini.google.com/gems/share/..."
-              className="w-full px-4 py-3 bg-[#F9FAF8] border border-[#E1E4D8] rounded-xl text-sm font-medium text-[#2C362B] placeholder:text-[#6B7280]/60 focus:bg-white focus:border-[#4B6344] focus:ring-2 focus:ring-[#4B6344]/20 outline-none transition-all"
-            />
-            <p className="text-[11px] text-[#6B7280]">
-              ※ Gemini Gem 화면 우측 상단의 [공유] 아이콘을 눌러 링크를 복사해 붙여넣으세요.
-            </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="block text-xs sm:text-sm font-bold text-[#2C362B]">
+                Gemini Gem 공유 링크 (대화 공유 링크 아님) <span className="text-rose-500">*</span>
+              </label>
+              {isGemUrlValid && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                  올바른 Gemini 링크
+                </span>
+              )}
+            </div>
+
+            {/* How to get Gem Share Link - Step by step guide */}
+            <div className="bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl p-4 sm:p-5 space-y-3">
+              <div className="flex items-center gap-2 text-xs font-bold text-[#4B6344]">
+                <Info className="w-4 h-4 text-[#4B6344] shrink-0" />
+                <span>Gem 공유 링크 가져오는 방법</span>
+              </div>
+              <ol className="text-xs text-[#5D6B58] space-y-1.5 list-decimal list-inside pl-1 leading-relaxed">
+                <li>Gemini 왼쪽 사이드바에서 <strong className="text-[#2C362B]">[Gems]</strong>를 엽니다.</li>
+                <li>내가 만든 Gem 목록에서 제출할 Gem을 찾습니다.</li>
+                <li>해당 Gem의 <strong className="text-[#2C362B]">공유 메뉴</strong>를 엽니다.</li>
+                <li>Gem을 다른 사람이 사용할 수 있도록 공유 설정을 확인합니다.</li>
+                <li><strong className="text-[#4B6344]">Gem 자체의 공유 링크를 복사</strong>하여 아래 입력란에 붙여넣습니다.</li>
+              </ol>
+
+              {/* Warning about conversation share */}
+              <div className="bg-amber-50/80 border border-amber-200/80 rounded-xl p-3 flex items-start gap-2.5 text-xs text-amber-900">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="leading-snug">
+                  <span className="font-bold text-amber-950">주의: 대화 화면의 점 3개 메뉴에 있는 [대화 공유] 링크는 제출하지 마세요.</span>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    이 링크는 챗봇 자체가 아니라 특정 대화 내용을 공유하는 링크입니다.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            {/* Input Box */}
+            <div className="space-y-1.5">
+              <input
+                type="url"
+                disabled={isReadOnly || isSubmitting}
+                value={data.gemUrl}
+                onChange={(e) => updateField('gemUrl', e.target.value)}
+                placeholder="Gem 자체의 공유 링크를 붙여넣으세요. (예: https://gemini.google.com/...)"
+                className={`w-full px-4 py-3 bg-[#F9FAF8] border rounded-xl text-xs sm:text-sm font-medium text-[#2C362B] placeholder:text-[#6B7280]/60 outline-none transition-all ${
+                  showUrlWarning
+                    ? 'border-rose-400 bg-rose-50/30 focus:border-rose-500 focus:ring-2 focus:ring-rose-200'
+                    : isGemUrlValid
+                    ? 'border-emerald-400 bg-white focus:border-emerald-500 focus:ring-2 focus:ring-emerald-200'
+                    : 'border-[#E1E4D8] focus:bg-white focus:border-[#4B6344] focus:ring-2 focus:ring-[#4B6344]/20'
+                }`}
+              />
+
+              {showUrlWarning && (
+                <p className="text-[11px] text-rose-600 font-medium flex items-center gap-1 mt-1 pl-1">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                  https://gemini.google.com 으로 시작하는 올바른 Gemini Gem 공유 링크를 입력해 주세요.
+                </p>
+              )}
+            </div>
+
+            {/* Subtle visual callout tip */}
+            <div className="bg-[#F1F4EF]/80 border border-[#DCE2D7] rounded-xl p-3 flex items-start gap-2.5 text-xs text-[#4B6344]">
+              <Lightbulb className="w-4 h-4 text-[#4B6344] shrink-0 mt-0.5" />
+              <p className="leading-snug">
+                <span className="font-bold">Gem 공유 링크와 대화 공유 링크는 다릅니다.</span> 다른 친구가 나의 챗봇과 직접 대화하려면 Gem 자체의 공유 링크를 제출해야 합니다.
+              </p>
+            </div>
           </div>
 
           {/* Sample Q&A 1 */}

@@ -1249,19 +1249,24 @@ export async function submitFinal(
     submittedAt: submission.submittedAt || now,
   };
 
+  // MUST verify that Google Sheets / GAS API successfully saved the data
   try {
     const res = await callGasApi(payload);
     if (!res || !res.success) {
       return {
         success: false,
-        message: res?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
+        message: res?.message || '최종 제출 저장에 실패했습니다. 다시 시도해 주세요.',
       };
     }
   } catch (err: any) {
-    console.warn('submitFinal to GAS skipped/failed:', err?.message);
+    console.error('submitFinal to GAS failed:', err);
+    return {
+      success: false,
+      message: '최종 제출 저장에 실패했습니다. 다시 시도해 주세요. (' + (err?.message || '연결 오류') + ')',
+    };
   }
 
-  // Update local storage
+  // Only update local storage and mark complete if Google Sheets save was successful
   const localMap = getStoredProgressMap();
   const existing = localMap[studentKey] || createInitialStudentProgress(student);
   existing.currentStep = 10;
@@ -1819,6 +1824,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     step11Raw.barrierAnswer ||
     raw.barrierAnswer ||
     progressObj.barrierAnswer ||
+    sampleQuestion1 ||
     ''
   ).trim();
   const barrierReflection = String(
@@ -1827,6 +1833,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     step11Raw.barrierReflection ||
     raw.barrierReflection ||
     progressObj.barrierReflection ||
+    sampleAnswer1 ||
     ''
   ).trim();
   const decisionAnswer = String(
@@ -1835,6 +1842,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     step11Raw.decisionAnswer ||
     raw.decisionAnswer ||
     progressObj.decisionAnswer ||
+    sampleQuestion2 ||
     ''
   ).trim();
   const decisionReflection = String(
@@ -1843,6 +1851,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     step11Raw.decisionReflection ||
     raw.decisionReflection ||
     progressObj.decisionReflection ||
+    sampleAnswer2 ||
     ''
   ).trim();
   const educationAnswer = String(
@@ -1851,6 +1860,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     step11Raw.educationAnswer ||
     raw.educationAnswer ||
     progressObj.educationAnswer ||
+    sampleQuestion3 ||
     ''
   ).trim();
   const educationReflection = String(
@@ -1859,6 +1869,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     step11Raw.educationReflection ||
     raw.educationReflection ||
     progressObj.educationReflection ||
+    sampleAnswer3 ||
     ''
   ).trim();
   const finalCareerReflection = String(
@@ -1867,6 +1878,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     step11Raw.finalCareerReflection ||
     raw.finalCareerReflection ||
     progressObj.finalCareerReflection ||
+    reflection ||
     ''
   ).trim();
 

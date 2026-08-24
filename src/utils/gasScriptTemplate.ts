@@ -110,6 +110,12 @@ function initSheetsIfNeeded(ss) {
     if (!sheet) {
       sheet = ss.insertSheet(name);
       sheet.appendRow(headers[name]);
+    } else if (name === 'Submissions') {
+      // Auto-migrate legacy Submissions header if needed
+      var lastCol = sheet.getLastColumn();
+      if (lastCol < 19) {
+        sheet.getRange(1, 1, 1, headers['Submissions'].length).setValues([headers['Submissions']]);
+      }
     }
   });
 }
@@ -443,7 +449,18 @@ function updateRevision(ss, params) {
 
 function submitFinal(ss, submission) {
   var sheet = ss.getSheetByName('Submissions');
+  if (!sheet) {
+    initSheetsIfNeeded(ss);
+    sheet = ss.getSheetByName('Submissions');
+  }
   if (!sheet) return { success: false, message: 'Submissions 시트를 찾을 수 없습니다.' };
+  
+  var headers = ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'revisionSummary', 'submittedAt'];
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow(headers);
+  } else if (sheet.getLastColumn() < 19) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  }
   
   var studentKey = submission.studentKey || (submission.grade + '-' + (submission.class || submission.classNum) + '-' + submission.number);
   var now = new Date().toISOString();

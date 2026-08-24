@@ -111,24 +111,27 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
     const selectedList = students.filter((s) => selectedKeys.has(s.studentKey));
     if (selectedList.length === 0) return;
 
-    const finishedStudents = selectedList.filter((s) => Boolean(getStudentPrompt(s)));
-    const uncompletedCount = selectedList.length - finishedStudents.length;
+    const hasPrintableContent = (s: StudentProgress) =>
+      Boolean(getStudentPrompt(s) || s.step10?.barrierAnswer || s.step10?.gemUrl || s.step1?.roleModelName || s.isFinalSubmitted);
 
-    if (finishedStudents.length === 0) {
-      alert(`선택한 학생 ${selectedList.length}명 중 작성된 프롬프트가 있는 학생이 없습니다.`);
+    const readyStudents = selectedList.filter(hasPrintableContent);
+    const uncompletedCount = selectedList.length - readyStudents.length;
+
+    if (readyStudents.length === 0) {
+      alert(`선택한 학생 ${selectedList.length}명 중 작성된 활동 내용(프롬프트, 진로상담 등)이 있는 학생이 없습니다.`);
       return;
     }
 
     const message =
       `선택 학생 ${selectedList.length}명 중\n` +
-      `프롬프트 완성 ${finishedStudents.length}명\n` +
-      `미완성 ${uncompletedCount}명\n\n` +
-      `${finishedStudents.length}명의 결과물을 인쇄하시겠습니까?`;
+      `작성/제출 완료 ${readyStudents.length}명\n` +
+      (uncompletedCount > 0 ? `미작성 ${uncompletedCount}명\n\n` : '\n') +
+      `${readyStudents.length}명의 결과물을 인쇄하시겠습니까?`;
 
     if (window.confirm(message)) {
       onPrintMultiple(
-        finishedStudents,
-        `선택 학생 (${finishedStudents.length}명) 롤모델 챗봇 결과 보고서`
+        readyStudents,
+        `선택 학생 (${readyStudents.length}명) 롤모델 챗봇 결과 보고서`
       );
     }
   };
@@ -146,23 +149,26 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
       return;
     }
 
-    const finishedStudents = classStudents.filter((s) => Boolean(getStudentPrompt(s)));
-    const uncompletedCount = classStudents.length - finishedStudents.length;
+    const hasPrintableContent = (s: StudentProgress) =>
+      Boolean(getStudentPrompt(s) || s.step10?.barrierAnswer || s.step10?.gemUrl || s.step1?.roleModelName || s.isFinalSubmitted);
 
-    if (finishedStudents.length === 0) {
-      alert(`${selectedGrade}학년 ${selectedClass}반 총 ${classStudents.length}명 중 작성된 프롬프트가 있는 학생이 없습니다.`);
+    const readyStudents = classStudents.filter(hasPrintableContent);
+    const uncompletedCount = classStudents.length - readyStudents.length;
+
+    if (readyStudents.length === 0) {
+      alert(`${selectedGrade}학년 ${selectedClass}반 총 ${classStudents.length}명 중 작성된 활동 내용이 있는 학생이 없습니다.`);
       return;
     }
 
     const message =
       `${selectedGrade}학년 ${selectedClass}반 총 ${classStudents.length}명 중\n` +
-      `프롬프트 완성 ${finishedStudents.length}명\n` +
-      `미완성 ${uncompletedCount}명\n\n` +
-      `${finishedStudents.length}명의 결과물을 인쇄하시겠습니까?`;
+      `작성/제출 완료 ${readyStudents.length}명\n` +
+      (uncompletedCount > 0 ? `미작성 ${uncompletedCount}명\n\n` : '\n') +
+      `${readyStudents.length}명의 결과물을 인쇄하시겠습니까?`;
 
     if (window.confirm(message)) {
       onPrintMultiple(
-        finishedStudents,
+        readyStudents,
         `${selectedGrade}학년 ${selectedClass}반 롤모델 챗봇 결과 보고서`
       );
     }

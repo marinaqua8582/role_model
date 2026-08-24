@@ -271,9 +271,6 @@ export default function App() {
     try {
       const detailedStudents = await Promise.all(
         students.map(async (s) => {
-          if (s.step1?.roleModelReason || s.step6?.finalPrompt || s.step6?.initialPrompt) {
-            return s;
-          }
           try {
             const d = await fetchStudentDetail(s.studentKey);
             return d || s;

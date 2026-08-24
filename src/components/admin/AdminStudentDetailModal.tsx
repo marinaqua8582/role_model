@@ -207,13 +207,13 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
                     <div className="space-y-1">
                       <span className="font-bold text-[#4B6344] block">[챗봇 답변]</span>
                       <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#2C362B] leading-relaxed whitespace-pre-wrap">
-                        {student.step10?.barrierAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
+                        {student.step10?.barrierAnswer || student.step11?.barrierAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
                       </div>
                     </div>
                     <div className="space-y-1">
                       <span className="font-bold text-[#9E6B38] block">[알게 된 점 / 느낀 점]</span>
                       <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#5D6B58] leading-relaxed whitespace-pre-wrap">
-                        {student.step10?.barrierReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
+                        {student.step10?.barrierReflection || student.step11?.barrierReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
                       </div>
                     </div>
                   </div>
@@ -234,13 +234,13 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
                     <div className="space-y-1">
                       <span className="font-bold text-[#4B6344] block">[챗봇 답변]</span>
                       <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#2C362B] leading-relaxed whitespace-pre-wrap">
-                        {student.step10?.decisionAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
+                        {student.step10?.decisionAnswer || student.step11?.decisionAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
                       </div>
                     </div>
                     <div className="space-y-1">
                       <span className="font-bold text-[#9E6B38] block">[알게 된 점 / 느낀 점]</span>
                       <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#5D6B58] leading-relaxed whitespace-pre-wrap">
-                        {student.step10?.decisionReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
+                        {student.step10?.decisionReflection || student.step11?.decisionReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
                       </div>
                     </div>
                   </div>
@@ -261,13 +261,13 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
                     <div className="space-y-1">
                       <span className="font-bold text-[#4B6344] block">[챗봇 답변]</span>
                       <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#2C362B] leading-relaxed whitespace-pre-wrap">
-                        {student.step10?.educationAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
+                        {student.step10?.educationAnswer || student.step11?.educationAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
                       </div>
                     </div>
                     <div className="space-y-1">
                       <span className="font-bold text-[#9E6B38] block">[알게 된 점 / 느낀 점]</span>
                       <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#5D6B58] leading-relaxed whitespace-pre-wrap">
-                        {student.step10?.educationReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
+                        {student.step10?.educationReflection || student.step11?.educationReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
                       </div>
                     </div>
                   </div>
@@ -277,14 +277,14 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
                 <div className="p-4 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl space-y-2">
                   <h4 className="font-bold text-[#2C362B] text-xs flex items-center justify-between">
                     <span>상담 후 나의 진로 생각 (최종 성찰)</span>
-                    {student.step10?.finalCareerReflection && (
+                    {(student.step10?.finalCareerReflection || student.step11?.finalCareerReflection) && (
                       <span className="text-[11px] text-[#4B6344] font-semibold">
-                        ({student.step10.finalCareerReflection.length}자)
+                        ({(student.step10?.finalCareerReflection || student.step11?.finalCareerReflection || '').length}자)
                       </span>
                     )}
                   </h4>
                   <div className="p-3.5 bg-white rounded-xl border border-[#DCE2D7] text-[#2C362B] leading-relaxed whitespace-pre-wrap text-xs">
-                    {student.step10?.finalCareerReflection || <span className="text-[#9CA3AF]">(작성 내용 없음)</span>}
+                    {student.step10?.finalCareerReflection || student.step11?.finalCareerReflection || <span className="text-[#9CA3AF]">(작성 내용 없음)</span>}
                   </div>
                 </div>
 

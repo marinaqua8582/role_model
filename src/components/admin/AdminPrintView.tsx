@@ -30,7 +30,7 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
           html, body {
             background-color: #ffffff !important;
             color: #000000 !important;
-            font-size: 11pt !important;
+            font-size: 10.5pt !important;
             margin: 0 !important;
             padding: 0 !important;
             -webkit-print-color-adjust: exact !important;
@@ -39,6 +39,7 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
           .print-hidden-all {
             display: none !important;
           }
+          /* Student separation: ONLY page break between different students */
           .student-print-page {
             page-break-after: always !important;
             break-after: page !important;
@@ -52,16 +53,36 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
             break-after: auto !important;
             margin-bottom: 0 !important;
           }
-          .print-section {
+          /* Short compact sections: keep together if small */
+          .print-section-short {
             page-break-inside: avoid !important;
             break-inside: avoid !important;
           }
-          .prompt-print-box {
-            page-break-inside: avoid !important;
+          /* Section headers: prevent orphan headings at bottom of page */
+          .print-section-header {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
             break-inside: avoid !important;
+          }
+          /* Long sections: allow natural page splitting across pages */
+          .print-section-long {
+            page-break-inside: auto !important;
+            break-inside: auto !important;
+          }
+          .prompt-print-box {
+            page-break-inside: auto !important;
+            break-inside: auto !important;
             white-space: pre-wrap !important;
             word-break: break-word !important;
             overflow-wrap: break-word !important;
+          }
+          .counseling-item {
+            page-break-inside: auto !important;
+            break-inside: auto !important;
+          }
+          .counseling-item-header {
+            page-break-after: avoid !important;
+            break-after: avoid !important;
           }
         }
       `}</style>
@@ -80,7 +101,7 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
           <div>
             <h2 className="text-base font-bold text-[#2C362B]">{title}</h2>
             <p className="text-xs text-[#6B7280]">
-              인쇄 대상: 총 <strong className="text-[#4B6344]">{studentsToPrint.length}명</strong> (각 학생별 1페이지씩 A4 세로 인쇄)
+              인쇄 대상: 총 <strong className="text-[#4B6344]">{studentsToPrint.length}명</strong> (학생별 결과를 A4 세로 형식으로 인쇄합니다.)
             </p>
           </div>
         </div>
@@ -107,7 +128,7 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
       {/* Printable Sheet Content */}
       <div className="max-w-4xl mx-auto space-y-8 print:space-y-0 print:max-w-none">
         {studentsToPrint.map((student, idx) => {
-          // Priority: 1. finalPrompt, 2. revisedPrompt, 3. initialPrompt
+          // Prompt resolution priority
           const finalPrompt = getStudentPrompt(student);
           const hasPrompt = Boolean(finalPrompt);
 
@@ -136,11 +157,29 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
           const speakingStyleLabel = student.step3?.speakingStyle || '멘토처럼 따뜻하게';
           const honorificStyleLabel = student.step3?.honorificStyle || '친근한 존댓말';
 
-          const printDate = student.step10?.submittedAt
-            ? new Date(student.step10.submittedAt).toLocaleDateString('ko-KR')
-            : student.updatedAt
-            ? new Date(student.updatedAt).toLocaleDateString('ko-KR')
-            : new Date().toLocaleDateString('ko-KR');
+          // STEP 10 Counseling answers with fallback to step11
+          const barrierAnswer = (student.step10?.barrierAnswer || student.step11?.barrierAnswer || '').trim();
+          const barrierReflection = (student.step10?.barrierReflection || student.step11?.barrierReflection || '').trim();
+          const decisionAnswer = (student.step10?.decisionAnswer || student.step11?.decisionAnswer || '').trim();
+          const decisionReflection = (student.step10?.decisionReflection || student.step11?.decisionReflection || '').trim();
+          const educationAnswer = (student.step10?.educationAnswer || student.step11?.educationAnswer || '').trim();
+          const educationReflection = (student.step10?.educationReflection || student.step11?.educationReflection || '').trim();
+          const finalCareerReflection = (student.step10?.finalCareerReflection || student.step11?.finalCareerReflection || '').trim();
+
+          const hasCounselingData = Boolean(
+            barrierAnswer ||
+            barrierReflection ||
+            decisionAnswer ||
+            decisionReflection ||
+            educationAnswer ||
+            educationReflection ||
+            finalCareerReflection
+          );
+
+          const isCompletedFinal = Boolean(
+            student.isFinalSubmitted ||
+            (barrierAnswer && decisionAnswer && educationAnswer && finalCareerReflection)
+          );
 
           return (
             <div
@@ -148,7 +187,7 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
               className="student-print-page bg-white p-8 sm:p-10 rounded-2xl border border-[#E1E4D8] shadow-sm print:p-0 print:border-none print:shadow-none"
             >
               {/* Document Header */}
-              <div className="border-b-2 border-[#2C362B] pb-3 mb-5 flex justify-between items-end print:pb-2 print:mb-4">
+              <div className="border-b-2 border-[#2C362B] pb-3 mb-5 flex justify-between items-end print:pb-2 print:mb-4 print-section-header">
                 <div>
                   <span className="text-xs font-bold text-[#4B6344] uppercase tracking-wider block mb-0.5">
                     진로 수업 AI 프로젝트
@@ -167,8 +206,8 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                 </div>
               </div>
 
-              {/* 1. Student Info & Role Model (2-column layout) */}
-              <div className="grid grid-cols-2 gap-3 mb-4 text-xs">
+              {/* 1. Student Info & Role Model (Short section) */}
+              <div className="grid grid-cols-2 gap-3 mb-4 text-xs print-section-short">
                 {/* [학생 정보] */}
                 <div className="p-3.5 bg-[#FAFBF9] border border-[#E1E4D8] rounded-xl space-y-1 print:bg-white print:border-[#CCD4C5]">
                   <div className="text-[10px] font-bold text-[#4B6344] uppercase tracking-wider">
@@ -179,7 +218,7 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                   </div>
                   <div className="text-[#5D6B58] text-[11px]">
                     진행 상태: STEP {student.currentStep}{' '}
-                    {student.isFinalSubmitted ? '(최종 제출 완료)' : '(진행 중)'}
+                    {isCompletedFinal ? '(최종 제출 완료)' : '(진행 중)'}
                   </div>
                 </div>
 
@@ -201,9 +240,9 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                 </div>
               </div>
 
-              {/* 2. Chatbot Design Specification */}
-              <div className="mb-4 print-section">
-                <div className="text-xs font-bold text-[#2C362B] flex items-center gap-1.5 border-l-3 border-[#4B6344] pl-2 mb-2">
+              {/* 2. Chatbot Design Specification (Short section) */}
+              <div className="mb-4 print-section-short">
+                <div className="text-xs font-bold text-[#2C362B] flex items-center gap-1.5 border-l-3 border-[#4B6344] pl-2 mb-2 print-section-header">
                   <span>[챗봇 설계]</span>
                 </div>
 
@@ -241,9 +280,9 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                 </div>
               </div>
 
-              {/* 3. Final Prompt */}
-              <div className="mb-4 print-section">
-                <div className="text-xs font-bold text-[#2C362B] flex items-center justify-between border-l-3 border-[#4B6344] pl-2 mb-2">
+              {/* 3. Final Prompt (Long section, header avoided from page break, body splits naturally) */}
+              <div className="mb-4 print-section-long">
+                <div className="text-xs font-bold text-[#2C362B] flex items-center justify-between border-l-3 border-[#4B6344] pl-2 mb-2 print-section-header">
                   <span>[최종 프롬프트]</span>
                   <span className="text-[10px] text-[#5D6B58] font-normal">
                     {student.step6?.finalPrompt
@@ -256,14 +295,14 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                   </span>
                 </div>
 
-                <div className="prompt-print-box p-4 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl font-mono text-[10.5px] leading-relaxed text-[#1F271E] whitespace-pre-wrap break-words print:bg-white print:border-[#9CA3AF]">
+                <div className="prompt-print-box p-4 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl font-mono text-[10px] leading-relaxed text-[#1F271E] whitespace-pre-wrap break-words print:bg-white print:border-[#9CA3AF]">
                   {hasPrompt ? finalPrompt : '(학생이 작성한 프롬프트가 없습니다)'}
                 </div>
               </div>
 
-              {/* 4. Test & Revision History */}
-              <div className="mb-4 print-section">
-                <div className="text-xs font-bold text-[#2C362B] flex items-center gap-1.5 border-l-3 border-[#4B6344] pl-2 mb-2">
+              {/* 4. Test & Revision History (Short section) */}
+              <div className="mb-4 print-section-short">
+                <div className="text-xs font-bold text-[#2C362B] flex items-center gap-1.5 border-l-3 border-[#4B6344] pl-2 mb-2 print-section-header">
                   <span>[테스트 및 수정]</span>
                 </div>
 
@@ -296,9 +335,9 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                 </div>
               </div>
 
-              {/* 5. Final Submissions & Gem Link */}
-              <div className="print-section">
-                <div className="text-xs font-bold text-[#2C362B] flex items-center gap-1.5 border-l-3 border-[#4B6344] pl-2 mb-2">
+              {/* 5. Final Submissions & Gem Link (Short section) */}
+              <div className="mb-4 print-section-short">
+                <div className="text-xs font-bold text-[#2C362B] flex items-center gap-1.5 border-l-3 border-[#4B6344] pl-2 mb-2 print-section-header">
                   <span>[최종 결과물 및 Gem 링크]</span>
                 </div>
 
@@ -320,85 +359,113 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                 </div>
               </div>
 
-              {/* 6. Role Model Career Counseling Results (STEP 10) */}
-              {((student.step10?.barrierAnswer || student.step11?.barrierAnswer) ||
-                (student.step10?.decisionAnswer || student.step11?.decisionAnswer) ||
-                (student.step10?.educationAnswer || student.step11?.educationAnswer) ||
-                (student.step10?.finalCareerReflection || student.step11?.finalCareerReflection)) && (
-                <div className="mt-4 print-section">
-                  <div className="text-xs font-bold text-[#2C362B] flex items-center justify-between border-l-3 border-[#4B6344] pl-2 mb-2">
+              {/* 6. Role Model Career Counseling Results (STEP 10 - Long section, item-by-item natural split) */}
+              {hasCounselingData && (
+                <div className="print-section-long">
+                  <div className="text-xs font-bold text-[#2C362B] flex items-center justify-between border-l-3 border-[#4B6344] pl-2 mb-2 print-section-header">
                     <span>[지정 진로 상담 수행평가 결과]</span>
                     <span className="text-[10px] text-[#5D6B58] font-normal">
-                      {student.isFinalSubmitted ? '✓ 최종 제출 완료' : '진행 중'}
+                      {isCompletedFinal ? '✓ 최종 제출 완료' : '진행 중'}
                     </span>
                   </div>
 
-                  <div className="p-3.5 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl text-xs space-y-2.5 print:bg-white print:border-[#9CA3AF]">
-                    {/* Counseling Q1 */}
-                    {(student.step10?.barrierAnswer || student.step11?.barrierAnswer) && (
-                      <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
-                        <span className="font-bold text-[#4B6344] block">
-                          1. 진로 장벽 극복 상담
+                  <div className="space-y-3">
+                    {/* ① 진로 장벽 극복 */}
+                    <div className="counseling-item p-3.5 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl text-xs space-y-2 print:bg-white print:border-[#9CA3AF]">
+                      <div className="counseling-item-header pb-1.5 border-b border-[#E1E4D8]">
+                        <span className="font-bold text-[#4B6344] text-xs block">
+                          ① 진로 장벽 극복
                         </span>
-                        <div className="text-[#2C362B] leading-snug">
-                          <strong className="text-[#5D6B58]">챗봇 답변: </strong>
-                          {student.step10?.barrierAnswer || student.step11?.barrierAnswer}
+                        <div className="mt-1 text-[11px] text-[#3D4D3A] bg-[#F1F4EF] p-2 rounded-lg print:bg-gray-50">
+                          <strong className="text-[#2C362B]">지정 질문: </strong>
+                          “이 진로를 선택하거나 준비하는 과정에서 가장 큰 어려움이나 장벽은 무엇이었나요? 그 어려움을 어떻게 극복했나요?”
                         </div>
-                        {(student.step10?.barrierReflection || student.step11?.barrierReflection) && (
-                          <div className="text-[#5D6B58] leading-snug">
-                            <strong className="text-[#9E6B38]">알게 된 점: </strong>
-                            {student.step10?.barrierReflection || student.step11?.barrierReflection}
-                          </div>
-                        )}
                       </div>
-                    )}
 
-                    {/* Counseling Q2 */}
-                    {(student.step10?.decisionAnswer || student.step11?.decisionAnswer) && (
-                      <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
-                        <span className="font-bold text-[#4B6344] block">
-                          2. 진로 의사 결정 상담
-                        </span>
-                        <div className="text-[#2C362B] leading-snug">
-                          <strong className="text-[#5D6B58]">챗봇 답변: </strong>
-                          {student.step10?.decisionAnswer || student.step11?.decisionAnswer}
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="text-[#2C362B] leading-relaxed">
+                          <strong className="text-[#4B6344] font-bold block mb-0.5">· 챗봇 답변:</strong>
+                          <p className="whitespace-pre-wrap bg-white/70 p-2 rounded-md border border-[#E1E4D8]/60 print:bg-white">
+                            {barrierAnswer || '(답변 미입력)'}
+                          </p>
                         </div>
-                        {(student.step10?.decisionReflection || student.step11?.decisionReflection) && (
-                          <div className="text-[#5D6B58] leading-snug">
-                            <strong className="text-[#9E6B38]">알게 된 점: </strong>
-                            {student.step10?.decisionReflection || student.step11?.decisionReflection}
-                          </div>
-                        )}
-                      </div>
-                    )}
 
-                    {/* Counseling Q3 */}
-                    {(student.step10?.educationAnswer || student.step11?.educationAnswer) && (
-                      <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
-                        <span className="font-bold text-[#4B6344] block">
-                          3. 진학 설계 상담
-                        </span>
-                        <div className="text-[#2C362B] leading-snug">
-                          <strong className="text-[#5D6B58]">챗봇 답변: </strong>
-                          {student.step10?.educationAnswer || student.step11?.educationAnswer}
+                        <div className="text-[#2C362B] leading-relaxed">
+                          <strong className="text-[#9E6B38] font-bold block mb-0.5">· 상담을 통해 알게 된 점 / 느낀 점:</strong>
+                          <p className="whitespace-pre-wrap bg-[#FFFDF9] p-2 rounded-md border border-amber-200/60 text-[#2C362B] print:bg-white">
+                            {barrierReflection || '(느낀 점 미입력)'}
+                          </p>
                         </div>
-                        {(student.step10?.educationReflection || student.step11?.educationReflection) && (
-                          <div className="text-[#5D6B58] leading-snug">
-                            <strong className="text-[#9E6B38]">알게 된 점: </strong>
-                            {student.step10?.educationReflection || student.step11?.educationReflection}
-                          </div>
-                        )}
                       </div>
-                    )}
+                    </div>
 
-                    {/* Final Career Reflection */}
-                    {(student.step10?.finalCareerReflection || student.step11?.finalCareerReflection) && (
-                      <div className="pt-1 text-[11px] leading-snug space-y-1">
-                        <span className="font-bold text-[#2C362B] block">
-                          [상담 후 나의 진로 생각 (최종 성찰)]
+                    {/* ② 진로 의사 결정 */}
+                    <div className="counseling-item p-3.5 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl text-xs space-y-2 print:bg-white print:border-[#9CA3AF]">
+                      <div className="counseling-item-header pb-1.5 border-b border-[#E1E4D8]">
+                        <span className="font-bold text-[#4B6344] text-xs block">
+                          ② 진로 의사 결정
                         </span>
-                        <p className="text-[#2C362B] whitespace-pre-wrap">
-                          {student.step10?.finalCareerReflection || student.step11?.finalCareerReflection}
+                        <div className="mt-1 text-[11px] text-[#3D4D3A] bg-[#F1F4EF] p-2 rounded-lg print:bg-gray-50">
+                          <strong className="text-[#2C362B]">지정 질문: </strong>
+                          “여러 진로 선택지 중에서 현재의 진로를 선택하게 된 결정적인 이유는 무엇이었나요? 선택할 때 어떤 기준을 중요하게 생각했나요?”
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="text-[#2C362B] leading-relaxed">
+                          <strong className="text-[#4B6344] font-bold block mb-0.5">· 챗봇 답변:</strong>
+                          <p className="whitespace-pre-wrap bg-white/70 p-2 rounded-md border border-[#E1E4D8]/60 print:bg-white">
+                            {decisionAnswer || '(답변 미입력)'}
+                          </p>
+                        </div>
+
+                        <div className="text-[#2C362B] leading-relaxed">
+                          <strong className="text-[#9E6B38] font-bold block mb-0.5">· 상담을 통해 알게 된 점 / 느낀 점:</strong>
+                          <p className="whitespace-pre-wrap bg-[#FFFDF9] p-2 rounded-md border border-amber-200/60 text-[#2C362B] print:bg-white">
+                            {decisionReflection || '(느낀 점 미입력)'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* ③ 진학 설계 */}
+                    <div className="counseling-item p-3.5 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl text-xs space-y-2 print:bg-white print:border-[#9CA3AF]">
+                      <div className="counseling-item-header pb-1.5 border-b border-[#E1E4D8]">
+                        <span className="font-bold text-[#4B6344] text-xs block">
+                          ③ 진학 설계
+                        </span>
+                        <div className="mt-1 text-[11px] text-[#3D4D3A] bg-[#F1F4EF] p-2 rounded-lg print:bg-gray-50">
+                          <strong className="text-[#2C362B]">지정 질문: </strong>
+                          “이 진로를 준비하려는 중학생이라면 고등학교 진학이나 이후 학업 경로를 어떻게 계획하는 것이 좋을까요? 지금부터 준비하면 좋은 것도 함께 알려주세요.”
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5 text-[11px]">
+                        <div className="text-[#2C362B] leading-relaxed">
+                          <strong className="text-[#4B6344] font-bold block mb-0.5">· 챗봇 답변:</strong>
+                          <p className="whitespace-pre-wrap bg-white/70 p-2 rounded-md border border-[#E1E4D8]/60 print:bg-white">
+                            {educationAnswer || '(답변 미입력)'}
+                          </p>
+                        </div>
+
+                        <div className="text-[#2C362B] leading-relaxed">
+                          <strong className="text-[#9E6B38] font-bold block mb-0.5">· 상담을 통해 알게 된 점 / 느낀 점:</strong>
+                          <p className="whitespace-pre-wrap bg-[#FFFDF9] p-2 rounded-md border border-amber-200/60 text-[#2C362B] print:bg-white">
+                            {educationReflection || '(느낀 점 미입력)'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* [상담 후 나의 진로 생각] */}
+                    {finalCareerReflection && (
+                      <div className="counseling-item p-4 bg-[#F8F9F5] border border-[#4B6344]/40 rounded-xl text-xs space-y-2 print:bg-white print:border-[#4B6344]">
+                        <div className="counseling-item-header font-bold text-[#2C362B] text-xs flex items-center gap-1.5 border-b border-[#E1E4D8] pb-1.5">
+                          <Sparkles className="w-4 h-4 text-[#4B6344]" />
+                          <span>[상담 후 나의 진로 생각 (최종 성찰)]</span>
+                        </div>
+                        <p className="text-[#2C362B] text-[11px] leading-relaxed whitespace-pre-wrap bg-white p-3 rounded-lg border border-[#E1E4D8]">
+                          {finalCareerReflection}
                         </p>
                       </div>
                     )}

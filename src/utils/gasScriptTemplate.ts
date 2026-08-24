@@ -97,13 +97,12 @@ function isValidAdminRequest_(data) {
 }
 
 function initSheetsIfNeeded(ss) {
-  var sheetNames = ['Roster', 'Progress', 'Tests', 'Submissions', 'Counseling'];
+  var sheetNames = ['Roster', 'Progress', 'Tests', 'Submissions'];
   var headers = {
     'Roster': ['grade', 'class', 'number', 'name'],
     'Progress': ['studentKey', 'grade', 'class', 'number', 'name', 'currentStep', 'roleModelName', 'roleModelJob', 'roleModelReason', 'jobDescription', 'competencies', 'careerHistory', 'strengths', 'values', 'challengeExperience', 'chatbotPurposes', 'targetUser', 'expectedOutcome', 'personality', 'speakingStyle', 'honorificStyle', 'desiredFeeling', 'answerLength', 'answerElements', 'chatbotName', 'initialPrompt', 'revisedPrompt', 'finalPrompt', 'createdAt', 'updatedAt'],
     'Tests': ['studentKey', 'test1Result', 'test2Result', 'test3Result', 'test4Result', 'test5Result', 'test6Result', 'problemDescription', 'revisionNote', 'testedAt'],
-    'Submissions': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'sampleQuestion1', 'sampleAnswer1', 'sampleQuestion2', 'sampleAnswer2', 'sampleQuestion3', 'sampleAnswer3', 'revisionSummary', 'reflection', 'submittedAt'],
-    'Counseling': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'completedAt']
+    'Submissions': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'revisionSummary', 'submittedAt']
   };
   
   sheetNames.forEach(function(name) {
@@ -479,14 +478,14 @@ function submitFinal(ss, submission) {
     submission.chatbotName || '',
     submission.finalPrompt || '',
     submission.gemUrl || '',
-    submission.sampleQuestion1 || '',
-    submission.sampleAnswer1 || '',
-    submission.sampleQuestion2 || '',
-    submission.sampleAnswer2 || '',
-    submission.sampleQuestion3 || '',
-    submission.sampleAnswer3 || '',
+    submission.barrierAnswer || submission.sampleQuestion1 || '',
+    submission.barrierReflection || submission.sampleAnswer1 || '',
+    submission.decisionAnswer || submission.sampleQuestion2 || '',
+    submission.decisionReflection || submission.sampleAnswer2 || '',
+    submission.educationAnswer || submission.sampleQuestion3 || '',
+    submission.educationReflection || submission.sampleAnswer3 || '',
+    submission.finalCareerReflection || submission.reflection || '',
     submission.revisionSummary || '',
-    submission.reflection || '',
     submittedAt
   ];
   
@@ -776,14 +775,14 @@ function getAdminDashboard(ss) {
           chatbotName: String(sData[m][7] || ''),
           finalPrompt: String(sData[m][8] || ''),
           gemUrl: String(sData[m][9] || ''),
-          sampleQuestion1: String(sData[m][10] || ''),
-          sampleAnswer1: String(sData[m][11] || ''),
-          sampleQuestion2: String(sData[m][12] || ''),
-          sampleAnswer2: String(sData[m][13] || ''),
-          sampleQuestion3: String(sData[m][14] || ''),
-          sampleAnswer3: String(sData[m][15] || ''),
-          revisionSummary: String(sData[m][16] || ''),
-          reflection: String(sData[m][17] || ''),
+          barrierAnswer: String(sData[m][10] || ''),
+          barrierReflection: String(sData[m][11] || ''),
+          decisionAnswer: String(sData[m][12] || ''),
+          decisionReflection: String(sData[m][13] || ''),
+          educationAnswer: String(sData[m][14] || ''),
+          educationReflection: String(sData[m][15] || ''),
+          finalCareerReflection: String(sData[m][16] || ''),
+          revisionSummary: String(sData[m][17] || ''),
           submittedAt: String(sData[m][18] || '')
         };
         if (!rosterKeys[sKey]) {
@@ -1024,14 +1023,14 @@ function getStudentDetail(ss, studentKey) {
   // Load Submissions
   var subObj = {
     gemUrl: '',
-    sampleQuestion1: '',
-    sampleAnswer1: '',
-    sampleQuestion2: '',
-    sampleAnswer2: '',
-    sampleQuestion3: '',
-    sampleAnswer3: '',
+    barrierAnswer: '',
+    barrierReflection: '',
+    decisionAnswer: '',
+    decisionReflection: '',
+    educationAnswer: '',
+    educationReflection: '',
+    finalCareerReflection: '',
     revisionSummary: '',
-    reflection: '',
     submittedAt: ''
   };
 
@@ -1046,14 +1045,14 @@ function getStudentDetail(ss, studentKey) {
       ) {
         if (!name) name = String(sData[k][4] || '').trim();
         subObj.gemUrl = String(sData[k][9] || '');
-        subObj.sampleQuestion1 = String(sData[k][10] || '');
-        subObj.sampleAnswer1 = String(sData[k][11] || '');
-        subObj.sampleQuestion2 = String(sData[k][12] || '');
-        subObj.sampleAnswer2 = String(sData[k][13] || '');
-        subObj.sampleQuestion3 = String(sData[k][14] || '');
-        subObj.sampleAnswer3 = String(sData[k][15] || '');
-        subObj.revisionSummary = String(sData[k][16] || '');
-        subObj.reflection = String(sData[k][17] || '');
+        subObj.barrierAnswer = String(sData[k][10] || '');
+        subObj.barrierReflection = String(sData[k][11] || '');
+        subObj.decisionAnswer = String(sData[k][12] || '');
+        subObj.decisionReflection = String(sData[k][13] || '');
+        subObj.educationAnswer = String(sData[k][14] || '');
+        subObj.educationReflection = String(sData[k][15] || '');
+        subObj.finalCareerReflection = String(sData[k][16] || '');
+        subObj.revisionSummary = String(sData[k][17] || '');
         subObj.submittedAt = String(sData[k][18] || '');
         break;
       }

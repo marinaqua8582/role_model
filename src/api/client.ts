@@ -199,16 +199,6 @@ export function createInitialStudentProgress(student: StudentInfo): StudentProgr
     },
     step10: {
       gemUrl: '',
-      sampleQuestion1: '',
-      sampleAnswer1: '',
-      sampleQuestion2: '',
-      sampleAnswer2: '',
-      sampleQuestion3: '',
-      sampleAnswer3: '',
-      revisionSummary: '',
-      reflection: '',
-    },
-    step11: {
       barrierAnswer: '',
       barrierReflection: '',
       decisionAnswer: '',
@@ -216,6 +206,14 @@ export function createInitialStudentProgress(student: StudentInfo): StudentProgr
       educationAnswer: '',
       educationReflection: '',
       finalCareerReflection: '',
+      revisionSummary: '',
+      sampleQuestion1: '',
+      sampleAnswer1: '',
+      sampleQuestion2: '',
+      sampleAnswer2: '',
+      sampleQuestion3: '',
+      sampleAnswer3: '',
+      reflection: '',
     },
     createdAt: now,
     updatedAt: now,
@@ -223,7 +221,6 @@ export function createInitialStudentProgress(student: StudentInfo): StudentProgr
     isTestCompleted: false,
     isGemSubmitted: false,
     isFinalSubmitted: false,
-    isCounselingCompleted: false,
   };
 }
 
@@ -473,40 +470,34 @@ export function mapSheetDataToProgress(raw: any): StudentProgress {
       testedAt: '',
     },
     step10: {
-      gemUrl: String(raw.gemUrl || '').trim(),
-      sampleQuestion1: String(raw.sampleQuestion1 || '').trim(),
-      sampleAnswer1: String(raw.sampleAnswer1 || '').trim(),
-      sampleQuestion2: String(raw.sampleQuestion2 || '').trim(),
-      sampleAnswer2: String(raw.sampleAnswer2 || '').trim(),
-      sampleQuestion3: String(raw.sampleQuestion3 || '').trim(),
-      sampleAnswer3: String(raw.sampleAnswer3 || '').trim(),
-      revisionSummary: String(raw.revisionSummary || '').trim(),
-      reflection: String(raw.reflection || '').trim(),
-      submittedAt: raw.submittedAt || '',
-    },
-    step11: {
-      barrierAnswer: String(raw.barrierAnswer || '').trim(),
-      barrierReflection: String(raw.barrierReflection || '').trim(),
-      decisionAnswer: String(raw.decisionAnswer || '').trim(),
-      decisionReflection: String(raw.decisionReflection || '').trim(),
-      educationAnswer: String(raw.educationAnswer || '').trim(),
-      educationReflection: String(raw.educationReflection || '').trim(),
-      finalCareerReflection: String(raw.finalCareerReflection || '').trim(),
-      completedAt: raw.counselingCompletedAt || raw.counselingSubmittedAt || raw.step11CompletedAt || '',
+      gemUrl: String(raw.gemUrl || raw.step10?.gemUrl || '').trim(),
+      barrierAnswer: String(raw.barrierAnswer || raw.step10?.barrierAnswer || raw.step11?.barrierAnswer || '').trim(),
+      barrierReflection: String(raw.barrierReflection || raw.step10?.barrierReflection || raw.step11?.barrierReflection || '').trim(),
+      decisionAnswer: String(raw.decisionAnswer || raw.step10?.decisionAnswer || raw.step11?.decisionAnswer || '').trim(),
+      decisionReflection: String(raw.decisionReflection || raw.step10?.decisionReflection || raw.step11?.decisionReflection || '').trim(),
+      educationAnswer: String(raw.educationAnswer || raw.step10?.educationAnswer || raw.step11?.educationAnswer || '').trim(),
+      educationReflection: String(raw.educationReflection || raw.step10?.educationReflection || raw.step11?.educationReflection || '').trim(),
+      finalCareerReflection: String(raw.finalCareerReflection || raw.step10?.finalCareerReflection || raw.step11?.finalCareerReflection || '').trim(),
+      revisionSummary: String(raw.revisionSummary || raw.step10?.revisionSummary || '').trim(),
+      sampleQuestion1: String(raw.sampleQuestion1 || raw.step10?.sampleQuestion1 || '').trim(),
+      sampleAnswer1: String(raw.sampleAnswer1 || raw.step10?.sampleAnswer1 || '').trim(),
+      sampleQuestion2: String(raw.sampleQuestion2 || raw.step10?.sampleQuestion2 || '').trim(),
+      sampleAnswer2: String(raw.sampleAnswer2 || raw.step10?.sampleAnswer2 || '').trim(),
+      sampleQuestion3: String(raw.sampleQuestion3 || raw.step10?.sampleQuestion3 || '').trim(),
+      sampleAnswer3: String(raw.sampleAnswer3 || raw.step10?.sampleAnswer3 || '').trim(),
+      reflection: String(raw.reflection || raw.step10?.reflection || '').trim(),
+      submittedAt: raw.submittedAt || raw.counselingCompletedAt || raw.step10?.submittedAt || raw.step11?.completedAt || '',
     },
     createdAt: raw.createdAt || new Date().toISOString(),
     updatedAt: raw.updatedAt || new Date().toISOString(),
     isPromptCompleted: Boolean(finalPrompt || currentStep >= 6),
     isTestCompleted: false,
-    isGemSubmitted: Boolean(raw.gemUrl),
+    isGemSubmitted: Boolean(raw.gemUrl || raw.step10?.gemUrl),
     isFinalSubmitted: Boolean(
       (raw.barrierAnswer && raw.decisionAnswer && raw.educationAnswer && raw.finalCareerReflection) ||
-      raw.isCounselingCompleted ||
-      raw.isFinalSubmitted
-    ),
-    isCounselingCompleted: Boolean(
-      (raw.barrierAnswer && raw.decisionAnswer && raw.educationAnswer && raw.finalCareerReflection) ||
-      raw.isCounselingCompleted
+      (raw.step10?.barrierAnswer && raw.step10?.decisionAnswer && raw.step10?.educationAnswer && raw.step10?.finalCareerReflection) ||
+      raw.isFinalSubmitted ||
+      raw.submitted
     ),
   };
 }
@@ -1240,14 +1231,21 @@ export async function submitFinal(
     chatbotName: (progress.step6?.chatbotName || '').trim(),
     finalPrompt: (progress.step6?.finalPrompt || progress.step6?.revisedPrompt || progress.step6?.initialPrompt || '').trim(),
     gemUrl: (submission.gemUrl || '').trim(),
-    sampleQuestion1: (submission.sampleQuestion1 || '').trim(),
-    sampleAnswer1: (submission.sampleAnswer1 || '').trim(),
-    sampleQuestion2: (submission.sampleQuestion2 || '').trim(),
-    sampleAnswer2: (submission.sampleAnswer2 || '').trim(),
-    sampleQuestion3: (submission.sampleQuestion3 || '').trim(),
-    sampleAnswer3: (submission.sampleAnswer3 || '').trim(),
+    barrierAnswer: (submission.barrierAnswer || '').trim(),
+    barrierReflection: (submission.barrierReflection || '').trim(),
+    decisionAnswer: (submission.decisionAnswer || '').trim(),
+    decisionReflection: (submission.decisionReflection || '').trim(),
+    educationAnswer: (submission.educationAnswer || '').trim(),
+    educationReflection: (submission.educationReflection || '').trim(),
+    finalCareerReflection: (submission.finalCareerReflection || '').trim(),
     revisionSummary: (submission.revisionSummary || '').trim(),
-    reflection: (submission.reflection || '').trim(),
+    sampleQuestion1: (submission.sampleQuestion1 || submission.barrierAnswer || '').trim(),
+    sampleAnswer1: (submission.sampleAnswer1 || submission.barrierReflection || '').trim(),
+    sampleQuestion2: (submission.sampleQuestion2 || submission.decisionAnswer || '').trim(),
+    sampleAnswer2: (submission.sampleAnswer2 || submission.decisionReflection || '').trim(),
+    sampleQuestion3: (submission.sampleQuestion3 || submission.educationAnswer || '').trim(),
+    sampleAnswer3: (submission.sampleAnswer3 || submission.educationReflection || '').trim(),
+    reflection: (submission.reflection || submission.finalCareerReflection || '').trim(),
     submittedAt: submission.submittedAt || now,
   };
 
@@ -1277,65 +1275,6 @@ export async function submitFinal(
   localMap[studentKey] = existing;
   saveStoredProgressMap(localMap);
 
-  return { success: true, message: '제출이 완료되었습니다.', submittedAt: now };
-}
-
-/**
- * Submit STEP 11 Counseling Activity to Google Apps Script
- */
-export async function submitCounseling(
-  student: StudentInfo,
-  counseling: Step11CounselingData,
-  progress: StudentProgress
-): Promise<{ success: boolean; message?: string; completedAt?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
-  const now = new Date().toISOString();
-
-  const payload = {
-    action: 'submitCounseling',
-    studentKey,
-    grade: Number(student.grade),
-    class: Number(student.classNum),
-    classNum: Number(student.classNum),
-    number: Number(student.number),
-    name: (student.name || '').trim(),
-    roleModelName: (progress.step1?.roleModelName || '').trim(),
-    roleModelJob: (progress.step1?.roleModelJob || '').trim(),
-    chatbotName: (progress.step6?.chatbotName || '').trim(),
-    gemUrl: (progress.step10?.gemUrl || '').trim(),
-    barrierAnswer: (counseling.barrierAnswer || '').trim(),
-    barrierReflection: (counseling.barrierReflection || '').trim(),
-    decisionAnswer: (counseling.decisionAnswer || '').trim(),
-    decisionReflection: (counseling.decisionReflection || '').trim(),
-    educationAnswer: (counseling.educationAnswer || '').trim(),
-    educationReflection: (counseling.educationReflection || '').trim(),
-    finalCareerReflection: (counseling.finalCareerReflection || '').trim(),
-    counselingCompletedAt: counseling.completedAt || now,
-  };
-
-  try {
-    const res = await callGasApi(payload);
-    if (!res || !res.success) {
-      console.warn('GAS submitCounseling response:', res?.message);
-    }
-  } catch (err: any) {
-    console.warn('submitCounseling to GAS skipped/failed:', err?.message);
-  }
-
-  // Update local storage
-  const localMap = getStoredProgressMap();
-  const existing = localMap[studentKey] || createInitialStudentProgress(student);
-  existing.currentStep = 11;
-  existing.step11 = {
-    ...counseling,
-    completedAt: counseling.completedAt || now,
-  };
-  existing.isCounselingCompleted = true;
-  existing.isFinalSubmitted = true;
-  existing.updatedAt = now;
-  localMap[studentKey] = existing;
-  saveStoredProgressMap(localMap);
-
   // Attempt server sync
   try {
     await fetch('/api/student/save-step', {
@@ -1345,7 +1284,7 @@ export async function submitCounseling(
     });
   } catch (e) {}
 
-  return { success: true, message: '진로 상담 활동이 완료되었습니다.', completedAt: now };
+  return { success: true, message: '진로 상담 및 최종 제출이 완료되었습니다.', submittedAt: now };
 }
 
 /**
@@ -1363,19 +1302,21 @@ export async function saveStudentProgress(progress: StudentProgress): Promise<{ 
   );
   progress.isGemSubmitted = Boolean(progress.step10?.gemUrl && progress.step10.gemUrl.trim());
 
-  const hasStep11Completed = Boolean(
-    progress.isCounselingCompleted ||
-    (progress.step11?.barrierAnswer &&
-      progress.step11?.barrierReflection &&
-      progress.step11?.decisionAnswer &&
-      progress.step11?.decisionReflection &&
-      progress.step11?.educationAnswer &&
-      progress.step11?.educationReflection &&
-      progress.step11?.finalCareerReflection)
+  const hasAllCounselingDone = Boolean(
+    progress.step10?.gemUrl?.trim() &&
+    progress.step10?.barrierAnswer?.trim() &&
+    progress.step10?.barrierReflection?.trim() &&
+    progress.step10?.decisionAnswer?.trim() &&
+    progress.step10?.decisionReflection?.trim() &&
+    progress.step10?.educationAnswer?.trim() &&
+    progress.step10?.educationReflection?.trim() &&
+    progress.step10?.finalCareerReflection?.trim() &&
+    progress.step10.finalCareerReflection.trim().length >= 30
   );
 
-  progress.isCounselingCompleted = hasStep11Completed;
-  progress.isFinalSubmitted = hasStep11Completed;
+  if (hasAllCounselingDone) {
+    progress.isFinalSubmitted = true;
+  }
 
   // Update local storage
   const map = getStoredProgressMap();
@@ -1870,76 +1811,72 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     ''
   ).trim();
 
-  // STEP 11: Counseling Activity
+  // STEP 10: Final Submission & Career Counseling Activity
   const step11Raw = raw.step11 || progressObj.step11 || {};
   const barrierAnswer = String(
+    step10Raw.barrierAnswer ||
+    submissionObj.barrierAnswer ||
     step11Raw.barrierAnswer ||
     raw.barrierAnswer ||
     progressObj.barrierAnswer ||
     ''
   ).trim();
   const barrierReflection = String(
+    step10Raw.barrierReflection ||
+    submissionObj.barrierReflection ||
     step11Raw.barrierReflection ||
     raw.barrierReflection ||
     progressObj.barrierReflection ||
     ''
   ).trim();
   const decisionAnswer = String(
+    step10Raw.decisionAnswer ||
+    submissionObj.decisionAnswer ||
     step11Raw.decisionAnswer ||
     raw.decisionAnswer ||
     progressObj.decisionAnswer ||
     ''
   ).trim();
   const decisionReflection = String(
+    step10Raw.decisionReflection ||
+    submissionObj.decisionReflection ||
     step11Raw.decisionReflection ||
     raw.decisionReflection ||
     progressObj.decisionReflection ||
     ''
   ).trim();
   const educationAnswer = String(
+    step10Raw.educationAnswer ||
+    submissionObj.educationAnswer ||
     step11Raw.educationAnswer ||
     raw.educationAnswer ||
     progressObj.educationAnswer ||
     ''
   ).trim();
   const educationReflection = String(
+    step10Raw.educationReflection ||
+    submissionObj.educationReflection ||
     step11Raw.educationReflection ||
     raw.educationReflection ||
     progressObj.educationReflection ||
     ''
   ).trim();
   const finalCareerReflection = String(
+    step10Raw.finalCareerReflection ||
+    submissionObj.finalCareerReflection ||
     step11Raw.finalCareerReflection ||
     raw.finalCareerReflection ||
     progressObj.finalCareerReflection ||
     ''
   ).trim();
-  const counselingCompletedAt = String(
-    step11Raw.completedAt ||
-    raw.counselingCompletedAt ||
-    progressObj.counselingCompletedAt ||
-    ''
-  ).trim();
 
-  const isCounselingCompleted = Boolean(
-    raw.isCounselingCompleted ||
-    progressObj.isCounselingCompleted ||
-    counselingCompletedAt ||
-    (barrierAnswer && decisionAnswer && educationAnswer && finalCareerReflection)
-  );
-
-  // Determine currentStep priority:
-  // 1. data.progress.currentStep (exact progress from DB)
-  // 2. root raw.currentStep
-  // 3. Fallback estimations based on submitted status
+  // Determine currentStep priority (clamped to 10):
   let currentStep = 1;
   if (progressObj.currentStep !== undefined && progressObj.currentStep !== null && Number(progressObj.currentStep) > 0) {
-    currentStep = Number(progressObj.currentStep);
+    currentStep = Math.min(10, Number(progressObj.currentStep));
   } else if (raw.currentStep !== undefined && raw.currentStep !== null && Number(raw.currentStep) > 0) {
-    currentStep = Number(raw.currentStep);
-  } else if (isCounselingCompleted || barrierAnswer) {
-    currentStep = 11;
-  } else if (gemUrl || submittedAt) {
+    currentStep = Math.min(10, Number(raw.currentStep));
+  } else if (barrierAnswer || gemUrl || submittedAt) {
     currentStep = 10;
   } else if (testedAt) {
     currentStep = 8;
@@ -1947,7 +1884,12 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     currentStep = 6;
   }
 
-  const isFinalSubmitted = isCounselingCompleted;
+  const isFinalSubmitted = Boolean(
+    (gemUrl && barrierAnswer && barrierReflection && decisionAnswer && decisionReflection && educationAnswer && educationReflection && finalCareerReflection) ||
+    raw.isFinalSubmitted ||
+    raw.submitted ||
+    (submittedAt && barrierAnswer)
+  );
 
   const hasAnyTestEvaluated = Object.values(testsObj).some((t) => t.result !== '');
   const isTestCompleted = Boolean(
@@ -2032,17 +1974,6 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     },
     step10: {
       gemUrl,
-      sampleQuestion1,
-      sampleAnswer1,
-      sampleQuestion2,
-      sampleAnswer2,
-      sampleQuestion3,
-      sampleAnswer3,
-      revisionSummary,
-      reflection,
-      submittedAt,
-    },
-    step11: {
       barrierAnswer,
       barrierReflection,
       decisionAnswer,
@@ -2050,15 +1981,22 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
       educationAnswer,
       educationReflection,
       finalCareerReflection,
-      completedAt: counselingCompletedAt,
+      revisionSummary,
+      sampleQuestion1,
+      sampleAnswer1,
+      sampleQuestion2,
+      sampleAnswer2,
+      sampleQuestion3,
+      sampleAnswer3,
+      reflection,
+      submittedAt,
     },
     createdAt: progressObj.createdAt || raw.createdAt || submittedAt || new Date().toISOString(),
-    updatedAt: counselingCompletedAt || submittedAt || progressObj.updatedAt || testedAt || raw.updatedAt || new Date().toISOString(),
+    updatedAt: submittedAt || progressObj.updatedAt || testedAt || raw.updatedAt || new Date().toISOString(),
     isPromptCompleted,
     isTestCompleted,
     isGemSubmitted: Boolean(gemUrl),
     isFinalSubmitted,
-    isCounselingCompleted,
   };
 }
 

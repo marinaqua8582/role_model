@@ -12,7 +12,6 @@ export const STEP_NAMES = [
   '챗봇 테스트',
   '프롬프트 수정',
   '최종 제출',
-  '진로 상담',
 ];
 
 interface StepProgressBarProps {
@@ -59,8 +58,8 @@ export const StepProgressBar: React.FC<StepProgressBarProps> = ({
           />
         </div>
 
-        {/* 11 Step Buttons */}
-        <div className="grid grid-cols-11 gap-1 sm:gap-1.5">
+        {/* 10 Step Buttons */}
+        <div className="grid grid-cols-10 gap-1 sm:gap-1.5">
           {STEP_NAMES.map((name, index) => {
             const stepNum = index + 1;
             const isCurrent = stepNum === currentStep;

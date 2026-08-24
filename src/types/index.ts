@@ -88,14 +88,24 @@ export interface TestData {
 
 export interface FinalSubmissionData {
   gemUrl: string;
-  sampleQuestion1: string;
-  sampleAnswer1: string;
-  sampleQuestion2: string;
-  sampleAnswer2: string;
-  sampleQuestion3: string;
-  sampleAnswer3: string;
-  revisionSummary: string;
-  reflection: string;
+  // Designated 3 Career Counseling Questions & Student Reflections
+  barrierAnswer: string;
+  barrierReflection: string;
+  decisionAnswer: string;
+  decisionReflection: string;
+  educationAnswer: string;
+  educationReflection: string;
+  finalCareerReflection: string;
+  // Revision summary (optional)
+  revisionSummary?: string;
+  // Legacy fields for backward compatibility
+  sampleQuestion1?: string;
+  sampleAnswer1?: string;
+  sampleQuestion2?: string;
+  sampleAnswer2?: string;
+  sampleQuestion3?: string;
+  sampleAnswer3?: string;
+  reflection?: string;
   submittedAt?: string;
 }
 
@@ -116,7 +126,7 @@ export interface StudentProgress {
   classNum: number;
   number: number;
   name: string;
-  currentStep: number; // 1 to 11
+  currentStep: number; // 1 to 10
   step1: RoleModelData;
   step2: ChatbotPurposeData;
   step3: PersonalityData;
@@ -125,7 +135,7 @@ export interface StudentProgress {
   step6: PromptData;
   step8: TestData;
   step10: FinalSubmissionData;
-  step11: Step11CounselingData;
+  step11?: Step11CounselingData;
   createdAt: string;
   updatedAt: string;
   isPromptCompleted: boolean;

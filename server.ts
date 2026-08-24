@@ -245,16 +245,6 @@ app.post('/api/auth/student', (req, res) => {
     },
     step10: {
       gemUrl: '',
-      sampleQuestion1: '',
-      sampleAnswer1: '',
-      sampleQuestion2: '',
-      sampleAnswer2: '',
-      sampleQuestion3: '',
-      sampleAnswer3: '',
-      revisionSummary: '',
-      reflection: '',
-    },
-    step11: {
       barrierAnswer: '',
       barrierReflection: '',
       decisionAnswer: '',
@@ -262,6 +252,14 @@ app.post('/api/auth/student', (req, res) => {
       educationAnswer: '',
       educationReflection: '',
       finalCareerReflection: '',
+      revisionSummary: '',
+      sampleQuestion1: '',
+      sampleAnswer1: '',
+      sampleQuestion2: '',
+      sampleAnswer2: '',
+      sampleQuestion3: '',
+      sampleAnswer3: '',
+      reflection: '',
     },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -269,7 +267,6 @@ app.post('/api/auth/student', (req, res) => {
     isTestCompleted: false,
     isGemSubmitted: false,
     isFinalSubmitted: false,
-    isCounselingCompleted: false,
   };
 
   res.json({

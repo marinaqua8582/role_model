@@ -314,8 +314,11 @@ export function exportProgressToExcel(
     const hasPrompt = Boolean(s.isPromptCompleted || prompt);
     const hasTest = Boolean(s.isTestCompleted || s.step8?.testedAt || s.currentStep >= 9);
     const hasGem = Boolean(s.isGemSubmitted || s.step10?.gemUrl);
-    const hasCounseling = Boolean(s.isCounselingCompleted || s.step11?.completedAt || (s.step11?.barrierAnswer && s.step11?.finalCareerReflection));
-    const isSubmitted = hasCounseling;
+    const isSubmitted = Boolean(
+      s.isFinalSubmitted ||
+      (s.step10?.barrierAnswer && s.step10?.finalCareerReflection) ||
+      (s.step11?.barrierAnswer && s.step11?.finalCareerReflection)
+    );
 
     return {
       학년: s.grade,
@@ -330,8 +333,7 @@ export function exportProgressToExcel(
       '프롬프트 완성 여부': hasPrompt ? '완료' : '미완료',
       '테스트 완료 여부': hasTest ? '완료' : '미완료',
       'Gem 링크 제출 여부': hasGem ? '제출' : '미제출',
-      '진로 상담 완료 여부': hasCounseling ? '완료' : '미완료',
-      '전체 최종 완료 여부': isSubmitted ? '최종 완료' : '진행 중',
+      '최종 완료 여부': isSubmitted ? '최종 완료' : '진행 중',
     };
   });
 
@@ -343,7 +345,7 @@ export function exportProgressToExcel(
 
 /**
  * Export final submissions & counseling data to Excel file
- * Columns: 학년, 반, 번호, 이름, 롤모델 이름, 롤모델 직업, 챗봇 이름, 최종 프롬프트, Gemini Gem 공유 링크, 대표 문답, 상담 문답, 최종 성찰, 제출 시각
+ * Columns: 학년, 반, 번호, 이름, 롤모델 이름, 롤모델 직업, 챗봇 이름, 최종 프롬프트, Gemini Gem 공유 링크, 상담 문답, 최종 성찰, 제출 시각
  * File name: 롤모델챗봇_최종결과_YYYYMMDD.xlsx
  */
 export function exportSubmissionsToExcel(
@@ -352,7 +354,13 @@ export function exportSubmissionsToExcel(
 ) {
   // Target students who have final submissions or completed prompts/gem links
   const targetStudents = students.filter(
-    (s) => s.isFinalSubmitted || s.isCounselingCompleted || s.step10?.gemUrl || getStudentPrompt(s) || s.step10?.submittedAt || s.step11?.barrierAnswer
+    (s) =>
+      s.isFinalSubmitted ||
+      s.step10?.gemUrl ||
+      s.step10?.barrierAnswer ||
+      s.step11?.barrierAnswer ||
+      getStudentPrompt(s) ||
+      s.step10?.submittedAt
   );
 
   const studentsToExport = targetStudents.length > 0 ? targetStudents : students;
@@ -364,13 +372,26 @@ export function exportSubmissionsToExcel(
       s.step8?.revisionNote ||
       (s.step8?.problemDescription ? `문제점: ${s.step8.problemDescription}` : '');
 
-    const submissionTime = s.step11?.completedAt
-      ? new Date(s.step11.completedAt).toLocaleString('ko-KR')
-      : s.step10?.submittedAt
+    const submissionTime = s.step10?.submittedAt
       ? new Date(s.step10.submittedAt).toLocaleString('ko-KR')
+      : s.step11?.completedAt
+      ? new Date(s.step11.completedAt).toLocaleString('ko-KR')
       : s.updatedAt
       ? new Date(s.updatedAt).toLocaleString('ko-KR')
       : '';
+
+    const barrierAns = s.step10?.barrierAnswer || s.step11?.barrierAnswer || '';
+    const barrierRef = s.step10?.barrierReflection || s.step11?.barrierReflection || '';
+    const decisionAns = s.step10?.decisionAnswer || s.step11?.decisionAnswer || '';
+    const decisionRef = s.step10?.decisionReflection || s.step11?.decisionReflection || '';
+    const educationAns = s.step10?.educationAnswer || s.step11?.educationAnswer || '';
+    const educationRef = s.step10?.educationReflection || s.step11?.educationReflection || '';
+    const finalCareerRef = s.step10?.finalCareerReflection || s.step11?.finalCareerReflection || '';
+
+    const isSubmitted = Boolean(
+      s.isFinalSubmitted ||
+      (barrierAns && decisionAns && educationAns && finalCareerRef)
+    );
 
     return {
       학년: s.grade,
@@ -382,24 +403,16 @@ export function exportSubmissionsToExcel(
       '챗봇 이름': s.step6?.chatbotName || '',
       '최종 프롬프트': finalPrompt,
       'Gemini Gem 공유 링크': s.step10?.gemUrl || '',
-      '대표 질문 1': s.step10?.sampleQuestion1 || '',
-      '대표 답변 1': s.step10?.sampleAnswer1 || '',
-      '대표 질문 2': s.step10?.sampleQuestion2 || '',
-      '대표 답변 2': s.step10?.sampleAnswer2 || '',
-      '대표 질문 3': s.step10?.sampleQuestion3 || '',
-      '대표 답변 3': s.step10?.sampleAnswer3 || '',
+      '상담1_장벽극복_답변': barrierAns,
+      '상담1_장벽극복_알게된점': barrierRef,
+      '상담2_의사결정_답변': decisionAns,
+      '상담2_의사결정_알게된점': decisionRef,
+      '상담3_진학설계_답변': educationAns,
+      '상담3_진학설계_알게된점': educationRef,
+      '상담후_나의_진로생각': finalCareerRef,
       '수정 내용': revisionContent,
-      '제작 소감': s.step10?.reflection || '',
-      '상담1_장벽극복_답변': s.step11?.barrierAnswer || '',
-      '상담1_장벽극복_알게된점': s.step11?.barrierReflection || '',
-      '상담2_의사결정_답변': s.step11?.decisionAnswer || '',
-      '상담2_의사결정_알게된점': s.step11?.decisionReflection || '',
-      '상담3_진학설계_답변': s.step11?.educationAnswer || '',
-      '상담3_진학설계_알게된점': s.step11?.educationReflection || '',
-      '상담후_나의_진로생각': s.step11?.finalCareerReflection || '',
-      '진로상담_완료여부': (s.isCounselingCompleted || (s.step11?.barrierAnswer && s.step11?.finalCareerReflection)) ? '완료' : '미완료',
-      '전체_최종완료여부': s.isFinalSubmitted ? '최종 완료' : '진행 중',
-      '제출/완료 시각': submissionTime,
+      '최종 완료 여부': isSubmitted ? '최종 완료' : '진행 중',
+      '제출 시각': submissionTime,
     };
   });
 

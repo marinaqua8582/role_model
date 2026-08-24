@@ -299,17 +299,17 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
               {/* 5. Final Submissions & Gem Link */}
               <div className="print-section">
                 <div className="text-xs font-bold text-[#2C362B] flex items-center gap-1.5 border-l-3 border-[#4B6344] pl-2 mb-2">
-                  <span>[최종 결과물]</span>
+                  <span>[최종 결과물 및 Gem 링크]</span>
                 </div>
 
                 <div className="p-3.5 bg-[#FAFBF9] border border-[#E1E4D8] rounded-xl text-xs space-y-2 print:bg-white print:border-[#CCD4C5]">
                   <div className="flex items-center justify-between">
-                    <span className="font-bold text-[#2C362B]">Gemini Gem 공유 링크 등록 여부:</span>
+                    <span className="font-bold text-[#2C362B]">Gemini Gem 공유 링크:</span>
                     {student.step10?.gemUrl ? (
                       <span className="font-bold text-[#4B6344] flex items-center gap-1">
                         <CheckCircle2 className="w-3.5 h-3.5" />
                         <span>등록 완료</span>
-                        <span className="font-mono text-[11px] font-normal text-[#5D6B58] ml-1">
+                        <span className="font-mono text-[11px] font-normal text-[#5D6B58] ml-1 break-all">
                           ({student.step10.gemUrl})
                         </span>
                       </span>
@@ -317,108 +317,88 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                       <span className="text-[#9CA3AF]">미등록</span>
                     )}
                   </div>
-
-                  {/* Sample Dialogues & Reflection if present */}
-                  {(student.step10?.sampleQuestion1 || student.step10?.reflection) && (
-                    <div className="pt-2 border-t border-[#E1E4D8]/70 space-y-1.5 text-[11px]">
-                      {student.step10?.sampleQuestion1 && (
-                        <div>
-                          <strong className="text-[#2C362B]">대표 문답 1: </strong>
-                          <span className="text-[#5D6B58] italic">Q. {student.step10.sampleQuestion1} </span>
-                          <span className="text-[#2C362B]"> → A. {student.step10.sampleAnswer1}</span>
-                        </div>
-                      )}
-
-                      {student.step10?.reflection && (
-                        <div>
-                          <strong className="text-[#2C362B]">제작 소감: </strong>
-                          <span className="text-[#5D6B58]">{student.step10.reflection}</span>
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               </div>
 
-              {/* 6. Role Model Career Counseling Results (STEP 11) */}
-              {(student.step11?.barrierAnswer ||
-                student.step11?.decisionAnswer ||
-                student.step11?.educationAnswer ||
-                student.step11?.finalCareerReflection) && (
+              {/* 6. Role Model Career Counseling Results (STEP 10) */}
+              {((student.step10?.barrierAnswer || student.step11?.barrierAnswer) ||
+                (student.step10?.decisionAnswer || student.step11?.decisionAnswer) ||
+                (student.step10?.educationAnswer || student.step11?.educationAnswer) ||
+                (student.step10?.finalCareerReflection || student.step11?.finalCareerReflection)) && (
                 <div className="mt-4 print-section">
                   <div className="text-xs font-bold text-[#2C362B] flex items-center justify-between border-l-3 border-[#4B6344] pl-2 mb-2">
-                    <span>[진로 상담 수행평가 결과]</span>
+                    <span>[지정 진로 상담 수행평가 결과]</span>
                     <span className="text-[10px] text-[#5D6B58] font-normal">
-                      {student.isCounselingCompleted ? '✓ 상담 완료' : '상담 진행 중'}
+                      {student.isFinalSubmitted ? '✓ 최종 제출 완료' : '진행 중'}
                     </span>
                   </div>
 
                   <div className="p-3.5 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl text-xs space-y-2.5 print:bg-white print:border-[#9CA3AF]">
                     {/* Counseling Q1 */}
-                    {student.step11?.barrierAnswer && (
+                    {(student.step10?.barrierAnswer || student.step11?.barrierAnswer) && (
                       <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
                         <span className="font-bold text-[#4B6344] block">
                           1. 진로 장벽 극복 상담
                         </span>
                         <div className="text-[#2C362B] leading-snug">
                           <strong className="text-[#5D6B58]">챗봇 답변: </strong>
-                          {student.step11.barrierAnswer}
+                          {student.step10?.barrierAnswer || student.step11?.barrierAnswer}
                         </div>
-                        {student.step11?.barrierReflection && (
+                        {(student.step10?.barrierReflection || student.step11?.barrierReflection) && (
                           <div className="text-[#5D6B58] leading-snug">
                             <strong className="text-[#9E6B38]">알게 된 점: </strong>
-                            {student.step11.barrierReflection}
+                            {student.step10?.barrierReflection || student.step11?.barrierReflection}
                           </div>
                         )}
                       </div>
                     )}
 
                     {/* Counseling Q2 */}
-                    {student.step11?.decisionAnswer && (
+                    {(student.step10?.decisionAnswer || student.step11?.decisionAnswer) && (
                       <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
                         <span className="font-bold text-[#4B6344] block">
                           2. 진로 의사 결정 상담
                         </span>
                         <div className="text-[#2C362B] leading-snug">
                           <strong className="text-[#5D6B58]">챗봇 답변: </strong>
-                          {student.step11.decisionAnswer}
+                          {student.step10?.decisionAnswer || student.step11?.decisionAnswer}
                         </div>
-                        {student.step11?.decisionReflection && (
+                        {(student.step10?.decisionReflection || student.step11?.decisionReflection) && (
                           <div className="text-[#5D6B58] leading-snug">
                             <strong className="text-[#9E6B38]">알게 된 점: </strong>
-                            {student.step11.decisionReflection}
+                            {student.step10?.decisionReflection || student.step11?.decisionReflection}
                           </div>
                         )}
                       </div>
                     )}
 
                     {/* Counseling Q3 */}
-                    {student.step11?.educationAnswer && (
+                    {(student.step10?.educationAnswer || student.step11?.educationAnswer) && (
                       <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
                         <span className="font-bold text-[#4B6344] block">
                           3. 진학 설계 상담
                         </span>
                         <div className="text-[#2C362B] leading-snug">
                           <strong className="text-[#5D6B58]">챗봇 답변: </strong>
-                          {student.step11.educationAnswer}
+                          {student.step10?.educationAnswer || student.step11?.educationAnswer}
                         </div>
-                        {student.step11?.educationReflection && (
+                        {(student.step10?.educationReflection || student.step11?.educationReflection) && (
                           <div className="text-[#5D6B58] leading-snug">
                             <strong className="text-[#9E6B38]">알게 된 점: </strong>
-                            {student.step11.educationReflection}
+                            {student.step10?.educationReflection || student.step11?.educationReflection}
                           </div>
                         )}
                       </div>
                     )}
 
-                    {/* Final Reflection */}
-                    {student.step11?.finalCareerReflection && (
+                    {/* Final Career Reflection */}
+                    {(student.step10?.finalCareerReflection || student.step11?.finalCareerReflection) && (
                       <div className="pt-1 text-[11px] leading-snug space-y-1">
                         <span className="font-bold text-[#2C362B] block">
-                          [상담 후 나의 진로 생각]
+                          [상담 후 나의 진로 생각 (최종 성찰)]
                         </span>
                         <p className="text-[#2C362B] whitespace-pre-wrap">
-                          {student.step11.finalCareerReflection}
+                          {student.step10?.finalCareerReflection || student.step11?.finalCareerReflection}
                         </p>
                       </div>
                     )}

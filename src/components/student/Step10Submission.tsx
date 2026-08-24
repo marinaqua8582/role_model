@@ -11,6 +11,7 @@ interface Step10SubmissionProps {
   onChange: (data: FinalSubmissionData) => void;
   onSubmit?: () => Promise<void>;
   onPrev: () => void;
+  onNext?: () => void;
   isReadOnly?: boolean;
 }
 
@@ -33,6 +34,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
   onChange,
   onSubmit,
   onPrev,
+  onNext,
   isReadOnly = false,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -172,15 +174,28 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
             제출된 내용은 선생님 관리자 화면에서 확인 및 평가되며, 필요 시 다시 수정하여 제출할 수 있습니다.
           </div>
 
-          {!isReadOnly && (
-            <button
-              type="button"
-              onClick={() => setIsSubmittedSuccess(false)}
-              className="px-5 py-2.5 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] text-xs font-bold rounded-xl transition-colors cursor-pointer"
-            >
-              제출 내용 수정하기
-            </button>
-          )}
+          <div className="flex items-center justify-center gap-3 pt-2">
+            {!isReadOnly && (
+              <button
+                type="button"
+                onClick={() => setIsSubmittedSuccess(false)}
+                className="px-5 py-2.5 bg-[#F3F4F1] hover:bg-[#EAECE6] text-[#5D6B58] border border-[#E1E4D8] text-xs font-bold rounded-xl transition-colors cursor-pointer"
+              >
+                제출 내용 수정하기
+              </button>
+            )}
+
+            {onNext && (
+              <button
+                type="button"
+                onClick={onNext}
+                className="px-6 py-2.5 bg-[#4B6344] hover:bg-[#3D5237] text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-[#4B6344]/20 flex items-center gap-1.5 cursor-pointer"
+              >
+                <span>STEP 11. 진로 상담하기로 이동</span>
+                <Sparkles className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       ) : (
         /* Submission Form */

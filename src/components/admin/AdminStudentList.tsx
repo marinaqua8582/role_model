@@ -451,11 +451,15 @@ export const AdminStudentList: React.FC<AdminStudentListProps> = ({
                         )}
                       </td>
 
-                      {/* Final submission status */}
+                      {/* Final submission / Counseling completion status */}
                       <td className="py-3 px-3 text-center">
-                        {s.isFinalSubmitted ? (
+                        {s.isCounselingCompleted || s.isFinalSubmitted ? (
                           <span className="px-2 py-0.5 bg-[#4B6344] text-white rounded-md font-bold text-[11px]">
-                            제출 완료
+                            최종 완료
+                          </span>
+                        ) : s.step11?.barrierAnswer || s.currentStep === 11 ? (
+                          <span className="px-2 py-0.5 bg-amber-50 text-[#9E6B38] border border-amber-200 rounded-md font-bold text-[11px]">
+                            상담 중
                           </span>
                         ) : s.step10?.gemUrl ? (
                           <span className="px-2 py-0.5 bg-[#F1F4EF] text-[#4B6344] rounded-md font-bold text-[11px]">

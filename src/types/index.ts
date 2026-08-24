@@ -99,13 +99,24 @@ export interface FinalSubmissionData {
   submittedAt?: string;
 }
 
+export interface Step11CounselingData {
+  barrierAnswer: string;
+  barrierReflection: string;
+  decisionAnswer: string;
+  decisionReflection: string;
+  educationAnswer: string;
+  educationReflection: string;
+  finalCareerReflection: string;
+  completedAt?: string;
+}
+
 export interface StudentProgress {
   studentKey: string;
   grade: number;
   classNum: number;
   number: number;
   name: string;
-  currentStep: number; // 1 to 10
+  currentStep: number; // 1 to 11
   step1: RoleModelData;
   step2: ChatbotPurposeData;
   step3: PersonalityData;
@@ -114,12 +125,14 @@ export interface StudentProgress {
   step6: PromptData;
   step8: TestData;
   step10: FinalSubmissionData;
+  step11: Step11CounselingData;
   createdAt: string;
   updatedAt: string;
   isPromptCompleted: boolean;
   isTestCompleted: boolean;
   isGemSubmitted: boolean;
   isFinalSubmitted: boolean;
+  isCounselingCompleted?: boolean;
 }
 
 export interface RosterItem {

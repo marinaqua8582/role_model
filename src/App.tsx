@@ -28,6 +28,7 @@ import { Step7GeminiGuide } from './components/student/Step7GeminiGuide';
 import { Step8ChatbotTest } from './components/student/Step8ChatbotTest';
 import { Step9PromptRevision } from './components/student/Step9PromptRevision';
 import { Step10Submission } from './components/student/Step10Submission';
+import { Step11Counseling } from './components/student/Step11Counseling';
 
 import { AdminLogin } from './components/admin/AdminLogin';
 import { AdminDashboard } from './components/admin/AdminDashboard';
@@ -211,12 +212,29 @@ export default function App() {
     if (isPreviewStudentMode) return;
     const updated: StudentProgress = {
       ...currentStudent,
-      isFinalSubmitted: true,
       currentStep: 10,
       step10: {
         ...currentStudent.step10,
-        submittedAt: new Date().toISOString(),
+        submittedAt: currentStudent.step10?.submittedAt || new Date().toISOString(),
       },
+    };
+    updateProgress(updated, true);
+  };
+
+  const handleCounselingSubmit = async () => {
+    if (!currentStudent) return;
+    if (isPreviewStudentMode) return;
+    const now = new Date().toISOString();
+    const updated: StudentProgress = {
+      ...currentStudent,
+      isCounselingCompleted: true,
+      isFinalSubmitted: true,
+      currentStep: 11,
+      step11: {
+        ...currentStudent.step11,
+        completedAt: currentStudent.step11?.completedAt || now,
+      },
+      updatedAt: now,
     };
     updateProgress(updated, true);
   };
@@ -700,6 +718,31 @@ export default function App() {
               }
               onSubmit={handleFinalSubmit}
               onPrev={() => handleStepChange(9)}
+              onNext={() => handleStepChange(11)}
+            />
+          )}
+
+          {/* STEP 11: Role Model Career Counseling */}
+          {currentStudent.currentStep === 11 && (
+            <Step11Counseling
+              data={currentStudent.step11}
+              progress={currentStudent}
+              student={{
+                grade: currentStudent.grade,
+                classNum: currentStudent.classNum,
+                number: currentStudent.number,
+                name: currentStudent.name,
+                studentKey: currentStudent.studentKey,
+              }}
+              isReadOnly={isPreviewStudentMode}
+              onChange={(step11) =>
+                updateProgress({
+                  ...currentStudent,
+                  step11,
+                })
+              }
+              onSubmit={handleCounselingSubmit}
+              onPrev={() => handleStepChange(10)}
             />
           )}
         </main>

@@ -314,7 +314,8 @@ export function exportProgressToExcel(
     const hasPrompt = Boolean(s.isPromptCompleted || prompt);
     const hasTest = Boolean(s.isTestCompleted || s.step8?.testedAt || s.currentStep >= 9);
     const hasGem = Boolean(s.isGemSubmitted || s.step10?.gemUrl);
-    const isSubmitted = Boolean(s.isFinalSubmitted || s.step10?.submittedAt);
+    const hasCounseling = Boolean(s.isCounselingCompleted || s.step11?.completedAt || (s.step11?.barrierAnswer && s.step11?.finalCareerReflection));
+    const isSubmitted = hasCounseling;
 
     return {
       학년: s.grade,
@@ -329,7 +330,8 @@ export function exportProgressToExcel(
       '프롬프트 완성 여부': hasPrompt ? '완료' : '미완료',
       '테스트 완료 여부': hasTest ? '완료' : '미완료',
       'Gem 링크 제출 여부': hasGem ? '제출' : '미제출',
-      '최종 제출 여부': isSubmitted ? '제출 완료' : '진행 중',
+      '진로 상담 완료 여부': hasCounseling ? '완료' : '미완료',
+      '전체 최종 완료 여부': isSubmitted ? '최종 완료' : '진행 중',
     };
   });
 
@@ -340,17 +342,17 @@ export function exportProgressToExcel(
 }
 
 /**
- * Export final submissions to Excel file
- * Columns: 학년, 반, 번호, 이름, 롤모델 이름, 롤모델 직업, 챗봇 이름, 최종 프롬프트, Gemini Gem 공유 링크, 대표 질문 1, 대표 답변 1, 대표 질문 2, 대표 답변 2, 대표 질문 3, 대표 답변 3, 수정 내용, 제작 소감, 제출 시각
- * File name: 롤모델챗봇_최종제출_YYYYMMDD.xlsx
+ * Export final submissions & counseling data to Excel file
+ * Columns: 학년, 반, 번호, 이름, 롤모델 이름, 롤모델 직업, 챗봇 이름, 최종 프롬프트, Gemini Gem 공유 링크, 대표 문답, 상담 문답, 최종 성찰, 제출 시각
+ * File name: 롤모델챗봇_최종결과_YYYYMMDD.xlsx
  */
 export function exportSubmissionsToExcel(
   students: StudentProgress[],
-  filename = `롤모델챗봇_최종제출_${getFormattedDateString()}.xlsx`
+  filename = `롤모델챗봇_최종결과_${getFormattedDateString()}.xlsx`
 ) {
   // Target students who have final submissions or completed prompts/gem links
   const targetStudents = students.filter(
-    (s) => s.isFinalSubmitted || s.step10?.gemUrl || getStudentPrompt(s) || s.step10?.submittedAt
+    (s) => s.isFinalSubmitted || s.isCounselingCompleted || s.step10?.gemUrl || getStudentPrompt(s) || s.step10?.submittedAt || s.step11?.barrierAnswer
   );
 
   const studentsToExport = targetStudents.length > 0 ? targetStudents : students;
@@ -362,7 +364,9 @@ export function exportSubmissionsToExcel(
       s.step8?.revisionNote ||
       (s.step8?.problemDescription ? `문제점: ${s.step8.problemDescription}` : '');
 
-    const submissionTime = s.step10?.submittedAt
+    const submissionTime = s.step11?.completedAt
+      ? new Date(s.step11.completedAt).toLocaleString('ko-KR')
+      : s.step10?.submittedAt
       ? new Date(s.step10.submittedAt).toLocaleString('ko-KR')
       : s.updatedAt
       ? new Date(s.updatedAt).toLocaleString('ko-KR')
@@ -386,13 +390,22 @@ export function exportSubmissionsToExcel(
       '대표 답변 3': s.step10?.sampleAnswer3 || '',
       '수정 내용': revisionContent,
       '제작 소감': s.step10?.reflection || '',
-      '제출 시각': submissionTime,
+      '상담1_장벽극복_답변': s.step11?.barrierAnswer || '',
+      '상담1_장벽극복_알게된점': s.step11?.barrierReflection || '',
+      '상담2_의사결정_답변': s.step11?.decisionAnswer || '',
+      '상담2_의사결정_알게된점': s.step11?.decisionReflection || '',
+      '상담3_진학설계_답변': s.step11?.educationAnswer || '',
+      '상담3_진학설계_알게된점': s.step11?.educationReflection || '',
+      '상담후_나의_진로생각': s.step11?.finalCareerReflection || '',
+      '진로상담_완료여부': (s.isCounselingCompleted || (s.step11?.barrierAnswer && s.step11?.finalCareerReflection)) ? '완료' : '미완료',
+      '전체_최종완료여부': s.isFinalSubmitted ? '최종 완료' : '진행 중',
+      '제출/완료 시각': submissionTime,
     };
   });
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(rows);
-  XLSX.utils.book_append_sheet(wb, ws, '최종제출결과');
+  XLSX.utils.book_append_sheet(wb, ws, '최종평가결과');
   XLSX.writeFile(wb, filename);
 }
 

@@ -25,7 +25,7 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
   onPreviewStudentMode,
   onPrintStudent,
 }) => {
-  const [activeTab, setActiveTab] = useState<'prompt' | 'roleModel' | 'tests' | 'submission'>('prompt');
+  const [activeTab, setActiveTab] = useState<'prompt' | 'roleModel' | 'tests' | 'submission' | 'counseling'>('counseling');
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -98,10 +98,11 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
         {/* Tab Navigation */}
         <div className="px-6 border-b border-[#E1E4D8] bg-[#F9FAF8] flex gap-2 shrink-0 overflow-x-auto">
           {[
+            { id: 'counseling', label: 'STEP11. 진로 상담 활동' },
+            { id: 'submission', label: 'STEP10. 제출물 & 소감' },
             { id: 'prompt', label: '최종 프롬프트 & 설정' },
             { id: 'roleModel', label: '롤모델 상세 정보' },
             { id: 'tests', label: '챗봇 테스트 & 수정' },
-            { id: 'submission', label: '최종 제출물 & 소감' },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -405,6 +406,141 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
                   </p>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* TAB 5: Counseling Activity (STEP 11) */}
+          {activeTab === 'counseling' && (
+            <div className="space-y-5">
+              {/* Header Status */}
+              <div className="p-4 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="space-y-0.5">
+                  <span className="text-xs font-bold text-[#4B6344] block">
+                    STEP 11. 롤모델 챗봇 진로 상담 수행평가 결과
+                  </span>
+                  <p className="text-xs text-[#5D6B58]">
+                    롤모델: <strong className="text-[#2C362B]">{student.step1?.roleModelName || '미입력'}</strong> | 챗봇명: <strong className="text-[#4B6344]">{student.step6?.chatbotName || '미정'}</strong>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {student.step10?.gemUrl && (
+                    <a
+                      href={student.step10.gemUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="px-3 py-1.5 bg-white text-[#4B6344] hover:bg-[#F9FAF8] border border-[#DCE2D7] rounded-xl text-xs font-bold flex items-center gap-1 shrink-0 shadow-xs"
+                    >
+                      <span>Gem 열기</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                  <span className={`px-3 py-1 rounded-xl text-xs font-bold border ${
+                    student.isCounselingCompleted || (student.step11?.barrierAnswer && student.step11?.finalCareerReflection)
+                      ? 'bg-[#4B6344] text-white border-[#4B6344]'
+                      : 'bg-white text-amber-800 border-amber-200'
+                  }`}>
+                    {student.isCounselingCompleted || (student.step11?.barrierAnswer && student.step11?.finalCareerReflection)
+                      ? '상담 완료'
+                      : '상담 진행 중 / 미완료'}
+                  </span>
+                </div>
+              </div>
+
+              {/* 3 Fixed Counseling Question & Student Reflection Sections */}
+              <div className="space-y-4">
+                {/* 1. Career Barrier */}
+                <div className="p-4 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#E1E4D8] pb-2">
+                    <span className="font-bold text-[#2C362B] text-xs">
+                      상담 1. 진로 장벽 극복 사례
+                    </span>
+                    <span className="text-[11px] text-[#6B7280] font-medium">
+                      지정 질문: 가장 큰 어려움/장벽 및 극복 방법
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-[#4B6344] block">[챗봇 답변]</span>
+                      <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#2C362B] leading-relaxed whitespace-pre-wrap">
+                        {student.step11?.barrierAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="font-bold text-[#9E6B38] block">[알게 된 점 / 느낀 점]</span>
+                      <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#5D6B58] leading-relaxed whitespace-pre-wrap">
+                        {student.step11?.barrierReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Career Decision */}
+                <div className="p-4 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#E1E4D8] pb-2">
+                    <span className="font-bold text-[#2C362B] text-xs">
+                      상담 2. 진로 의사 결정
+                    </span>
+                    <span className="text-[11px] text-[#6B7280] font-medium">
+                      지정 질문: 결정적 선택 이유 및 중요 기준
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-[#4B6344] block">[챗봇 답변]</span>
+                      <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#2C362B] leading-relaxed whitespace-pre-wrap">
+                        {student.step11?.decisionAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="font-bold text-[#9E6B38] block">[알게 된 점 / 느낀 점]</span>
+                      <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#5D6B58] leading-relaxed whitespace-pre-wrap">
+                        {student.step11?.decisionReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Education Path */}
+                <div className="p-4 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl space-y-3">
+                  <div className="flex items-center justify-between border-b border-[#E1E4D8] pb-2">
+                    <span className="font-bold text-[#2C362B] text-xs">
+                      상담 3. 진학 설계
+                    </span>
+                    <span className="text-[11px] text-[#6B7280] font-medium">
+                      지정 질문: 고등학교 진학 및 학업 경로 조언
+                    </span>
+                  </div>
+                  <div className="space-y-2 text-xs">
+                    <div className="space-y-1">
+                      <span className="font-bold text-[#4B6344] block">[챗봇 답변]</span>
+                      <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#2C362B] leading-relaxed whitespace-pre-wrap">
+                        {student.step11?.educationAnswer || <span className="text-[#9CA3AF]">(미입력)</span>}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <span className="font-bold text-[#9E6B38] block">[알게 된 점 / 느낀 점]</span>
+                      <div className="p-3 bg-white rounded-xl border border-[#E1E4D8] text-[#5D6B58] leading-relaxed whitespace-pre-wrap">
+                        {student.step11?.educationReflection || <span className="text-[#9CA3AF]">(미입력)</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Final Career Reflection */}
+                <div className="p-4 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl space-y-2">
+                  <h4 className="font-bold text-[#2C362B] text-xs flex items-center justify-between">
+                    <span>상담 후 나의 진로 생각 (최종 성찰)</span>
+                    {student.step11?.finalCareerReflection && (
+                      <span className="text-[11px] text-[#4B6344] font-semibold">
+                        ({student.step11.finalCareerReflection.length}자)
+                      </span>
+                    )}
+                  </h4>
+                  <div className="p-3.5 bg-white rounded-xl border border-[#DCE2D7] text-[#2C362B] leading-relaxed whitespace-pre-wrap text-xs">
+                    {student.step11?.finalCareerReflection || <span className="text-[#9CA3AF]">(작성 내용 없음)</span>}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
         </div>

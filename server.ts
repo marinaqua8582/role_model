@@ -254,12 +254,22 @@ app.post('/api/auth/student', (req, res) => {
       revisionSummary: '',
       reflection: '',
     },
+    step11: {
+      barrierAnswer: '',
+      barrierReflection: '',
+      decisionAnswer: '',
+      decisionReflection: '',
+      educationAnswer: '',
+      educationReflection: '',
+      finalCareerReflection: '',
+    },
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
     isPromptCompleted: false,
     isTestCompleted: false,
     isGemSubmitted: false,
     isFinalSubmitted: false,
+    isCounselingCompleted: false,
   };
 
   res.json({

@@ -339,6 +339,92 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
                   )}
                 </div>
               </div>
+
+              {/* 6. Role Model Career Counseling Results (STEP 11) */}
+              {(student.step11?.barrierAnswer ||
+                student.step11?.decisionAnswer ||
+                student.step11?.educationAnswer ||
+                student.step11?.finalCareerReflection) && (
+                <div className="mt-4 print-section">
+                  <div className="text-xs font-bold text-[#2C362B] flex items-center justify-between border-l-3 border-[#4B6344] pl-2 mb-2">
+                    <span>[진로 상담 수행평가 결과]</span>
+                    <span className="text-[10px] text-[#5D6B58] font-normal">
+                      {student.isCounselingCompleted ? '✓ 상담 완료' : '상담 진행 중'}
+                    </span>
+                  </div>
+
+                  <div className="p-3.5 bg-[#FAFBF9] border border-[#CCD4C5] rounded-xl text-xs space-y-2.5 print:bg-white print:border-[#9CA3AF]">
+                    {/* Counseling Q1 */}
+                    {student.step11?.barrierAnswer && (
+                      <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
+                        <span className="font-bold text-[#4B6344] block">
+                          1. 진로 장벽 극복 상담
+                        </span>
+                        <div className="text-[#2C362B] leading-snug">
+                          <strong className="text-[#5D6B58]">챗봇 답변: </strong>
+                          {student.step11.barrierAnswer}
+                        </div>
+                        {student.step11?.barrierReflection && (
+                          <div className="text-[#5D6B58] leading-snug">
+                            <strong className="text-[#9E6B38]">알게 된 점: </strong>
+                            {student.step11.barrierReflection}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Counseling Q2 */}
+                    {student.step11?.decisionAnswer && (
+                      <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
+                        <span className="font-bold text-[#4B6344] block">
+                          2. 진로 의사 결정 상담
+                        </span>
+                        <div className="text-[#2C362B] leading-snug">
+                          <strong className="text-[#5D6B58]">챗봇 답변: </strong>
+                          {student.step11.decisionAnswer}
+                        </div>
+                        {student.step11?.decisionReflection && (
+                          <div className="text-[#5D6B58] leading-snug">
+                            <strong className="text-[#9E6B38]">알게 된 점: </strong>
+                            {student.step11.decisionReflection}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Counseling Q3 */}
+                    {student.step11?.educationAnswer && (
+                      <div className="space-y-1 pb-2 border-b border-[#E1E4D8]/70 text-[11px]">
+                        <span className="font-bold text-[#4B6344] block">
+                          3. 진학 설계 상담
+                        </span>
+                        <div className="text-[#2C362B] leading-snug">
+                          <strong className="text-[#5D6B58]">챗봇 답변: </strong>
+                          {student.step11.educationAnswer}
+                        </div>
+                        {student.step11?.educationReflection && (
+                          <div className="text-[#5D6B58] leading-snug">
+                            <strong className="text-[#9E6B38]">알게 된 점: </strong>
+                            {student.step11.educationReflection}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Final Reflection */}
+                    {student.step11?.finalCareerReflection && (
+                      <div className="pt-1 text-[11px] leading-snug space-y-1">
+                        <span className="font-bold text-[#2C362B] block">
+                          [상담 후 나의 진로 생각]
+                        </span>
+                        <p className="text-[#2C362B] whitespace-pre-wrap">
+                          {student.step11.finalCareerReflection}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}

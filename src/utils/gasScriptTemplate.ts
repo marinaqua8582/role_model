@@ -68,6 +68,8 @@ function handleRequest(e) {
       result = updateRevision(ss, params);
     } else if (action === 'submitFinal') {
       result = submitFinal(ss, params.submission || params);
+    } else if (action === 'submitCounseling') {
+      result = submitCounseling(ss, params.counseling || params);
     } else if (action === 'getAllProgress') {
       result = getAllProgress(ss);
     } else if (action === 'updateRoster') {
@@ -95,12 +97,13 @@ function isValidAdminRequest_(data) {
 }
 
 function initSheetsIfNeeded(ss) {
-  var sheetNames = ['Roster', 'Progress', 'Tests', 'Submissions'];
+  var sheetNames = ['Roster', 'Progress', 'Tests', 'Submissions', 'Counseling'];
   var headers = {
     'Roster': ['grade', 'class', 'number', 'name'],
     'Progress': ['studentKey', 'grade', 'class', 'number', 'name', 'currentStep', 'roleModelName', 'roleModelJob', 'roleModelReason', 'jobDescription', 'competencies', 'careerHistory', 'strengths', 'values', 'challengeExperience', 'chatbotPurposes', 'targetUser', 'expectedOutcome', 'personality', 'speakingStyle', 'honorificStyle', 'desiredFeeling', 'answerLength', 'answerElements', 'chatbotName', 'initialPrompt', 'revisedPrompt', 'finalPrompt', 'createdAt', 'updatedAt'],
     'Tests': ['studentKey', 'test1Result', 'test2Result', 'test3Result', 'test4Result', 'test5Result', 'test6Result', 'problemDescription', 'revisionNote', 'testedAt'],
-    'Submissions': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'sampleQuestion1', 'sampleAnswer1', 'sampleQuestion2', 'sampleAnswer2', 'sampleQuestion3', 'sampleAnswer3', 'revisionSummary', 'reflection', 'submittedAt']
+    'Submissions': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'sampleQuestion1', 'sampleAnswer1', 'sampleQuestion2', 'sampleAnswer2', 'sampleQuestion3', 'sampleAnswer3', 'revisionSummary', 'reflection', 'submittedAt'],
+    'Counseling': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'completedAt']
   };
   
   sheetNames.forEach(function(name) {
@@ -507,6 +510,71 @@ function submitFinal(ss, submission) {
   }
   
   return { success: true, message: '제출이 완료되었습니다.', studentKey: studentKey, submittedAt: submittedAt };
+}
+
+function submitCounseling(ss, counseling) {
+  var sheet = ss.getSheetByName('Counseling');
+  if (!sheet) return { success: false, message: 'Counseling 시트를 찾을 수 없습니다.' };
+  
+  var studentKey = counseling.studentKey || (counseling.grade + '-' + (counseling.class || counseling.classNum) + '-' + counseling.number);
+  var now = new Date().toISOString();
+  
+  var data = sheet.getDataRange().getValues();
+  var rowIndex = -1;
+  
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(studentKey)) {
+      rowIndex = i + 1;
+      break;
+    }
+  }
+  
+  var grade = counseling.grade !== undefined ? Number(counseling.grade) : '';
+  var classNum = counseling.class !== undefined ? Number(counseling.class) : (counseling.classNum !== undefined ? Number(counseling.classNum) : '');
+  var number = counseling.number !== undefined ? Number(counseling.number) : '';
+  var name = String(counseling.name || '').trim();
+  var completedAt = counseling.counselingCompletedAt || counseling.completedAt || now;
+  
+  var rowData = [
+    studentKey,
+    grade,
+    classNum,
+    number,
+    name,
+    counseling.roleModelName || '',
+    counseling.roleModelJob || '',
+    counseling.chatbotName || '',
+    counseling.gemUrl || '',
+    counseling.barrierAnswer || '',
+    counseling.barrierReflection || '',
+    counseling.decisionAnswer || '',
+    counseling.decisionReflection || '',
+    counseling.educationAnswer || '',
+    counseling.educationReflection || '',
+    counseling.finalCareerReflection || '',
+    completedAt
+  ];
+  
+  if (rowIndex > 0) {
+    sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+  } else {
+    sheet.appendRow(rowData);
+  }
+  
+  // Update currentStep in Progress sheet to 11
+  var progressSheet = ss.getSheetByName('Progress');
+  if (progressSheet) {
+    var pData = progressSheet.getDataRange().getValues();
+    for (var j = 1; j < pData.length; j++) {
+      if (String(pData[j][0]) === String(studentKey)) {
+        progressSheet.getRange(j + 1, 6).setValue(11);
+        progressSheet.getRange(j + 1, 30).setValue(now);
+        break;
+      }
+    }
+  }
+  
+  return { success: true, message: '진로 상담 활동이 완료되었습니다.', studentKey: studentKey, completedAt: completedAt };
 }
 
 function getAllProgress(ss) {

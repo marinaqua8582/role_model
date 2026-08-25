@@ -9,7 +9,7 @@ import {
   parseAndValidateRosterFile,
   computeRosterDiff,
 } from '../../utils/excel';
-import { updateAdminRoster } from '../../api/client';
+import { updateAdminRoster, deleteAdminRosterStudents } from '../../api/client';
 import {
   Download,
   Upload,
@@ -27,6 +27,10 @@ import {
   ArrowRight,
   ShieldCheck,
   AlertCircle,
+  Trash2,
+  CheckSquare,
+  Square,
+  Filter,
 } from 'lucide-react';
 
 interface AdminRosterManagerProps {
@@ -66,6 +70,13 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
   const [batchText, setBatchText] = useState<string>('');
   const [batchMode, setBatchMode] = useState<'append' | 'replace'>('append');
   const [batchError, setBatchError] = useState<string>('');
+
+  // Direct roster list & deletion state
+  const [directGradeFilter, setDirectGradeFilter] = useState<number | 'all'>('all');
+  const [directClassFilter, setDirectClassFilter] = useState<number | 'all'>('all');
+  const [directSearchQuery, setDirectSearchQuery] = useState<string>('');
+  const [selectedRosterKeys, setSelectedRosterKeys] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -292,6 +303,146 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
     }
     return true;
   });
+
+  // Distinct grades and classes in current Roster
+  const availableGrades = Array.from(
+    new Set<number>(currentRoster.map((r) => Number(r.grade)).filter((g) => !isNaN(g) && g > 0))
+  ).sort((a, b) => a - b);
+
+  const availableClasses = Array.from(
+    new Set<number>(
+      currentRoster
+        .filter((r) => directGradeFilter === 'all' || Number(r.grade) === directGradeFilter)
+        .map((r) => Number(r.classNum !== undefined ? r.classNum : (r as any).class))
+        .filter((c) => !isNaN(c) && c > 0)
+    )
+  ).sort((a, b) => a - b);
+
+  // Sorted and filtered Roster for display
+  const sortedRoster = [...currentRoster].sort((a, b) => {
+    const ga = Number(a.grade);
+    const gb = Number(b.grade);
+    if (ga !== gb) return ga - gb;
+
+    const ca = Number(a.classNum !== undefined ? a.classNum : (a as any).class);
+    const cb = Number(b.classNum !== undefined ? b.classNum : (b as any).class);
+    if (ca !== cb) return ca - cb;
+
+    return Number(a.number) - Number(b.number);
+  });
+
+  const filteredRoster = sortedRoster.filter((item) => {
+    const c = Number(item.classNum !== undefined ? item.classNum : (item as any).class);
+    if (directGradeFilter !== 'all' && Number(item.grade) !== directGradeFilter) return false;
+    if (directClassFilter !== 'all' && c !== directClassFilter) return false;
+    if (directSearchQuery.trim()) {
+      const q = directSearchQuery.trim().toLowerCase();
+      const matchName = String(item.name || '').toLowerCase().includes(q);
+      const matchNum = String(item.number).includes(q);
+      const matchGrade = `${item.grade}학년`.includes(q) || String(item.grade) === q;
+      const matchClass = `${c}반`.includes(q) || String(c) === q;
+      if (!matchName && !matchNum && !matchGrade && !matchClass) return false;
+    }
+    return true;
+  });
+
+  const allFilteredKeys = filteredRoster.map(
+    (r) => `${r.grade}-${r.classNum !== undefined ? r.classNum : (r as any).class}-${r.number}`
+  );
+  const isAllFilteredSelected =
+    allFilteredKeys.length > 0 && allFilteredKeys.every((k) => selectedRosterKeys.has(k));
+
+  const handleToggleSelect = (key: string) => {
+    setSelectedRosterKeys((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const handleToggleSelectAll = () => {
+    if (isAllFilteredSelected) {
+      setSelectedRosterKeys((prev) => {
+        const next = new Set(prev);
+        allFilteredKeys.forEach((k) => next.delete(k));
+        return next;
+      });
+    } else {
+      setSelectedRosterKeys((prev) => {
+        const next = new Set(prev);
+        allFilteredKeys.forEach((k) => next.add(k));
+        return next;
+      });
+    }
+  };
+
+  const handleDeleteSingleStudent = async (student: RosterItem) => {
+    const c = student.classNum !== undefined ? student.classNum : (student as any).class;
+    const confirmed = window.confirm(
+      `${student.grade}학년 ${c}반 ${student.number}번 ${student.name} 학생을 명단에서 삭제하시겠습니까?\n\n(※ 학생 명단에서 삭제해도 기존 진행 기록 및 제출 기록은 유지됩니다.)`
+    );
+    if (!confirmed) return;
+
+    setIsDeleting(true);
+    setSuccessMessage('');
+    setErrorMessage('');
+    try {
+      const res = await deleteAdminRosterStudents([student]);
+      if (res && res.success) {
+        setSuccessMessage(
+          `${student.grade}학년 ${c}반 ${student.number}번 ${student.name} 학생이 Google Sheets 명단에서 삭제되었습니다.`
+        );
+        setSelectedRosterKeys((prev) => {
+          const next = new Set(prev);
+          next.delete(`${student.grade}-${c}-${student.number}`);
+          return next;
+        });
+        onRosterUpdated();
+      } else {
+        setErrorMessage(res?.message || '학생 삭제에 실패했습니다.');
+      }
+    } catch (err: any) {
+      console.error('Delete student error:', err);
+      setErrorMessage(err?.message || '학생 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteSelectedStudents = async () => {
+    if (selectedRosterKeys.size === 0) return;
+    const confirmed = window.confirm(
+      `선택한 ${selectedRosterKeys.size}명의 학생을 명단에서 삭제하시겠습니까?\n\n(※ 학생 명단에서 삭제해도 기존 진행 기록 및 제출 기록은 유지됩니다.)`
+    );
+    if (!confirmed) return;
+
+    const targetStudents = currentRoster.filter((item) => {
+      const c = item.classNum !== undefined ? item.classNum : (item as any).class;
+      return selectedRosterKeys.has(`${item.grade}-${c}-${item.number}`);
+    });
+
+    setIsDeleting(true);
+    setSuccessMessage('');
+    setErrorMessage('');
+    try {
+      const res = await deleteAdminRosterStudents(targetStudents);
+      if (res && res.success) {
+        setSuccessMessage(
+          `선택한 ${targetStudents.length}명의 학생이 Google Sheets 명단에서 삭제되었습니다.`
+        );
+        setSelectedRosterKeys(new Set());
+        onRosterUpdated();
+      } else {
+        setErrorMessage(res?.message || '선택 학생 일괄 삭제에 실패했습니다.');
+      }
+    } catch (err: any) {
+      console.error('Batch delete error:', err);
+      setErrorMessage(err?.message || '학생 삭제 중 오류가 발생했습니다.');
+    } finally {
+      setIsDeleting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2C362B]/60 backdrop-blur-xs">
@@ -946,6 +1097,214 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                       </>
                     )}
                   </button>
+                </div>
+              </div>
+
+              {/* Method C: Current Registered Students List & Deletion */}
+              <div className="p-5 bg-[#F9FAF8] border border-[#E1E4D8] rounded-2xl space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="space-y-1">
+                    <div className="font-bold text-[#2C362B] text-sm flex items-center gap-2">
+                      <Users className="w-4 h-4 text-[#4B6344]" />
+                      <span>현재 Roster 시트 등록 학생 명단</span>
+                      <span className="px-2.5 py-0.5 rounded-full bg-[#E1E7DC] text-[#4B6344] font-extrabold text-[11px]">
+                        총 {currentRoster.length}명
+                      </span>
+                    </div>
+                    <p className="text-[#5D6B58] text-[11px]">
+                      학년 → 반 → 번호 순으로 정렬되어 있습니다. 개별 또는 여러 학생을 선택하여 명단에서 삭제할 수 있습니다.
+                    </p>
+                  </div>
+
+                  {/* Batch Delete Action Button */}
+                  {selectedRosterKeys.size > 0 && (
+                    <button
+                      type="button"
+                      disabled={isDeleting || isApplying}
+                      onClick={handleDeleteSelectedStudents}
+                      className="px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer shrink-0 animate-in fade-in"
+                    >
+                      {isDeleting ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>삭제 중...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>선택 학생 삭제 ({selectedRosterKeys.size}명)</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+
+                {/* Important Notice */}
+                <div className="p-3 bg-[#F1F4EF] border border-[#DCE2D7] rounded-xl text-[11px] text-[#4B6344] font-medium flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 shrink-0 text-[#4B6344]" />
+                  <span>
+                    학생 명단(Roster)에서 삭제해도 학생의 기존 진행 기록(Progress) 및 최종 제출 기록(Submissions)은 안전하게 유지됩니다.
+                  </span>
+                </div>
+
+                {/* Filters & Search Toolbar */}
+                <div className="flex flex-col sm:flex-row gap-2.5 pt-1">
+                  <div className="flex items-center gap-2">
+                    {/* Grade Selector */}
+                    <div className="relative">
+                      <select
+                        value={directGradeFilter}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDirectGradeFilter(v === 'all' ? 'all' : Number(v));
+                        }}
+                        className="px-3 py-2 bg-white border border-[#E1E4D8] rounded-xl text-xs font-semibold text-[#2C362B] outline-none focus:border-[#4B6344] cursor-pointer pr-7"
+                      >
+                        <option value="all">전체 학년</option>
+                        {availableGrades.map((g) => (
+                          <option key={g} value={g}>
+                            {g}학년
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Class Selector */}
+                    <div className="relative">
+                      <select
+                        value={directClassFilter}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          setDirectClassFilter(v === 'all' ? 'all' : Number(v));
+                        }}
+                        className="px-3 py-2 bg-white border border-[#E1E4D8] rounded-xl text-xs font-semibold text-[#2C362B] outline-none focus:border-[#4B6344] cursor-pointer pr-7"
+                      >
+                        <option value="all">전체 반</option>
+                        {availableClasses.map((c) => (
+                          <option key={c} value={c}>
+                            {c}반
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Search Input */}
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-[#9CA3AF] absolute left-3 top-1/2 -translate-y-1/2" />
+                    <input
+                      type="text"
+                      value={directSearchQuery}
+                      onChange={(e) => setDirectSearchQuery(e.target.value)}
+                      placeholder="학생 이름 또는 번호 검색..."
+                      className="w-full pl-8 pr-3 py-2 bg-white border border-[#E1E4D8] rounded-xl text-xs text-[#2C362B] placeholder-[#9CA3AF] outline-none focus:border-[#4B6344]"
+                    />
+                    {directSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setDirectSearchQuery('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[#9CA3AF] hover:text-[#2C362B]"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Table */}
+                <div className="bg-white border border-[#E1E4D8] rounded-xl overflow-hidden shadow-2xs">
+                  <div className="max-h-72 overflow-y-auto">
+                    <table className="w-full text-left text-xs border-collapse">
+                      <thead className="sticky top-0 bg-[#F1F4EF] border-b border-[#E1E4D8] text-[#5D6B58] font-bold z-10">
+                        <tr>
+                          <th className="py-2.5 px-3 w-10 text-center">
+                            <input
+                              type="checkbox"
+                              checked={isAllFilteredSelected}
+                              onChange={handleToggleSelectAll}
+                              disabled={filteredRoster.length === 0}
+                              className="accent-[#4B6344] cursor-pointer rounded"
+                              title="필터링된 학생 전체 선택"
+                            />
+                          </th>
+                          <th className="py-2.5 px-3 w-20">학년</th>
+                          <th className="py-2.5 px-3 w-20">반</th>
+                          <th className="py-2.5 px-3 w-20">번호</th>
+                          <th className="py-2.5 px-3">이름</th>
+                          <th className="py-2.5 px-3 text-right w-24">관리</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#E1E4D8]/60 font-medium text-[#2C362B]">
+                        {currentRoster.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-[#9CA3AF]">
+                              현재 Roster 시트에 등록된 학생이 없습니다. 위에서 학생을 추가해 주세요.
+                            </td>
+                          </tr>
+                        ) : filteredRoster.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-[#9CA3AF]">
+                              검색 및 필터 조건에 일치하는 학생이 없습니다.
+                            </td>
+                          </tr>
+                        ) : (
+                          filteredRoster.map((item) => {
+                            const c = Number(item.classNum !== undefined ? item.classNum : (item as any).class);
+                            const key = `${item.grade}-${c}-${item.number}`;
+                            const isSelected = selectedRosterKeys.has(key);
+
+                            return (
+                              <tr
+                                key={key}
+                                className={`transition-colors ${
+                                  isSelected ? 'bg-[#F1F4EF]/80' : 'hover:bg-[#FAFBF9]'
+                                }`}
+                              >
+                                <td className="py-2 px-3 text-center">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleToggleSelect(key)}
+                                    className="accent-[#4B6344] cursor-pointer rounded"
+                                  />
+                                </td>
+                                <td className="py-2 px-3 text-[#5D6B58]">{item.grade}학년</td>
+                                <td className="py-2 px-3 text-[#5D6B58]">{c}반</td>
+                                <td className="py-2 px-3 text-[#5D6B58]">{item.number}번</td>
+                                <td className="py-2 px-3 font-bold text-[#2C362B]">{item.name}</td>
+                                <td className="py-2 px-3 text-right">
+                                  <button
+                                    type="button"
+                                    disabled={isDeleting || isApplying}
+                                    onClick={() => handleDeleteSingleStudent(item)}
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-rose-600 hover:text-rose-700 bg-rose-50 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer disabled:opacity-40"
+                                    title="명단에서 삭제"
+                                  >
+                                    <Trash2 className="w-3 h-3" />
+                                    <span>삭제</span>
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Table Footer / Summary */}
+                  {filteredRoster.length > 0 && (
+                    <div className="p-2.5 bg-[#FAFBF9] border-t border-[#E1E4D8] flex items-center justify-between text-[11px] text-[#5D6B58] px-4">
+                      <span>
+                        표시 중: <strong>{filteredRoster.length}명</strong> / 전체: <strong>{currentRoster.length}명</strong>
+                      </span>
+                      {selectedRosterKeys.size > 0 && (
+                        <span className="text-rose-600 font-bold">
+                          선택됨: {selectedRosterKeys.size}명
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>

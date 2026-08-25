@@ -57,7 +57,13 @@ app.post('/api/gas-proxy', async (req, res) => {
     const action = payload.action;
 
     // Block client attempts to run admin actions through public proxy
-    if (action === 'getAdminDashboard' || action === 'getStudentDetail' || action === 'updateRoster' || action === 'getAllProgress') {
+    if (
+      action === 'getAdminDashboard' ||
+      action === 'getStudentDetail' ||
+      action === 'updateRoster' ||
+      action === 'deleteRosterStudents' ||
+      action === 'getAllProgress'
+    ) {
       return res.status(403).json({
         success: false,
         message: '관리자 전용 기능은 클라이언트에서 직접 호출할 수 없습니다.',
@@ -471,6 +477,44 @@ app.post('/api/admin/update-roster', requireAdminAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: '학생 명단 저장 실패: ' + (err?.message || 'Server error'),
+    });
+  }
+});
+
+// Admin Delete Roster Students: deletes specified students from Google Sheets Roster securely
+app.post('/api/admin/delete-roster', requireAdminAuth, async (req, res) => {
+  try {
+    const { students } = req.body || {};
+    if (!Array.isArray(students) || students.length === 0) {
+      return res.status(400).json({ success: false, message: '삭제할 학생 명단(students) 배열이 필요합니다.' });
+    }
+
+    const gasData = await callServerGas({
+      action: 'deleteRosterStudents',
+      students,
+    });
+
+    if (gasData && gasData.success) {
+      // Sync in-memory rosterStore
+      const deleteKeys = new Set(
+        students.map((s: any) => `${Number(s.grade)}-${Number(s.classNum !== undefined ? s.classNum : s.class)}-${Number(s.number)}`)
+      );
+      rosterStore = rosterStore.filter(
+        (r) => !deleteKeys.has(`${Number(r.grade)}-${Number(r.classNum)}-${Number(r.number)}`)
+      );
+
+      return res.json(gasData);
+    }
+
+    return res.status(502).json({
+      success: false,
+      message: gasData?.message || 'Google Apps Script 학생 명단 삭제에 실패했습니다.',
+    });
+  } catch (err: any) {
+    console.error('Admin delete-roster error:', err);
+    return res.status(500).json({
+      success: false,
+      message: '학생 명단 삭제 실패: ' + (err?.message || 'Server error'),
     });
   }
 });

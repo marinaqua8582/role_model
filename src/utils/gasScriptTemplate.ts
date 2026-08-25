@@ -38,7 +38,13 @@ function handleRequest(e) {
     initSheetsIfNeeded(ss);
     
     // Validate admin secret for privileged teacher/admin actions
-    if (action === 'getAdminDashboard' || action === 'getStudentDetail' || action === 'updateRoster' || action === 'getAllProgress') {
+    if (
+      action === 'getAdminDashboard' ||
+      action === 'getStudentDetail' ||
+      action === 'updateRoster' ||
+      action === 'deleteRosterStudents' ||
+      action === 'getAllProgress'
+    ) {
       if (!isValidAdminRequest_(params)) {
         output.setContent(JSON.stringify({
           success: false,
@@ -75,6 +81,9 @@ function handleRequest(e) {
     } else if (action === 'updateRoster') {
       var rosterData = params.students || params.roster || params.data || [];
       result = updateRoster(ss, rosterData, params.mode || 'replace');
+    } else if (action === 'deleteRosterStudents') {
+      var studentsToDelete = params.students || [];
+      result = deleteRosterStudents(ss, studentsToDelete);
     } else {
       result = { success: false, message: '알 수 없는 요청입니다: ' + action };
     }
@@ -693,6 +702,53 @@ function updateRoster(ss, rosterItems, mode) {
 
     return { success: true, count: addedCount, mode: 'append', message: '학생 명단이 Google Sheets에 정상적으로 반영되었습니다.' };
   }
+}
+
+function deleteRosterStudents(ss, students) {
+  var sheet = ss.getSheetByName('Roster');
+  if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
+  
+  if (!Array.isArray(students) || students.length === 0) {
+    return { success: true, deletedCount: 0, message: '삭제할 학생이 지정되지 않았습니다.' };
+  }
+  
+  var targetKeys = {};
+  students.forEach(function(item) {
+    var g = parseInt(item.grade);
+    var c = parseInt(item.classNum !== undefined ? item.classNum : item.class);
+    var n = parseInt(item.number);
+    if (!isNaN(g) && !isNaN(c) && !isNaN(n)) {
+      targetKeys[g + '-' + c + '-' + n] = true;
+    }
+  });
+  
+  var data = sheet.getDataRange().getValues();
+  var rowsToDelete = [];
+  
+  // Find all row indexes (1-based) matching grade-class-number
+  for (var i = 1; i < data.length; i++) {
+    var g = parseInt(data[i][0]);
+    var c = parseInt(data[i][1]);
+    var n = parseInt(data[i][2]);
+    if (!isNaN(g) && !isNaN(c) && !isNaN(n)) {
+      var key = g + '-' + c + '-' + n;
+      if (targetKeys[key]) {
+        rowsToDelete.push(i + 1); // 1-based row number in Google Sheets
+      }
+    }
+  }
+  
+  // Delete from bottom to top (highest row index to lowest) to prevent index shifting
+  rowsToDelete.sort(function(a, b) { return b - a; });
+  rowsToDelete.forEach(function(rowIdx) {
+    sheet.deleteRow(rowIdx);
+  });
+  
+  return {
+    success: true,
+    deletedCount: rowsToDelete.length,
+    message: '선택한 학생 ' + rowsToDelete.length + '명이 명단에서 삭제되었습니다.'
+  };
 }
 
 function getAdminDashboard(ss) {

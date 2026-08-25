@@ -2240,6 +2240,62 @@ export async function updateAdminRoster(
 }
 
 /**
+ * Admin: Delete Roster Students via Vercel Server API (/api/admin/delete-roster)
+ */
+export async function deleteAdminRosterStudents(
+  studentsToDelete: { grade: number; classNum?: number; class?: number; number: number; name?: string }[]
+): Promise<{ success: boolean; deletedCount: number; message: string }> {
+  const token = sessionStorage.getItem('rolemodel_admin_token');
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch('/api/admin/delete-roster', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      students: studentsToDelete.map((item) => ({
+        grade: Number(item.grade),
+        class: Number(item.classNum !== undefined ? item.classNum : item.class),
+        number: Number(item.number),
+        name: item.name ? String(item.name).trim() : '',
+      })),
+    }),
+  });
+
+  if (res.status === 401 || res.status === 403) {
+    sessionStorage.removeItem('rolemodel_admin_token');
+    throw new Error('관리자 인증이 만료되었습니다. 다시 로그인해 주세요.');
+  }
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.success) {
+    throw new Error(json?.message || '학생 명단 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
+  }
+
+  // Update local roster cache if needed
+  const existing = getStoredRoster();
+  const deleteKeys = new Set(
+    studentsToDelete.map(
+      (s) => `${Number(s.grade)}-${Number(s.classNum !== undefined ? s.classNum : s.class)}-${Number(s.number)}`
+    )
+  );
+  const updatedRoster = existing.filter(
+    (r) => !deleteKeys.has(`${Number(r.grade)}-${Number(r.classNum)}-${Number(r.number)}`)
+  );
+  saveStoredRoster(updatedRoster);
+
+  return {
+    success: true,
+    deletedCount: json.deletedCount ?? studentsToDelete.length,
+    message: json.message || `${studentsToDelete.length}명의 학생이 명단에서 삭제되었습니다.`,
+  };
+}
+
+/**
  * Safe fetch for student view roster
  */
 export async function fetchRoster(): Promise<RosterItem[]> {

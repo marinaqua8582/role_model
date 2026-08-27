@@ -293,8 +293,26 @@ app.post('/api/student/save-step', (req, res) => {
     return res.status(400).json({ success: false, message: 'Invalid data' });
   }
 
+  const existing = progressStore.get(progress.studentKey);
   const now = new Date().toISOString();
   progress.updatedAt = now;
+
+  // Preserve highest reached currentStep and completion status
+  if (existing) {
+    const isCompleted = Boolean(
+      existing.isFinalSubmitted ||
+      existing.currentStep >= 10 ||
+      progress.isFinalSubmitted ||
+      progress.currentStep >= 10
+    );
+
+    if (isCompleted) {
+      progress.isFinalSubmitted = true;
+      progress.currentStep = 10;
+    } else {
+      progress.currentStep = Math.max(existing.currentStep || 1, progress.currentStep || 1);
+    }
+  }
 
   progressStore.set(progress.studentKey, progress);
 

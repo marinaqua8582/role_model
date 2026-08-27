@@ -69,7 +69,18 @@ export default function App() {
 
   // Student active session state
   const [currentStudent, setCurrentStudent] = useState<StudentProgress | null>(null);
+  const [viewStep, setViewStep] = useState<number>(1);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
+
+  // Completed student flag
+  const isStudentCompleted = Boolean(
+    currentStudent?.isFinalSubmitted ||
+    (currentStudent && currentStudent.currentStep >= 10)
+  );
+
+  const maxAllowedStep = isStudentCompleted
+    ? 10
+    : Math.max(1, currentStudent?.currentStep || 1);
 
   // Auto-save debounce timer
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -107,6 +118,7 @@ export default function App() {
           fetchStudentProgress(savedKey).then((progress) => {
             if (progress) {
               setCurrentStudent(progress);
+              setViewStep(progress.currentStep || 1);
             }
           });
         }
@@ -160,6 +172,7 @@ export default function App() {
   // Student Authentication handler
   const handleStudentAuthenticated = (progress: StudentProgress) => {
     setCurrentStudent(progress);
+    setViewStep(progress.currentStep || 1);
     localStorage.setItem('rolemodel_current_student_key', progress.studentKey);
     setIsPreviewStudentMode(false);
   };
@@ -175,15 +188,25 @@ export default function App() {
     setCurrentStudent(null);
   };
 
-  // Student Progress Updater: only updates local state during typing/editing,
-  // persistent save to server/localStorage happens when transitioning steps or on explicit submit
+  // Student Progress Updater: updates local state and optionally persists
   const updateProgress = (updated: StudentProgress, saveToStorage = false) => {
-    setCurrentStudent(updated);
+    // Ensure currentStep is never lowered for completed student or past steps
+    const preservedCurrentStep = isStudentCompleted
+      ? 10
+      : Math.max(currentStudent?.currentStep || 1, updated.currentStep || 1);
+
+    const payload: StudentProgress = {
+      ...updated,
+      currentStep: preservedCurrentStep,
+      isFinalSubmitted: isStudentCompleted || updated.isFinalSubmitted,
+    };
+
+    setCurrentStudent(payload);
     if (isPreviewStudentMode) return; // Read-only in preview mode
 
     if (saveToStorage) {
       setSaveStatus('saving');
-      saveStudentProgress(updated)
+      saveStudentProgress(payload)
         .then(() => {
           setSaveStatus('saved');
           setTimeout(() => setSaveStatus('idle'), 2500);
@@ -194,15 +217,44 @@ export default function App() {
     }
   };
 
-  const handleStepChange = (step: number) => {
+  // Click on a step tab in StepProgressBar (reviewing past or reached steps)
+  const handleSelectStep = (step: number) => {
     if (!currentStudent) return;
-    const updated = {
+    if (!isStudentCompleted && !isPreviewStudentMode && step > maxAllowedStep) {
+      return;
+    }
+    setViewStep(step);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Step "Next" button handler
+  const handleNextStep = (nextStep: number) => {
+    if (!currentStudent) return;
+
+    if (isStudentCompleted) {
+      // Completed student: simply move to next step without dropping completion or max progress
+      setViewStep(nextStep);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // In-progress student: advance currentStep if nextStep is greater
+    const newCurrentStep = Math.max(currentStudent.currentStep || 1, nextStep);
+    const updated: StudentProgress = {
       ...currentStudent,
-      currentStep: step,
-      isPromptCompleted: currentStudent.isPromptCompleted || step >= 7,
-      isTestCompleted: currentStudent.isTestCompleted || step >= 9,
+      currentStep: newCurrentStep,
+      isPromptCompleted: currentStudent.isPromptCompleted || nextStep >= 7,
+      isTestCompleted: currentStudent.isTestCompleted || nextStep >= 9,
     };
+    setViewStep(nextStep);
     updateProgress(updated, true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Step "Prev" button handler
+  const handlePrevStep = (prevStep: number) => {
+    if (!currentStudent) return;
+    setViewStep(prevStep);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -244,9 +296,12 @@ export default function App() {
     try {
       setLoadingStudentKey(student.studentKey);
       const detail = await fetchStudentDetail(student.studentKey);
-      setCurrentStudent(detail || student);
+      const p = detail || student;
+      setCurrentStudent(p);
+      setViewStep(p.currentStep || 1);
     } catch (e) {
       setCurrentStudent(student);
+      setViewStep(student.currentStep || 1);
     } finally {
       setLoadingStudentKey(null);
       setIsPreviewStudentMode(true);
@@ -458,12 +513,15 @@ export default function App() {
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
           {/* Step Progress Bar */}
           <StepProgressBar
-            currentStep={currentStudent.currentStep}
-            onStepClick={handleStepChange}
+            currentStep={viewStep}
+            maxStepReached={maxAllowedStep}
+            isCompleted={isStudentCompleted}
+            isReadOnly={isPreviewStudentMode}
+            onStepClick={handleSelectStep}
           />
 
           {/* STEP 1: Role Model Information */}
-          {currentStudent.currentStep === 1 && (
+          {viewStep === 1 && (
             <Step1RoleModel
               data={currentStudent.step1}
               student={{
@@ -480,12 +538,12 @@ export default function App() {
                   step1,
                 })
               }
-              onNext={() => handleStepChange(2)}
+              onNext={() => handleNextStep(2)}
             />
           )}
 
           {/* STEP 2: Chatbot Purpose */}
-          {currentStudent.currentStep === 2 && (
+          {viewStep === 2 && (
             <Step2Purpose
               data={currentStudent.step2}
               roleModel={currentStudent.step1}
@@ -503,13 +561,13 @@ export default function App() {
                   step2,
                 })
               }
-              onNext={() => handleStepChange(3)}
-              onPrev={() => handleStepChange(1)}
+              onNext={() => handleNextStep(3)}
+              onPrev={() => handlePrevStep(1)}
             />
           )}
 
           {/* STEP 3: Personality & Tone */}
-          {currentStudent.currentStep === 3 && (
+          {viewStep === 3 && (
             <Step3Personality
               data={currentStudent.step3}
               student={{
@@ -526,13 +584,13 @@ export default function App() {
                   step3,
                 })
               }
-              onNext={() => handleStepChange(4)}
-              onPrev={() => handleStepChange(2)}
+              onNext={() => handleNextStep(4)}
+              onPrev={() => handlePrevStep(2)}
             />
           )}
 
           {/* STEP 4: Response Style */}
-          {currentStudent.currentStep === 4 && (
+          {viewStep === 4 && (
             <Step4ResponseStyle
               data={currentStudent.step4}
               student={{
@@ -549,13 +607,13 @@ export default function App() {
                   step4,
                 })
               }
-              onNext={() => handleStepChange(5)}
-              onPrev={() => handleStepChange(3)}
+              onNext={() => handleNextStep(5)}
+              onPrev={() => handlePrevStep(3)}
             />
           )}
 
           {/* STEP 5: Factuality & Safety */}
-          {currentStudent.currentStep === 5 && (
+          {viewStep === 5 && (
             <Step5SafetyRules
               data={currentStudent.step5}
               roleModel={currentStudent.step1}
@@ -573,13 +631,13 @@ export default function App() {
                   step5,
                 })
               }
-              onNext={() => handleStepChange(6)}
-              onPrev={() => handleStepChange(4)}
+              onNext={() => handleNextStep(6)}
+              onPrev={() => handlePrevStep(4)}
             />
           )}
 
           {/* STEP 6: Final Prompt Generation & Confirmation */}
-          {currentStudent.currentStep === 6 && (
+          {viewStep === 6 && (
             <Step6FinalPrompt
               data={currentStudent.step6}
               roleModel={currentStudent.step1}
@@ -601,14 +659,14 @@ export default function App() {
                   isPromptCompleted: true,
                 })
               }
-              onNext={() => handleStepChange(7)}
-              onPrev={() => handleStepChange(5)}
-              onJumpToStep={(step) => handleStepChange(step)}
+              onNext={() => handleNextStep(7)}
+              onPrev={() => handlePrevStep(5)}
+              onJumpToStep={(step) => handleSelectStep(step)}
             />
           )}
 
           {/* STEP 7: Gemini Gems Guide */}
-          {currentStudent.currentStep === 7 && (
+          {viewStep === 7 && (
             <Step7GeminiGuide
               promptData={currentStudent.step6}
               student={{
@@ -619,13 +677,13 @@ export default function App() {
                 studentKey: currentStudent.studentKey,
               }}
               isReadOnly={isPreviewStudentMode}
-              onNext={() => handleStepChange(8)}
-              onPrev={() => handleStepChange(6)}
+              onNext={() => handleNextStep(8)}
+              onPrev={() => handlePrevStep(6)}
             />
           )}
 
           {/* STEP 8: Chatbot 6 Tests */}
-          {currentStudent.currentStep === 8 && (
+          {viewStep === 8 && (
             <Step8ChatbotTest
               data={currentStudent.step8}
               student={{
@@ -643,13 +701,13 @@ export default function App() {
                   isTestCompleted: true,
                 })
               }
-              onNext={() => handleStepChange(9)}
-              onPrev={() => handleStepChange(7)}
+              onNext={() => handleNextStep(9)}
+              onPrev={() => handlePrevStep(7)}
             />
           )}
 
           {/* STEP 9: Prompt Revision */}
-          {currentStudent.currentStep === 9 && (
+          {viewStep === 9 && (
             <Step9PromptRevision
               promptData={currentStudent.step6}
               testData={currentStudent.step8}
@@ -673,13 +731,13 @@ export default function App() {
                   step8,
                 })
               }
-              onNext={() => handleStepChange(10)}
-              onPrev={() => handleStepChange(8)}
+              onNext={() => handleNextStep(10)}
+              onPrev={() => handlePrevStep(8)}
             />
           )}
 
           {/* STEP 10: Final Submission & Career Counseling */}
-          {currentStudent.currentStep === 10 && (
+          {viewStep === 10 && (
             <Step10Submission
               data={currentStudent.step10}
               progress={currentStudent}
@@ -698,7 +756,7 @@ export default function App() {
                 })
               }
               onSubmit={handleFinalSubmit}
-              onPrev={() => handleStepChange(9)}
+              onPrev={() => handlePrevStep(9)}
             />
           )}
         </main>

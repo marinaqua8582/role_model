@@ -230,10 +230,15 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
 
   const handleContinue = () => {
     if (!verifiedState) return;
-    const progressToUse = { ...verifiedState.progress };
-    if (verifiedState.student.googleId) {
-      progressToUse.googleId = verifiedState.student.googleId;
-    }
+    const progressToUse: StudentProgress = {
+      ...verifiedState.progress,
+      grade: verifiedState.student.grade,
+      classNum: verifiedState.student.classNum,
+      number: verifiedState.student.number,
+      name: verifiedState.student.name,
+      studentKey: verifiedState.student.studentKey,
+      googleId: verifiedState.student.googleId || verifiedState.progress.googleId || '',
+    };
     onAuthenticated(progressToUse, progressToUse);
   };
 

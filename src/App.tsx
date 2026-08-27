@@ -209,6 +209,8 @@ export default function App() {
     }
     localStorage.removeItem('rolemodel_current_student_key');
     setCurrentStudent(null);
+    setViewStep(1);
+    setSaveStatus('idle');
   };
 
   // Student Progress Updater: updates local state and optionally persists

@@ -192,7 +192,7 @@ app.post('/api/auth/student', (req, res) => {
 
   const hasExisting = Boolean(existing && (existing.step1?.roleModelName || existing.currentStep > 1));
 
-  const progress: StudentProgress = existing ? { ...existing, googleId: existing.googleId || gid } : {
+  const progress: StudentProgress = existing ? { ...existing, grade: student.grade, classNum: student.classNum, number: student.number, name: student.name, studentKey: student.studentKey, googleId: gid || existing.googleId } : {
     studentKey,
     grade: student.grade,
     classNum: student.classNum,

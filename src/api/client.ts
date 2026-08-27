@@ -469,7 +469,18 @@ export async function verifyStudentAuth(params: {
     const data = await callGasApi(payload);
 
     if (data && data.success && data.student) {
-      const studentGid = data.student.googleId ? String(data.student.googleId).trim() : '';
+      let studentGid = data.student.googleId ? String(data.student.googleId).trim() : '';
+      if (!studentGid && data.progress && data.progress.googleId) {
+        studentGid = String(data.progress.googleId).trim();
+      }
+      if (!studentGid) {
+        const roster = getStoredRoster();
+        const found = roster.find((r) => `${r.grade}-${r.classNum}-${r.number}` === studentKey);
+        if (found?.googleId) {
+          studentGid = String(found.googleId).trim();
+        }
+      }
+
       const student: StudentInfo = {
         grade: Number(data.student.grade || params.grade),
         classNum: Number(data.student.classNum || data.student.classNo || params.classNum),
@@ -482,7 +493,7 @@ export async function verifyStudentAuth(params: {
       // Call loadProgress action to get fresh progress from Progress sheet
       const loadRes = await loadStudentProgress(student.studentKey);
 
-      let finalProgress = loadRes.progress;
+      let finalProgress: StudentProgress | undefined = loadRes.progress;
       if (!finalProgress && data.progress) {
         finalProgress = mapFullStudentDetail(data.progress);
       }
@@ -501,16 +512,22 @@ export async function verifyStudentAuth(params: {
 
       if (!finalProgress) {
         finalProgress = createInitialStudentProgress(student);
+      } else {
+        finalProgress.grade = student.grade;
+        finalProgress.classNum = student.classNum;
+        finalProgress.number = student.number;
+        finalProgress.name = student.name;
+        finalProgress.studentKey = student.studentKey;
       }
 
-      // Preserve student googleId on finalProgress
+      // CRITICAL: Unconditionally prioritize the newly authenticated student's googleId
       if (student.googleId) {
         finalProgress.googleId = student.googleId;
-      } else if (!finalProgress.googleId && localExisting?.googleId) {
-        finalProgress.googleId = localExisting.googleId;
+      } else if (studentGid) {
+        finalProgress.googleId = studentGid;
       }
 
-      // Cache verified progress in local storage
+      // Cache verified progress in local storage with the authenticated student's googleId
       localMap[student.studentKey] = finalProgress;
       saveStoredProgressMap(localMap);
 
@@ -546,7 +563,18 @@ export async function verifyStudentAuth(params: {
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.student) {
-        const studentGid = data.student.googleId ? String(data.student.googleId).trim() : '';
+        let studentGid = data.student.googleId ? String(data.student.googleId).trim() : '';
+        if (!studentGid && data.progress && data.progress.googleId) {
+          studentGid = String(data.progress.googleId).trim();
+        }
+        if (!studentGid) {
+          const roster = getStoredRoster();
+          const found = roster.find((r) => `${r.grade}-${r.classNum}-${r.number}` === studentKey);
+          if (found?.googleId) {
+            studentGid = String(found.googleId).trim();
+          }
+        }
+
         const student: StudentInfo = {
           grade: Number(data.student.grade || params.grade),
           classNum: Number(data.student.classNum || data.student.classNo || params.classNum),
@@ -569,12 +597,18 @@ export async function verifyStudentAuth(params: {
 
         if (!finalProgress) {
           finalProgress = createInitialStudentProgress(student);
+        } else {
+          finalProgress.grade = student.grade;
+          finalProgress.classNum = student.classNum;
+          finalProgress.number = student.number;
+          finalProgress.name = student.name;
+          finalProgress.studentKey = student.studentKey;
         }
 
         if (student.googleId) {
           finalProgress.googleId = student.googleId;
-        } else if (!finalProgress.googleId && localExisting?.googleId) {
-          finalProgress.googleId = localExisting.googleId;
+        } else if (studentGid) {
+          finalProgress.googleId = studentGid;
         }
 
         localMap[data.student.studentKey] = finalProgress;
@@ -627,7 +661,7 @@ export async function verifyStudentAuth(params: {
   };
 
   const progress = localExisting
-    ? { ...localExisting, googleId: studentGid || localExisting.googleId }
+    ? { ...localExisting, grade: student.grade, classNum: student.classNum, number: student.number, name: student.name, studentKey: student.studentKey, googleId: studentGid || localExisting.googleId }
     : createInitialStudentProgress(student);
   if (studentGid) {
     progress.googleId = studentGid;

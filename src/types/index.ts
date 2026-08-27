@@ -150,6 +150,7 @@ export interface RosterItem {
   classNum: number;
   number: number;
   name: string;
+  googleId?: string;
 }
 
 export interface RosterValidationError {
@@ -164,6 +165,7 @@ export interface RosterRowPreview {
   classRaw: any;
   numberRaw: any;
   nameRaw: any;
+  googleIdRaw?: any;
   isValid: boolean;
   errorReason?: string;
   item?: RosterItem;

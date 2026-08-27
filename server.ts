@@ -111,14 +111,17 @@ app.get('/api/roster/options', (req, res) => {
   const numbersByClass: Record<string, Set<number>> = {};
 
   rosterStore.forEach((item) => {
-    if (item.grade) {
-      gradesSet.add(item.grade);
-      if (!classesByGrade[item.grade]) classesByGrade[item.grade] = new Set();
-      classesByGrade[item.grade].add(item.classNum);
+    const g = Number(item.grade);
+    const c = Number(item.classNum !== undefined ? item.classNum : (item as any).class);
+    const n = Number(item.number);
+    if (!isNaN(g) && !isNaN(c) && !isNaN(n) && g > 0 && c > 0 && n > 0) {
+      gradesSet.add(g);
+      if (!classesByGrade[g]) classesByGrade[g] = new Set();
+      classesByGrade[g].add(c);
 
-      const classKey = `${item.grade}-${item.classNum}`;
+      const classKey = `${g}-${c}`;
       if (!numbersByClass[classKey]) numbersByClass[classKey] = new Set();
-      numbersByClass[classKey].add(item.number);
+      numbersByClass[classKey].add(n);
     }
   });
 
@@ -301,6 +304,28 @@ app.post('/api/student/save-step', (req, res) => {
   });
 });
 
+// 3.1. Get Student Progress
+app.get('/api/student/progress', (req, res) => {
+  const studentKey = String(req.query.studentKey || '').trim();
+  if (!studentKey) {
+    return res.status(400).json({ success: false, message: 'studentKey required' });
+  }
+
+  const existing = progressStore.get(studentKey);
+  if (existing) {
+    return res.json({
+      success: true,
+      found: true,
+      progress: existing,
+    });
+  }
+
+  return res.json({
+    success: true,
+    found: false,
+  });
+});
+
 // 4. Reset Student Progress
 app.post('/api/student/reset', (req, res) => {
   const { studentKey } = req.body;
@@ -460,6 +485,7 @@ app.post('/api/admin/update-roster', requireAdminAuth, async (req, res) => {
               classNum: item.classNum || item.class,
               number: item.number,
               name: item.name,
+              googleId: item.googleId || '',
             });
           }
         });

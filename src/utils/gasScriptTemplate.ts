@@ -108,7 +108,7 @@ function isValidAdminRequest_(data) {
 function initSheetsIfNeeded(ss) {
   var sheetNames = ['Roster', 'Progress', 'Tests', 'Submissions'];
   var headers = {
-    'Roster': ['grade', 'class', 'number', 'name'],
+    'Roster': ['grade', 'class', 'number', 'name', 'googleId'],
     'Progress': ['studentKey', 'grade', 'class', 'number', 'name', 'currentStep', 'roleModelName', 'roleModelJob', 'roleModelReason', 'jobDescription', 'competencies', 'careerHistory', 'strengths', 'values', 'challengeExperience', 'chatbotPurposes', 'targetUser', 'expectedOutcome', 'personality', 'speakingStyle', 'honorificStyle', 'desiredFeeling', 'answerLength', 'answerElements', 'chatbotName', 'initialPrompt', 'revisedPrompt', 'finalPrompt', 'createdAt', 'updatedAt'],
     'Tests': ['studentKey', 'test1Result', 'test2Result', 'test3Result', 'test4Result', 'test5Result', 'test6Result', 'problemDescription', 'revisionNote', 'testedAt'],
     'Submissions': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'revisionSummary', 'submittedAt']
@@ -119,6 +119,12 @@ function initSheetsIfNeeded(ss) {
     if (!sheet) {
       sheet = ss.insertSheet(name);
       sheet.appendRow(headers[name]);
+    } else if (name === 'Roster') {
+      // Auto-migrate legacy 4-column Roster header if needed
+      var lastCol = sheet.getLastColumn();
+      if (lastCol < 5) {
+        sheet.getRange(1, 1, 1, headers['Roster'].length).setValues([headers['Roster']]);
+      }
     } else if (name === 'Submissions') {
       // Auto-migrate legacy Submissions header if needed
       var lastCol = sheet.getLastColumn();
@@ -133,29 +139,31 @@ function verifyStudent(ss, params) {
   var sheet = ss.getSheetByName('Roster');
   if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
   var data = sheet.getDataRange().getValues();
-  var grade = parseInt(params.grade);
-  var classNum = parseInt(params.classNo || params.classNum || params.class);
-  var number = parseInt(params.number);
-  var name = String(params.name || '').trim();
+  var grade = parseInt(params.grade, 10);
+  var classNum = parseInt(params.classNo || params.classNum || params.class, 10);
+  var number = parseInt(params.number, 10);
+  var name = String(params.name || '').trim().replace(/\s+/g, '');
   
   for (var i = 1; i < data.length; i++) {
-    var rGrade = parseInt(data[i][0]);
-    var rClass = parseInt(data[i][1]);
-    var rNum = parseInt(data[i][2]);
-    var rName = String(data[i][3] || '').trim();
+    var rGrade = parseInt(String(data[i][0]).trim(), 10);
+    var rClass = parseInt(String(data[i][1]).trim(), 10);
+    var rNum = parseInt(String(data[i][2]).trim(), 10);
+    var rRawName = String(data[i][3] || '').trim();
+    var rName = rRawName.replace(/\s+/g, '');
+    var rGoogleId = String(data[i][4] || '').trim();
     
     if (rGrade === grade && rClass === classNum && rNum === number && rName === name) {
       var studentKey = grade + '-' + classNum + '-' + number;
       var existingProgress = getProgress(ss, studentKey);
       return {
         success: true,
-        student: { grade: grade, classNum: classNum, number: number, name: name, studentKey: studentKey },
+        student: { grade: grade, classNum: classNum, number: number, name: rRawName || name, googleId: rGoogleId, studentKey: studentKey },
         hasExisting: existingProgress.found,
         progress: existingProgress.data
       };
     }
   }
-  return { success: false, message: '학생 정보를 확인할 수 없습니다.' };
+  return { success: false, message: '학생 정보를 확인할 수 없습니다.\n학년, 반, 번호, 이름을 다시 확인해 주세요.' };
 }
 
 function getRosterOptions(ss) {
@@ -167,10 +175,10 @@ function getRosterOptions(ss) {
   var numbersByClass = {};
   
   for (var i = 1; i < data.length; i++) {
-    var g = parseInt(data[i][0]);
-    var c = parseInt(data[i][1]);
-    var n = parseInt(data[i][2]);
-    if (!isNaN(g) && !isNaN(c) && !isNaN(n)) {
+    var g = parseInt(String(data[i][0]).trim(), 10);
+    var c = parseInt(String(data[i][1]).trim(), 10);
+    var n = parseInt(String(data[i][2]).trim(), 10);
+    if (!isNaN(g) && !isNaN(c) && !isNaN(n) && g > 0 && c > 0 && n > 0) {
       gradesSet[g] = true;
       if (!classesByGrade[g]) classesByGrade[g] = [];
       if (classesByGrade[g].indexOf(c) === -1) classesByGrade[g].push(c);
@@ -181,7 +189,7 @@ function getRosterOptions(ss) {
     }
   }
   
-  var grades = Object.keys(gradesSet).map(function(k) { return parseInt(k); }).sort(function(a, b) { return a - b; });
+  var grades = Object.keys(gradesSet).map(function(k) { return parseInt(k, 10); }).sort(function(a, b) { return a - b; });
   grades.forEach(function(g) {
     if (classesByGrade[g]) classesByGrade[g].sort(function(a, b) { return a - b; });
   });
@@ -207,43 +215,74 @@ function loadProgress(ss, studentKey) {
   var sheet = ss.getSheetByName('Progress');
   if (!sheet) return { success: true, found: false };
   var data = sheet.getDataRange().getValues();
+  var targetKey = String(studentKey || '').trim();
+  var parts = targetKey.split('-');
+  var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
+  var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
+  var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
+
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(studentKey)) {
+    var rowKey = String(data[i][0] || '').trim();
+    var rGrade = parseInt(String(data[i][1]).trim(), 10);
+    var rClass = parseInt(String(data[i][2]).trim(), 10);
+    var rNum = parseInt(String(data[i][3]).trim(), 10);
+
+    var isMatch = false;
+    if (rowKey && targetKey && rowKey === targetKey) {
+      isMatch = true;
+    } else if (targetGrade > 0 && targetClass > 0 && targetNum > 0 && rGrade === targetGrade && rClass === targetClass && rNum === targetNum) {
+      isMatch = true;
+    }
+
+    if (isMatch) {
+      var progressData = {
+        studentKey: targetKey,
+        grade: !isNaN(rGrade) ? rGrade : targetGrade,
+        class: !isNaN(rClass) ? rClass : targetClass,
+        classNum: !isNaN(rClass) ? rClass : targetClass,
+        number: !isNaN(rNum) ? rNum : targetNum,
+        name: String(data[i][4] || '').trim(),
+        currentStep: Number(data[i][5] || 1),
+        roleModelName: String(data[i][6] || ''),
+        roleModelJob: String(data[i][7] || ''),
+        roleModelReason: String(data[i][8] || ''),
+        jobDescription: String(data[i][9] || ''),
+        competencies: String(data[i][10] || ''),
+        careerHistory: String(data[i][11] || ''),
+        strengths: String(data[i][12] || ''),
+        values: String(data[i][13] || ''),
+        challengeExperience: String(data[i][14] || ''),
+        chatbotPurposes: String(data[i][15] || ''),
+        targetUser: String(data[i][16] || ''),
+        expectedOutcome: String(data[i][17] || ''),
+        personality: String(data[i][18] || ''),
+        speakingStyle: String(data[i][19] || ''),
+        honorificStyle: String(data[i][20] || ''),
+        desiredFeeling: String(data[i][21] || ''),
+        answerLength: String(data[i][22] || ''),
+        answerElements: String(data[i][23] || ''),
+        chatbotName: String(data[i][24] || ''),
+        initialPrompt: String(data[i][25] || ''),
+        revisedPrompt: String(data[i][26] || ''),
+        finalPrompt: String(data[i][27] || ''),
+        createdAt: String(data[i][28] || ''),
+        updatedAt: String(data[i][29] || '')
+      };
+
+      // Also attach Tests and Submissions if available
+      var testData = getStudentTests(ss, targetKey);
+      if (testData) {
+        progressData.tests = testData;
+      }
+      var subData = getStudentSubmission(ss, targetKey);
+      if (subData) {
+        progressData.submission = subData;
+      }
+
       return {
         success: true,
         found: true,
-        data: {
-          studentKey: String(data[i][0]),
-          grade: Number(data[i][1]),
-          class: Number(data[i][2]),
-          number: Number(data[i][3]),
-          name: String(data[i][4]),
-          currentStep: Number(data[i][5] || 1),
-          roleModelName: String(data[i][6] || ''),
-          roleModelJob: String(data[i][7] || ''),
-          roleModelReason: String(data[i][8] || ''),
-          jobDescription: String(data[i][9] || ''),
-          competencies: String(data[i][10] || ''),
-          careerHistory: String(data[i][11] || ''),
-          strengths: String(data[i][12] || ''),
-          values: String(data[i][13] || ''),
-          challengeExperience: String(data[i][14] || ''),
-          chatbotPurposes: String(data[i][15] || ''),
-          targetUser: String(data[i][16] || ''),
-          expectedOutcome: String(data[i][17] || ''),
-          personality: String(data[i][18] || ''),
-          speakingStyle: String(data[i][19] || ''),
-          honorificStyle: String(data[i][20] || ''),
-          desiredFeeling: String(data[i][21] || ''),
-          answerLength: String(data[i][22] || ''),
-          answerElements: String(data[i][23] || ''),
-          chatbotName: String(data[i][24] || ''),
-          initialPrompt: String(data[i][25] || ''),
-          revisedPrompt: String(data[i][26] || ''),
-          finalPrompt: String(data[i][27] || ''),
-          createdAt: String(data[i][28] || ''),
-          updatedAt: String(data[i][29] || '')
-        }
+        data: progressData
       };
     }
   }
@@ -254,12 +293,22 @@ function saveProgress(ss, progress) {
   var sheet = ss.getSheetByName('Progress');
   if (!sheet) return { success: false, message: 'Progress 시트를 찾을 수 없습니다.' };
   var data = sheet.getDataRange().getValues();
-  var studentKey = progress.studentKey || (progress.grade + '-' + (progress.class || progress.classNum) + '-' + progress.number);
+  var studentKey = String(progress.studentKey || (progress.grade + '-' + (progress.class || progress.classNum) + '-' + progress.number)).trim();
+  var parts = studentKey.split('-');
+  var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
+  var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
+  var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
+
   var rowIndex = -1;
   var existingRow = null;
   
   for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(studentKey)) {
+    var rowKey = String(data[i][0] || '').trim();
+    var rGrade = parseInt(String(data[i][1]).trim(), 10);
+    var rClass = parseInt(String(data[i][2]).trim(), 10);
+    var rNum = parseInt(String(data[i][3]).trim(), 10);
+
+    if ((rowKey && rowKey === studentKey) || (targetGrade > 0 && targetClass > 0 && targetNum > 0 && rGrade === targetGrade && rClass === targetClass && rNum === targetNum)) {
       rowIndex = i + 1;
       existingRow = data[i];
       break;
@@ -650,7 +699,7 @@ function updateRoster(ss, rosterItems, mode) {
   var sheet = ss.getSheetByName('Roster');
   if (!sheet) {
     sheet = ss.insertSheet('Roster');
-    sheet.appendRow(['grade', 'class', 'number', 'name']);
+    sheet.appendRow(['grade', 'class', 'number', 'name', 'googleId']);
   }
   
   if (!Array.isArray(rosterItems)) {
@@ -660,14 +709,15 @@ function updateRoster(ss, rosterItems, mode) {
   // mode === 'replace': Overwrites Roster sheet only (Preserving other sheets: Progress, Tests, Submissions)
   if (mode === 'replace') {
     sheet.clearContents();
-    sheet.appendRow(['grade', 'class', 'number', 'name']);
+    sheet.appendRow(['grade', 'class', 'number', 'name', 'googleId']);
     rosterItems.forEach(function(item) {
       var g = parseInt(item.grade);
       var c = parseInt(item.classNum !== undefined ? item.classNum : item.class);
       var n = parseInt(item.number);
       var nm = String(item.name || '').trim();
+      var gid = String(item.googleId || '').trim();
       if (!isNaN(g) && !isNaN(c) && !isNaN(n) && nm) {
-        sheet.appendRow([g, c, n, nm]);
+        sheet.appendRow([g, c, n, nm, gid]);
       }
     });
     return { success: true, count: rosterItems.length, mode: 'replace', message: '학생 명단이 Google Sheets에 정상적으로 반영되었습니다.' };
@@ -690,10 +740,11 @@ function updateRoster(ss, rosterItems, mode) {
       var c = parseInt(item.classNum !== undefined ? item.classNum : item.class);
       var n = parseInt(item.number);
       var nm = String(item.name || '').trim();
+      var gid = String(item.googleId || '').trim();
       if (!isNaN(g) && !isNaN(c) && !isNaN(n) && nm) {
         var key = g + '-' + c + '-' + n;
         if (!existingMap[key]) {
-          sheet.appendRow([g, c, n, nm]);
+          sheet.appendRow([g, c, n, nm, gid]);
           existingMap[key] = true;
           addedCount++;
         }
@@ -766,10 +817,11 @@ function getAdminDashboard(ss) {
       var c = parseInt(rData[i][1]);
       var n = parseInt(rData[i][2]);
       var nm = String(rData[i][3] || '').trim();
+      var gid = String(rData[i][4] || '').trim();
       if (!isNaN(g) && !isNaN(c) && !isNaN(n) && nm) {
         var key = g + '-' + c + '-' + n;
         rosterKeys[key] = true;
-        rosterList.push({ grade: g, classNum: c, number: n, name: nm, studentKey: key });
+        rosterList.push({ grade: g, classNum: c, number: n, name: nm, googleId: gid, studentKey: key });
       }
     }
   }

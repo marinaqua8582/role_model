@@ -10,11 +10,11 @@ import {
 
 /**
  * Generate a blank Roster template XLSX for teachers to download
- * Row 1 header: 학년, 반, 번호, 이름 (No dummy example data rows)
+ * Row 1 header: 학년, 반, 번호, 이름, 구글 아이디 (No dummy example data rows)
  */
 export function generateRosterTemplate(): Uint8Array {
   const wb = XLSX.utils.book_new();
-  const headers = [['학년', '반', '번호', '이름']];
+  const headers = [['학년', '반', '번호', '이름', '구글 아이디']];
   const ws = XLSX.utils.aoa_to_sheet(headers);
   XLSX.utils.book_append_sheet(wb, ws, 'Roster');
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
@@ -77,6 +77,7 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
   let classCol = -1;
   let numberCol = -1;
   let nameCol = -1;
+  let googleIdCol = -1;
 
   for (let i = 0; i < Math.min(rawRows.length, 5); i++) {
     const row = rawRows[i];
@@ -86,6 +87,7 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
     const cIdx = row.findIndex((c) => /^(반|class|classNum)$/i.test(String(c).trim()));
     const numIdx = row.findIndex((c) => /^(번호|number|num)$/i.test(String(c).trim()));
     const nameIdx = row.findIndex((c) => /^(이름|name|학생이름)$/i.test(String(c).trim()));
+    const gIdIdx = row.findIndex((c) => /^(구글\s*아이디|구글\s*id|google\s*id|googleid|구글계정|이메일|email)$/i.test(String(c).trim()));
 
     if (gIdx !== -1 && cIdx !== -1 && numIdx !== -1 && nameIdx !== -1) {
       headerIndex = i;
@@ -93,6 +95,7 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
       classCol = cIdx;
       numberCol = numIdx;
       nameCol = nameIdx;
+      googleIdCol = gIdIdx;
       break;
     }
   }
@@ -107,7 +110,7 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
       errors: [
         {
           row: 1,
-          reason: '엑셀 첫 행의 열 이름이 올바르지 않습니다. 반드시 [학년, 반, 번호, 이름] 열이 포함되어야 합니다.',
+          reason: '엑셀 첫 행의 열 이름이 올바르지 않습니다. 반드시 [학년, 반, 번호, 이름] 열이 포함되어야 합니다. (구글 아이디 열은 선택)',
         },
       ],
     };
@@ -129,14 +132,16 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
     const classRaw = rawRow[classCol];
     const numberRaw = rawRow[numberCol];
     const nameRaw = rawRow[nameCol];
+    const googleIdRaw = googleIdCol !== -1 ? rawRow[googleIdCol] : '';
 
     const isGradeEmpty = gradeRaw === undefined || String(gradeRaw).trim() === '';
     const isClassEmpty = classRaw === undefined || String(classRaw).trim() === '';
     const isNumberEmpty = numberRaw === undefined || String(numberRaw).trim() === '';
     const isNameEmpty = nameRaw === undefined || String(nameRaw).trim() === '';
+    const isGoogleIdEmpty = googleIdRaw === undefined || String(googleIdRaw).trim() === '';
 
     // Ignore completely empty rows
-    if (isGradeEmpty && isClassEmpty && isNumberEmpty && isNameEmpty) {
+    if (isGradeEmpty && isClassEmpty && isNumberEmpty && isNameEmpty && isGoogleIdEmpty) {
       continue;
     }
 
@@ -145,7 +150,7 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
 
     let errorReason: string | undefined;
 
-    // Check missing fields
+    // Check missing required fields
     if (isGradeEmpty) {
       errorReason = '학년이 입력되지 않았습니다.';
     } else if (isClassEmpty) {
@@ -161,6 +166,7 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
     let classNum = 0;
     let number = 0;
     const name = String(nameRaw || '').trim();
+    const googleId = String(googleIdRaw || '').trim();
 
     if (!errorReason) {
       grade = Number(gradeRaw);
@@ -201,20 +207,21 @@ export function parseAndValidateRosterFile(fileData: ArrayBuffer): RosterValidat
       classRaw: String(classRaw ?? ''),
       numberRaw: String(numberRaw ?? ''),
       nameRaw: String(nameRaw ?? ''),
+      googleIdRaw: String(googleIdRaw ?? ''),
       isValid,
       errorReason,
-      item: isValid ? { grade, classNum, number, name } : undefined,
+      item: isValid ? { grade, classNum, number, name, googleId } : undefined,
     };
 
     rows.push(rowPreview);
 
     if (isValid) {
-      validItems.push({ grade, classNum, number, name });
+      validItems.push({ grade, classNum, number, name, googleId });
     } else {
       errors.push({
         row: excelRowNum,
         reason: errorReason || '알 수 없는 오류',
-        data: { grade, classNum, number, name },
+        data: { grade, classNum, number, name, googleId },
       });
     }
   }
@@ -252,7 +259,7 @@ export function computeRosterDiff(existing: RosterItem[], incoming: RosterItem[]
     const old = existingMap.get(key);
     if (!old) {
       toAdd.push(item);
-    } else if (old.name !== item.name) {
+    } else if (old.name !== item.name || (old.googleId || '') !== (item.googleId || '')) {
       changed.push({ before: old, after: item });
     } else {
       unchanged.push(item);

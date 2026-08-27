@@ -64,6 +64,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
   const [inputClass, setInputClass] = useState<string>('1');
   const [inputNumber, setInputNumber] = useState<string>('');
   const [inputName, setInputName] = useState<string>('');
+  const [inputGoogleId, setInputGoogleId] = useState<string>('');
   const [singleAddError, setSingleAddError] = useState<string>('');
 
   // Direct batch text entry state
@@ -144,6 +145,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
     const c = Number(inputClass);
     const n = Number(inputNumber);
     const trimmedName = inputName.trim();
+    const trimmedGoogleId = inputGoogleId.trim();
 
     if (!g || g < 1 || g > 6) {
       setSingleAddError('올바른 학년을 입력해 주세요 (1~6).');
@@ -167,6 +169,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
       classNum: c,
       number: n,
       name: trimmedName,
+      googleId: trimmedGoogleId,
     };
 
     setIsApplying(true);
@@ -176,6 +179,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
         setSuccessMessage(`${g}학년 ${c}반 ${n}번 ${trimmedName} 학생이 Google Sheets에 등록되었습니다.`);
         setInputNumber(String(n + 1));
         setInputName('');
+        setInputGoogleId('');
         onRosterUpdated();
       } else {
         setSingleAddError('학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
@@ -210,14 +214,25 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
 
       const parts = cleanLine.split(/[\t,/\s]+/).filter(Boolean);
       if (parts.length < 4) {
-        parseErrors.push(`${idx + 1}행: [학년 반 번호 이름] 4개 항목이 필요합니다. ("${cleanLine}")`);
+        parseErrors.push(`${idx + 1}행: [학년 반 번호 이름] 최소 4개 항목이 필요합니다. ("${cleanLine}")`);
         return;
       }
 
       const g = parseInt(parts[0], 10);
       const c = parseInt(parts[1], 10);
       const n = parseInt(parts[2], 10);
-      const studentName = parts.slice(3).join(' ').trim();
+      
+      let studentName = '';
+      let studentGoogleId = '';
+
+      if (parts.length === 4) {
+        studentName = parts[3].trim();
+      } else {
+        // 5 or more tokens:
+        // Format: 학년 반 번호 이름 Google ID (where name may have multiple words, and last token is Google ID)
+        studentGoogleId = parts[parts.length - 1].trim();
+        studentName = parts.slice(3, parts.length - 1).join(' ').trim();
+      }
 
       if (isNaN(g) || isNaN(c) || isNaN(n) || g <= 0 || c <= 0 || n <= 0 || !studentName) {
         parseErrors.push(`${idx + 1}행: 숫자/이름 형식이 맞지 않습니다. ("${cleanLine}")`);
@@ -236,6 +251,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
         classNum: c,
         number: n,
         name: studentName,
+        googleId: studentGoogleId,
       });
     });
 
@@ -298,6 +314,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
         String(r.classRaw).toLowerCase().includes(q) ||
         String(r.numberRaw).toLowerCase().includes(q) ||
         String(r.nameRaw).toLowerCase().includes(q) ||
+        String(r.googleIdRaw || '').toLowerCase().includes(q) ||
         (r.errorReason && r.errorReason.toLowerCase().includes(q));
       if (!match) return false;
     }
@@ -341,7 +358,8 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
       const matchNum = String(item.number).includes(q);
       const matchGrade = `${item.grade}학년`.includes(q) || String(item.grade) === q;
       const matchClass = `${c}반`.includes(q) || String(c) === q;
-      if (!matchName && !matchNum && !matchGrade && !matchClass) return false;
+      const matchGoogleId = Boolean(item.googleId && item.googleId.toLowerCase().includes(q));
+      if (!matchName && !matchNum && !matchGrade && !matchClass && !matchGoogleId) return false;
     }
     return true;
   });
@@ -557,7 +575,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                     <span>1. 학생 명단 엑셀 양식 다운로드</span>
                   </div>
                   <p className="text-[#5D6B58] text-[11px]">
-                    열 순서: [<strong>학년</strong>, <strong>반</strong>, <strong>번호</strong>, <strong>이름</strong>] 빈 양식(.xlsx)을 다운로드하여 학생 정보를 입력하세요.
+                    열 순서: [<strong>학년</strong>, <strong>반</strong>, <strong>번호</strong>, <strong>이름</strong>, <strong>구글 아이디</strong>] 빈 양식(.xlsx)을 다운로드하여 학생 정보를 입력하세요. (구글 아이디는 선택 사항)
                   </p>
                 </div>
 
@@ -869,13 +887,14 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                               <th className="py-2 px-3 font-bold text-[#5D6B58] w-16 text-center">반</th>
                               <th className="py-2 px-3 font-bold text-[#5D6B58] w-16 text-center">번호</th>
                               <th className="py-2 px-3 font-bold text-[#5D6B58]">이름</th>
+                              <th className="py-2 px-3 font-bold text-[#5D6B58]">Google ID</th>
                               <th className="py-2 px-3 font-bold text-[#5D6B58] text-right">상태</th>
                             </tr>
                           </thead>
                           <tbody className="divide-y divide-[#E1E4D8]">
                             {filteredRows.length === 0 ? (
                               <tr>
-                                <td colSpan={6} className="py-6 text-center text-[#9CA3AF]">
+                                <td colSpan={7} className="py-6 text-center text-[#9CA3AF]">
                                   조건에 맞는 학생 정보가 없습니다.
                                 </td>
                               </tr>
@@ -901,6 +920,13 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                                   </td>
                                   <td className="py-2 px-3 font-bold text-[#2C362B]">
                                     {r.nameRaw || <span className="text-rose-500 font-bold">누락</span>}
+                                  </td>
+                                  <td className="py-2 px-3 font-mono text-[#4B6344]">
+                                    {r.googleIdRaw ? (
+                                      r.googleIdRaw
+                                    ) : (
+                                      <span className="text-[#9CA3AF] font-normal italic font-sans">미등록</span>
+                                    )}
                                   </td>
                                   <td className="py-2 px-3 text-right">
                                     {r.isValid ? (
@@ -945,7 +971,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
                   <div>
                     <label className="block text-[11px] font-bold text-[#4B6344] mb-1">
                       학년
@@ -1003,6 +1029,19 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                       className="w-full px-3 py-2 bg-white border border-[#E1E4D8] rounded-xl text-xs font-medium text-[#2C362B] focus:border-[#4B6344] outline-none"
                     />
                   </div>
+
+                  <div className="col-span-2 sm:col-span-1">
+                    <label className="block text-[11px] font-bold text-[#4B6344] mb-1">
+                      Google ID (선택)
+                    </label>
+                    <input
+                      type="text"
+                      value={inputGoogleId}
+                      onChange={(e) => setInputGoogleId(e.target.value)}
+                      placeholder="student01@school.kr"
+                      className="w-full px-3 py-2 bg-white border border-[#E1E4D8] rounded-xl text-xs font-medium text-[#2C362B] focus:border-[#4B6344] outline-none placeholder-[#9CA3AF]"
+                    />
+                  </div>
                 </div>
 
                 {singleAddError && (
@@ -1029,14 +1068,14 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                     <span>여러 학생 텍스트 일괄 붙여넣기 등록</span>
                   </div>
                   <p className="text-[#5D6B58] text-[11px]">
-                    한 줄에 한 명씩 <strong>[학년 반 번호 이름]</strong> 순서로 공백, 쉼표 또는 탭으로 구분하여 붙여넣으세요.
+                    한 줄에 한 명씩 <strong>[학년 반 번호 이름 Google ID]</strong> 순서로 공백, 쉼표 또는 탭으로 구분하여 붙여넣으세요. (Google ID는 선택 사항이며 기존 4열 입력도 가능)
                   </p>
                 </div>
 
                 <div className="p-3 bg-white border border-[#E1E4D8] rounded-xl font-mono text-[11px] text-[#6B7280]">
                   <span className="font-bold text-[#4B6344] block mb-1">입력 예시 (한 줄에 1명):</span>
-                  3 1 1 김민수<br />
-                  3 1 2 이서연<br />
+                  3 1 1 김민지 student01@school.kr<br />
+                  3 1 2 이서연 student02@school.kr<br />
                   3 1 3 박지호
                 </div>
 
@@ -1044,7 +1083,7 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                   rows={6}
                   value={batchText}
                   onChange={(e) => setBatchText(e.target.value)}
-                  placeholder="3 1 1 김민수&#10;3 1 2 이서연&#10;3 1 3 박지호"
+                  placeholder="3 1 1 김민지 student01@school.kr&#10;3 1 2 이서연 student02@school.kr&#10;3 1 3 박지호"
                   className="w-full p-3.5 bg-white border border-[#E1E4D8] rounded-xl font-mono text-xs text-[#2C362B] focus:border-[#4B6344] outline-none resize-y"
                 />
 
@@ -1231,19 +1270,20 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                           <th className="py-2.5 px-3 w-20">반</th>
                           <th className="py-2.5 px-3 w-20">번호</th>
                           <th className="py-2.5 px-3">이름</th>
+                          <th className="py-2.5 px-3">Google ID</th>
                           <th className="py-2.5 px-3 text-right w-24">관리</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-[#E1E4D8]/60 font-medium text-[#2C362B]">
                         {currentRoster.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="py-8 text-center text-[#9CA3AF]">
+                            <td colSpan={7} className="py-8 text-center text-[#9CA3AF]">
                               현재 Roster 시트에 등록된 학생이 없습니다. 위에서 학생을 추가해 주세요.
                             </td>
                           </tr>
                         ) : filteredRoster.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="py-8 text-center text-[#9CA3AF]">
+                            <td colSpan={7} className="py-8 text-center text-[#9CA3AF]">
                               검색 및 필터 조건에 일치하는 학생이 없습니다.
                             </td>
                           </tr>
@@ -1272,6 +1312,13 @@ export const AdminRosterManager: React.FC<AdminRosterManagerProps> = ({
                                 <td className="py-2 px-3 text-[#5D6B58]">{c}반</td>
                                 <td className="py-2 px-3 text-[#5D6B58]">{item.number}번</td>
                                 <td className="py-2 px-3 font-bold text-[#2C362B]">{item.name}</td>
+                                <td className="py-2 px-3">
+                                  {item.googleId ? (
+                                    <span className="font-mono text-xs text-[#4B6344] font-medium">{item.googleId}</span>
+                                  ) : (
+                                    <span className="text-[#9CA3AF] italic text-xs">미등록</span>
+                                  )}
+                                </td>
                                 <td className="py-2 px-3 text-right">
                                   <button
                                     type="button"

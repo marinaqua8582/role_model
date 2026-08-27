@@ -309,14 +309,17 @@ export async function getRosterOptions(): Promise<{
   const numbersByClass: Record<string, Set<number>> = {};
 
   roster.forEach((item) => {
-    if (item.grade) {
-      gradesSet.add(item.grade);
-      if (!classesByGrade[item.grade]) classesByGrade[item.grade] = new Set();
-      classesByGrade[item.grade].add(item.classNum);
+    const g = Number(item.grade);
+    const c = Number(item.classNum !== undefined ? item.classNum : (item as any).class);
+    const n = Number(item.number);
+    if (!isNaN(g) && !isNaN(c) && !isNaN(n) && g > 0 && c > 0 && n > 0) {
+      gradesSet.add(g);
+      if (!classesByGrade[g]) classesByGrade[g] = new Set();
+      classesByGrade[g].add(c);
 
-      const classKey = `${item.grade}-${item.classNum}`;
+      const classKey = `${g}-${c}`;
       if (!numbersByClass[classKey]) numbersByClass[classKey] = new Set();
-      numbersByClass[classKey].add(item.number);
+      numbersByClass[classKey].add(n);
     }
   });
 
@@ -354,152 +357,7 @@ export function parseCommaArray(val: unknown): string[] {
 }
 
 export function mapSheetDataToProgress(raw: any): StudentProgress {
-  const grade = Number(raw.grade) || 1;
-  const classNum = Number(raw.class !== undefined ? raw.class : raw.classNum) || 1;
-  const number = Number(raw.number) || 1;
-  const name = String(raw.name || '').trim();
-  const studentKey = String(raw.studentKey || `${grade}-${classNum}-${number}`);
-
-  const competencies = normalizeCompetencies(raw.competencies);
-  const strengths = normalizeStrengths(raw.strengths);
-  const values = normalizeValues(raw.values);
-  const chatbotPurposes = normalizeChatbotPurposes(raw.chatbotPurposes);
-  const personalities = normalizePersonalities(raw.personality || raw.personalities);
-  const answerElements = normalizeAnswerElements(raw.answerElements);
-
-  let answerLength: 'short' | 'medium' | 'detailed' = 'medium';
-  const rawLen = String(raw.answerLength || '');
-  if (rawLen.includes('short') || rawLen.includes('2~3') || rawLen.includes('짧고')) {
-    answerLength = 'short';
-  } else if (rawLen.includes('detailed') || rawLen.includes('자세')) {
-    answerLength = 'detailed';
-  } else {
-    answerLength = 'medium';
-  }
-
-  let honorificStyle: '친근한 존댓말' | '차분한 존댓말' | '정중한 존댓말' = '친근한 존댓말';
-  const rawHon = String(raw.honorificStyle || '');
-  if (rawHon.includes('차분한')) {
-    honorificStyle = '차분한 존댓말';
-  } else if (rawHon.includes('정중한')) {
-    honorificStyle = '정중한 존댓말';
-  } else {
-    honorificStyle = '친근한 존댓말';
-  }
-
-  const currentStep = Number(raw.currentStep) || 1;
-
-  const targetUserRaw = String(raw.targetUser || '').trim();
-  let targetUser = targetUserRaw || '이 직업에 관심 있는 중학생';
-  let targetUserCustom = '';
-  const knownTargets = [
-    '이 직업에 관심 있는 중학생',
-    '진로를 아직 정하지 못한 중학생',
-    '롤모델의 삶과 경험이 궁금한 학생',
-    '나와 비슷한 고민을 하는 학생',
-  ];
-  if (targetUserRaw && !knownTargets.includes(targetUserRaw)) {
-    targetUser = '기타';
-    targetUserCustom = targetUserRaw;
-  }
-
-  const initialPrompt = String(raw.initialPrompt || '').trim();
-  const revisedPrompt = String(raw.revisedPrompt || '').trim();
-  const finalPrompt = String(raw.finalPrompt || '').trim();
-  const chatbotName = String(raw.chatbotName || '').trim();
-
-  return {
-    studentKey,
-    grade,
-    classNum,
-    number,
-    name,
-    currentStep,
-    step1: {
-      roleModelName: String(raw.roleModelName || '').trim(),
-      roleModelJob: String(raw.roleModelJob || '').trim(),
-      roleModelReason: String(raw.roleModelReason || '').trim(),
-      jobDescription: String(raw.jobDescription || '').trim(),
-      competencies,
-      competencyCustom: '',
-      careerHistory: String(raw.careerHistory || '').trim(),
-      strengths,
-      strengthCustom: '',
-      values,
-      valueCustom: '',
-      challengeExperience: String(raw.challengeExperience || '').trim(),
-    },
-    step2: {
-      chatbotPurposes,
-      targetUser,
-      targetUserCustom,
-      expectedOutcome: String(raw.expectedOutcome || '').trim(),
-      purposeSummarySentence: String(raw.purposeSummarySentence || '').trim(),
-    },
-    step3: {
-      personalities,
-      speakingStyle: String(raw.speakingStyle || '멘토처럼 따뜻하게').trim(),
-      honorificStyle,
-      desiredFeeling: String(raw.desiredFeeling || '').trim(),
-      personalityRulesSummary: '',
-    },
-    step4: {
-      answerLength,
-      answerElements,
-    },
-    step5: {
-      quizAnswer: '',
-      quizPassed: false,
-      agreedToRules: false,
-      checkedFactualityRules: [false, false, false, false, false],
-      checkedDisclaimer: false,
-      checkedSafetyRules: [false, false, false, false],
-      allRulesChecked: false,
-    },
-    step6: {
-      chatbotName,
-      initialPrompt,
-      revisedPrompt,
-      finalPrompt,
-      isConfirmed: Boolean(finalPrompt),
-    },
-    step8: {
-      tests: {},
-      problemDescription: '',
-      revisionNote: '',
-      testedAt: '',
-    },
-    step10: {
-      gemUrl: String(raw.gemUrl || raw.step10?.gemUrl || '').trim(),
-      barrierAnswer: String(raw.barrierAnswer || raw.step10?.barrierAnswer || raw.step11?.barrierAnswer || '').trim(),
-      barrierReflection: String(raw.barrierReflection || raw.step10?.barrierReflection || raw.step11?.barrierReflection || '').trim(),
-      decisionAnswer: String(raw.decisionAnswer || raw.step10?.decisionAnswer || raw.step11?.decisionAnswer || '').trim(),
-      decisionReflection: String(raw.decisionReflection || raw.step10?.decisionReflection || raw.step11?.decisionReflection || '').trim(),
-      educationAnswer: String(raw.educationAnswer || raw.step10?.educationAnswer || raw.step11?.educationAnswer || '').trim(),
-      educationReflection: String(raw.educationReflection || raw.step10?.educationReflection || raw.step11?.educationReflection || '').trim(),
-      finalCareerReflection: String(raw.finalCareerReflection || raw.step10?.finalCareerReflection || raw.step11?.finalCareerReflection || '').trim(),
-      revisionSummary: String(raw.revisionSummary || raw.step10?.revisionSummary || '').trim(),
-      sampleQuestion1: String(raw.sampleQuestion1 || raw.step10?.sampleQuestion1 || '').trim(),
-      sampleAnswer1: String(raw.sampleAnswer1 || raw.step10?.sampleAnswer1 || '').trim(),
-      sampleQuestion2: String(raw.sampleQuestion2 || raw.step10?.sampleQuestion2 || '').trim(),
-      sampleAnswer2: String(raw.sampleAnswer2 || raw.step10?.sampleAnswer2 || '').trim(),
-      sampleQuestion3: String(raw.sampleQuestion3 || raw.step10?.sampleQuestion3 || '').trim(),
-      sampleAnswer3: String(raw.sampleAnswer3 || raw.step10?.sampleAnswer3 || '').trim(),
-      reflection: String(raw.reflection || raw.step10?.reflection || '').trim(),
-      submittedAt: raw.submittedAt || raw.counselingCompletedAt || raw.step10?.submittedAt || raw.step11?.completedAt || '',
-    },
-    createdAt: raw.createdAt || new Date().toISOString(),
-    updatedAt: raw.updatedAt || new Date().toISOString(),
-    isPromptCompleted: Boolean(finalPrompt || currentStep >= 6),
-    isTestCompleted: false,
-    isGemSubmitted: Boolean(raw.gemUrl || raw.step10?.gemUrl),
-    isFinalSubmitted: Boolean(
-      (raw.barrierAnswer && raw.decisionAnswer && raw.educationAnswer && raw.finalCareerReflection) ||
-      (raw.step10?.barrierAnswer && raw.step10?.decisionAnswer && raw.step10?.educationAnswer && raw.step10?.finalCareerReflection) ||
-      raw.isFinalSubmitted ||
-      raw.submitted
-    ),
-  };
+  return mapFullStudentDetail(raw);
 }
 
 /**
@@ -519,7 +377,7 @@ export async function loadStudentProgress(
       if (res && res.success) {
         if (res.found && res.data) {
           const raw = res.data;
-          const restoredProgress = mapSheetDataToProgress(raw);
+          const restoredProgress = mapFullStudentDetail(raw);
           // Sync local storage cache
           const localMap = getStoredProgressMap();
           localMap[studentKey] = restoredProgress;
@@ -542,10 +400,29 @@ export async function loadStudentProgress(
     }
   }
 
+  // Also check server fallback endpoint
+  try {
+    const sRes = await fetch(`/api/student/progress?studentKey=${encodeURIComponent(studentKey)}`);
+    if (sRes.ok) {
+      const sJson = await sRes.json();
+      if (sJson.success && sJson.progress) {
+        const restoredProgress = mapFullStudentDetail(sJson.progress);
+        const localMap = getStoredProgressMap();
+        localMap[studentKey] = restoredProgress;
+        saveStoredProgressMap(localMap);
+        return {
+          success: true,
+          found: true,
+          progress: restoredProgress,
+        };
+      }
+    }
+  } catch {}
+
   // Fallback to local cache if no GAS or GAS not reachable
   const localMap = getStoredProgressMap();
   const local = localMap[studentKey];
-  if (local && (local.step1?.roleModelName || local.currentStep > 1)) {
+  if (local && (local.step1?.roleModelName || local.currentStep > 1 || local.step6?.finalPrompt)) {
     return {
       success: true,
       found: true,
@@ -603,19 +480,20 @@ export async function verifyStudentAuth(params: {
       const loadRes = await loadStudentProgress(student.studentKey);
 
       let finalProgress = loadRes.progress;
+      if (!finalProgress && data.progress) {
+        finalProgress = mapFullStudentDetail(data.progress);
+      }
+
       const localMap = getStoredProgressMap();
       const localExisting = localMap[student.studentKey];
-
-      if (!finalProgress && data.progress) {
-        finalProgress = mapSheetDataToProgress(data.progress);
-      } else if (!finalProgress && localExisting) {
+      if (!finalProgress && localExisting) {
         finalProgress = localExisting;
       }
 
       const hasExisting = Boolean(
         loadRes.found ||
           data.hasExisting ||
-          (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1))
+          (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1 || finalProgress.step6?.finalPrompt))
       );
 
       if (!finalProgress) {
@@ -658,7 +536,7 @@ export async function verifyStudentAuth(params: {
     if (res.ok) {
       const data = await res.json();
       if (data.success && data.student) {
-        let finalProgress = data.progress;
+        let finalProgress = data.progress ? mapFullStudentDetail(data.progress) : undefined;
         if (!finalProgress && localExisting) {
           finalProgress = localExisting;
         } else if (localExisting && finalProgress) {
@@ -677,7 +555,8 @@ export async function verifyStudentAuth(params: {
         saveStoredProgressMap(localMap);
 
         const hasExisting = Boolean(
-          finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1)
+          data.hasExisting ||
+          (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1 || finalProgress.step6?.finalPrompt))
         );
 
         return {
@@ -719,7 +598,7 @@ export async function verifyStudentAuth(params: {
   };
 
   const progress = localExisting || createInitialStudentProgress(student);
-  const hasExisting = Boolean(progress && (progress.step1?.roleModelName || progress.currentStep > 1));
+  const hasExisting = Boolean(progress && (progress.step1?.roleModelName || progress.currentStep > 1 || progress.step6?.finalPrompt));
 
   localMap[studentKey] = progress;
   saveStoredProgressMap(localMap);
@@ -2084,12 +1963,22 @@ export async function getAdminData(): Promise<{
     const rawStudents = Array.isArray(rawData.students) ? rawData.students : [];
     const students: StudentProgress[] = rawStudents.map((s: any) => mapFullStudentDetail(s));
 
-    const roster: RosterItem[] = students.map((s) => ({
-      grade: s.grade,
-      classNum: s.classNum,
-      number: s.number,
-      name: s.name,
-    }));
+    const rawRoster = Array.isArray(rawData.roster) ? rawData.roster : [];
+    const roster: RosterItem[] = rawRoster.length > 0
+      ? rawRoster.map((r: any) => ({
+          grade: Number(r.grade),
+          classNum: Number(r.classNum !== undefined ? r.classNum : r.class),
+          number: Number(r.number),
+          name: String(r.name || '').trim(),
+          googleId: String(r.googleId || '').trim(),
+        }))
+      : students.map((s: any) => ({
+          grade: s.grade,
+          classNum: s.classNum,
+          number: s.number,
+          name: s.name,
+          googleId: String(s.googleId || '').trim(),
+        }));
 
     let byClass = rawData.byClass;
     if (!byClass || !Array.isArray(byClass) || byClass.length === 0) {
@@ -2201,6 +2090,7 @@ export async function updateAdminRoster(
         class: Number(item.classNum),
         number: Number(item.number),
         name: String(item.name).trim(),
+        googleId: item.googleId ? String(item.googleId).trim() : '',
       })),
     }),
   });
@@ -2303,6 +2193,14 @@ export async function fetchRoster(): Promise<RosterItem[]> {
 }
 
 export async function fetchStudentProgress(studentKey: string): Promise<StudentProgress | null> {
+  try {
+    const res = await loadStudentProgress(studentKey);
+    if (res && res.success && res.found && res.progress) {
+      return res.progress;
+    }
+  } catch (e) {
+    console.warn('fetchStudentProgress error:', e);
+  }
   const map = getStoredProgressMap();
   return map[studentKey] || null;
 }

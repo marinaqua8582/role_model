@@ -16,14 +16,17 @@ function computeOptionsFromRoster(rosterList: RosterItem[]) {
   const numbersByClass: Record<string, Set<number>> = {};
 
   rosterList.forEach((item) => {
-    if (item.grade) {
-      gradesSet.add(item.grade);
-      if (!classesByGrade[item.grade]) classesByGrade[item.grade] = new Set();
-      classesByGrade[item.grade].add(item.classNum);
+    const g = Number(item.grade);
+    const c = Number(item.classNum !== undefined ? item.classNum : (item as any).class);
+    const n = Number(item.number);
+    if (!isNaN(g) && !isNaN(c) && !isNaN(n) && g > 0 && c > 0 && n > 0) {
+      gradesSet.add(g);
+      if (!classesByGrade[g]) classesByGrade[g] = new Set();
+      classesByGrade[g].add(c);
 
-      const classKey = `${item.grade}-${item.classNum}`;
+      const classKey = `${g}-${c}`;
       if (!numbersByClass[classKey]) numbersByClass[classKey] = new Set();
-      numbersByClass[classKey].add(item.number);
+      numbersByClass[classKey].add(n);
     }
   });
 
@@ -49,15 +52,10 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     grades: number[];
     classesByGrade: Record<number, number[]>;
     numbersByClass: Record<string, number[]>;
-  }>(() => {
-    if (roster && roster.length > 0) {
-      return computeOptionsFromRoster(roster);
-    }
-    return {
-      grades: [],
-      classesByGrade: {},
-      numbersByClass: {},
-    };
+  }>({
+    grades: [],
+    classesByGrade: {},
+    numbersByClass: {},
   });
 
   const [selectedGrade, setSelectedGrade] = useState<number | ''>('');
@@ -83,7 +81,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     classesByGrade: Record<number, number[]>;
     numbersByClass: Record<string, number[]>;
   }) => {
-    if (!data.grades) return;
+    if (!data || !Array.isArray(data.grades) || data.grades.length === 0) return;
     setOptions(data);
 
     setSelectedGrade((prevGrade) => {
@@ -95,48 +93,50 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
       }
       return '';
     });
-
-    setSelectedClass((prevClass) => {
-      if (prevClass === '' || selectedGrade === '') return '';
-      const availableClasses = data.classesByGrade[selectedGrade as number] || [];
-      if (!availableClasses.includes(prevClass)) return '';
-      return prevClass;
-    });
-
-    setSelectedNumber((prevNum) => {
-      if (prevNum === '' || selectedGrade === '' || selectedClass === '') return '';
-      const classKey = `${selectedGrade}-${selectedClass}`;
-      const availableNumbers = data.numbersByClass[classKey] || [];
-      if (!availableNumbers.includes(prevNum)) return '';
-      return prevNum;
-    });
   };
 
+  // Always fetch fresh Roster options directly from Google Sheets / server on mount
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadOptions() {
+      setIsFetchingOptions(true);
+      try {
+        const data = await getRosterOptions();
+        if (isMounted && data && Array.isArray(data.grades) && data.grades.length > 0) {
+          applyNewOptions(data);
+        } else if (isMounted && roster && roster.length > 0) {
+          // Fallback to roster prop only if server options returned empty
+          const computed = computeOptionsFromRoster(roster);
+          applyNewOptions(computed);
+        }
+      } catch (e) {
+        console.error('Failed to load roster options', e);
+        if (isMounted && roster && roster.length > 0) {
+          const computed = computeOptionsFromRoster(roster);
+          applyNewOptions(computed);
+        }
+      } finally {
+        if (isMounted) {
+          setIsFetchingOptions(false);
+        }
+      }
+    }
+
+    loadOptions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // If roster prop is updated after mount (e.g. from admin roster manager), update options
   useEffect(() => {
     if (roster && roster.length > 0) {
       const computed = computeOptionsFromRoster(roster);
-      applyNewOptions(computed);
-    } else {
-      let isMounted = true;
-      async function loadOptions() {
-        setIsFetchingOptions(true);
-        try {
-          const data = await getRosterOptions();
-          if (isMounted) {
-            applyNewOptions(data);
-          }
-        } catch (e) {
-          console.error('Failed to load roster options', e);
-        } finally {
-          if (isMounted) {
-            setIsFetchingOptions(false);
-          }
-        }
+      if (computed.grades.length > 0) {
+        applyNewOptions(computed);
       }
-      loadOptions();
-      return () => {
-        isMounted = false;
-      };
     }
   }, [roster]);
 

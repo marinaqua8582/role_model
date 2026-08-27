@@ -855,6 +855,7 @@ function getAdminDashboard(ss) {
             classNum: Number(pData[j][2]),
             number: Number(pData[j][3]),
             name: String(pData[j][4] || ''),
+            googleId: '',
             studentKey: pKey
           });
         }
@@ -917,6 +918,7 @@ function getAdminDashboard(ss) {
             classNum: Number(sData[m][2]),
             number: Number(sData[m][3]),
             name: String(sData[m][4] || ''),
+            googleId: '',
             studentKey: sKey
           });
         }
@@ -973,6 +975,7 @@ function getAdminDashboard(ss) {
       classNum: r.classNum,
       number: r.number,
       name: r.name,
+      googleId: r.googleId || '',
       roleModelName: roleModelName,
       roleModelJob: roleModelJob,
       roleModelReason: (p && p.roleModelReason) || '',
@@ -1074,7 +1077,8 @@ function getAdminDashboard(ss) {
       testCompletedStudents: testCompletedStudents,
       finalSubmittedStudents: submittedStudents,
       byClass: byClassList,
-      students: studentList
+      students: studentList,
+      roster: rosterList
     }
   };
 }
@@ -1095,19 +1099,19 @@ function getStudentDetail(ss, studentKey) {
   var classNum = Number(p.class || parsedClass || 1);
   var number = Number(p.number || parsedNumber || 1);
   var name = String(p.name || '').trim();
+  var studentGoogleId = String(p.googleId || '').trim();
 
-  if (!name) {
-    var rosterSheet = ss.getSheetByName('Roster');
-    if (rosterSheet) {
-      var rData = rosterSheet.getDataRange().getValues();
-      for (var i = 1; i < rData.length; i++) {
-        if (
-          String(rData[i][0]) === studentKey ||
-          (Number(rData[i][0]) === grade && Number(rData[i][1]) === classNum && Number(rData[i][2]) === number)
-        ) {
-          name = String(rData[i][3] || '').trim();
-          break;
-        }
+  var rosterSheet = ss.getSheetByName('Roster');
+  if (rosterSheet) {
+    var rData = rosterSheet.getDataRange().getValues();
+    for (var i = 1; i < rData.length; i++) {
+      if (
+        String(rData[i][0]) === studentKey ||
+        (Number(rData[i][0]) === grade && Number(rData[i][1]) === classNum && Number(rData[i][2]) === number)
+      ) {
+        if (!name) name = String(rData[i][3] || '').trim();
+        if (!studentGoogleId) studentGoogleId = String(rData[i][4] || '').trim();
+        break;
       }
     }
   }
@@ -1243,7 +1247,8 @@ function getStudentDetail(ss, studentKey) {
     classNum: Number(classNum || 1),
     number: Number(number || 1),
     name: String(name || '').trim(),
-    studentKey: studentKey
+    studentKey: studentKey,
+    googleId: studentGoogleId
   };
 
   var studentDetailFull = {
@@ -1252,6 +1257,7 @@ function getStudentDetail(ss, studentKey) {
     classNum: Number(classNum || 1),
     number: Number(number || 1),
     name: String(name || '').trim(),
+    googleId: studentGoogleId,
     currentStep: currentStep,
     step1: {
       roleModelName: p.roleModelName || '',

@@ -4,6 +4,7 @@ export interface StudentInfo {
   number: number;
   name: string;
   studentKey: string; // e.g. "3-1-1"
+  googleId?: string;
 }
 
 export interface RoleModelData {
@@ -126,6 +127,7 @@ export interface StudentProgress {
   classNum: number;
   number: number;
   name: string;
+  googleId?: string;
   currentStep: number; // 1 to 10
   step1: RoleModelData;
   step2: ChatbotPurposeData;

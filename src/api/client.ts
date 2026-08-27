@@ -136,6 +136,7 @@ export function createInitialStudentProgress(student: StudentInfo): StudentProgr
     classNum: student.classNum,
     number: student.number,
     name: student.name,
+    googleId: student.googleId,
     currentStep: 1,
     step1: {
       roleModelName: '',
@@ -474,6 +475,7 @@ export async function verifyStudentAuth(params: {
         number: Number(data.student.number || params.number),
         name: data.student.name || cleanName,
         studentKey: data.student.studentKey || studentKey,
+        googleId: data.student.googleId ? String(data.student.googleId).trim() : '',
       };
 
       // Call loadProgress action to get fresh progress from Progress sheet
@@ -498,6 +500,8 @@ export async function verifyStudentAuth(params: {
 
       if (!finalProgress) {
         finalProgress = createInitialStudentProgress(student);
+      } else if (!finalProgress.googleId && student.googleId) {
+        finalProgress.googleId = student.googleId;
       }
 
       // Cache verified progress in local storage
@@ -1358,6 +1362,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
   ) || 1;
   const number = Number(studentObj.number || progressObj.number || submissionObj.number || raw.number) || 1;
   const name = String(studentObj.name || progressObj.name || submissionObj.name || raw.name || '').trim();
+  const googleId = String(studentObj.googleId || progressObj.googleId || submissionObj.googleId || raw.googleId || '').trim();
   const studentKey = rawKey || `${grade}-${classNum}-${number}`;
 
   // STEP 1: Role Model details
@@ -1808,6 +1813,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     classNum,
     number,
     name,
+    googleId,
     currentStep,
     step1: {
       roleModelName,

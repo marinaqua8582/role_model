@@ -175,22 +175,26 @@ app.post('/api/auth/student', (req, res) => {
     });
   }
 
+  const gid = matchedRoster?.googleId ? String(matchedRoster.googleId).trim() : (existing?.googleId ? String(existing.googleId).trim() : '');
+
   const student: StudentInfo = {
     grade: Number(grade),
     classNum: Number(classNum),
     number: Number(number),
     name: matchedRoster ? matchedRoster.name : existing ? existing.name : cleanName,
     studentKey,
+    googleId: gid,
   };
 
   const hasExisting = Boolean(existing && (existing.step1?.roleModelName || existing.currentStep > 1));
 
-  const progress: StudentProgress = existing || {
+  const progress: StudentProgress = existing ? { ...existing, googleId: existing.googleId || gid } : {
     studentKey,
     grade: student.grade,
     classNum: student.classNum,
     number: student.number,
     name: student.name,
+    googleId: gid,
     currentStep: 1,
     step1: {
       roleModelName: '',
@@ -492,7 +496,13 @@ app.post('/api/admin/update-roster', requireAdminAuth, async (req, res) => {
     if (gasData && gasData.success) {
       // Sync in-memory store
       if (mode === 'replace') {
-        rosterStore = students;
+        rosterStore = students.map((item: any) => ({
+          grade: Number(item.grade),
+          classNum: Number(item.classNum !== undefined ? item.classNum : item.class),
+          number: Number(item.number),
+          name: String(item.name).trim(),
+          googleId: item.googleId ? String(item.googleId).trim() : '',
+        }));
       } else {
         const existingKeys = new Set(rosterStore.map((e) => `${e.grade}-${e.classNum}-${e.number}`));
         students.forEach((item: any) => {

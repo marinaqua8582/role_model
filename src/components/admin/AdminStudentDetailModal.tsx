@@ -66,6 +66,11 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
               </div>
               <p className="text-xs text-[#6B7280] mt-0.5">
                 롤모델: <strong className="text-[#2C362B]">{student.step1?.roleModelName || '미입력'}</strong> ({student.step1?.roleModelJob || '직업 미입력'}) | 챗봇명: <strong className="text-[#4B6344]">{student.step6?.chatbotName || '미정'}</strong>
+                {student.googleId && (
+                  <span className="ml-2 pl-2 border-l border-[#E1E4D8]">
+                    Google ID: <strong className="font-mono text-[#4B6344]">{student.googleId}</strong>
+                  </span>
+                )}
               </p>
             </div>
           </div>

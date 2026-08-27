@@ -119,38 +119,69 @@ function initSheetsIfNeeded(ss) {
     if (!sheet) {
       sheet = ss.insertSheet(name);
       sheet.appendRow(headers[name]);
-    } else if (name === 'Roster') {
-      // Auto-migrate legacy 4-column Roster header if needed
-      var lastCol = sheet.getLastColumn();
-      if (lastCol < 5) {
-        sheet.getRange(1, 1, 1, headers['Roster'].length).setValues([headers['Roster']]);
-      }
-    } else if (name === 'Submissions') {
-      // Auto-migrate legacy Submissions header if needed
-      var lastCol = sheet.getLastColumn();
-      if (lastCol < 19) {
-        sheet.getRange(1, 1, 1, headers['Submissions'].length).setValues([headers['Submissions']]);
-      }
     }
   });
+}
+
+function getHeaderMap(sheet) {
+  if (!sheet) return {};
+  var lastRow = sheet.getLastRow();
+  var lastCol = sheet.getLastColumn();
+  if (lastRow === 0 || lastCol === 0) return {};
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var map = {};
+  for (var c = 0; c < headers.length; c++) {
+    var rawHeader = String(headers[c] || '').trim();
+    if (!rawHeader) continue;
+    var norm = rawHeader.toLowerCase().replace(/[\s_\-\.\:\/]+/g, '');
+    map[norm] = c;
+    map[rawHeader] = c;
+  }
+  return map;
+}
+
+function getValByHeader(row, headerMap, aliases, defaultVal) {
+  if (!aliases) return defaultVal !== undefined ? defaultVal : '';
+  if (!Array.isArray(aliases)) aliases = [aliases];
+  for (var i = 0; i < aliases.length; i++) {
+    var alias = aliases[i];
+    var norm = String(alias).toLowerCase().replace(/[\s_\-\.\:\/]+/g, '');
+    if (headerMap[norm] !== undefined) {
+      var colIdx = headerMap[norm];
+      if (row[colIdx] !== undefined && row[colIdx] !== null && String(row[colIdx]).trim() !== '') {
+        return row[colIdx];
+      }
+    }
+    if (headerMap[alias] !== undefined) {
+      var colIdx = headerMap[alias];
+      if (row[colIdx] !== undefined && row[colIdx] !== null && String(row[colIdx]).trim() !== '') {
+        return row[colIdx];
+      }
+    }
+  }
+  return defaultVal !== undefined ? defaultVal : '';
 }
 
 function verifyStudent(ss, params) {
   var sheet = ss.getSheetByName('Roster');
   if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
   var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return { success: false, message: '등록된 학생 명단이 없습니다.' };
+
+  var headerMap = getHeaderMap(sheet);
   var grade = parseInt(params.grade, 10);
   var classNum = parseInt(params.classNo || params.classNum || params.class, 10);
   var number = parseInt(params.number, 10);
   var name = String(params.name || '').trim().replace(/\s+/g, '');
   
   for (var i = 1; i < data.length; i++) {
-    var rGrade = parseInt(String(data[i][0]).trim(), 10);
-    var rClass = parseInt(String(data[i][1]).trim(), 10);
-    var rNum = parseInt(String(data[i][2]).trim(), 10);
-    var rRawName = String(data[i][3] || '').trim();
+    var row = data[i];
+    var rGrade = parseInt(String(getValByHeader(row, headerMap, ['grade', '학년']) || row[0]).trim(), 10);
+    var rClass = parseInt(String(getValByHeader(row, headerMap, ['class', 'classNum', 'classNo', '반']) || row[1]).trim(), 10);
+    var rNum = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', '번호']) || row[2]).trim(), 10);
+    var rRawName = String(getValByHeader(row, headerMap, ['name', '이름']) || row[3] || '').trim();
     var rName = rRawName.replace(/\s+/g, '');
-    var rGoogleId = String(data[i][4] || '').trim();
+    var rGoogleId = String(getValByHeader(row, headerMap, ['googleId', 'google_id']) || row[4] || '').trim();
     
     if (rGrade === grade && rClass === classNum && rNum === number && rName === name) {
       var studentKey = grade + '-' + classNum + '-' + number;
@@ -173,11 +204,13 @@ function getRosterOptions(ss) {
   var gradesSet = {};
   var classesByGrade = {};
   var numbersByClass = {};
+  var headerMap = getHeaderMap(sheet);
   
   for (var i = 1; i < data.length; i++) {
-    var g = parseInt(String(data[i][0]).trim(), 10);
-    var c = parseInt(String(data[i][1]).trim(), 10);
-    var n = parseInt(String(data[i][2]).trim(), 10);
+    var row = data[i];
+    var g = parseInt(String(getValByHeader(row, headerMap, ['grade', '학년']) || row[0]).trim(), 10);
+    var c = parseInt(String(getValByHeader(row, headerMap, ['class', 'classNum', '반']) || row[1]).trim(), 10);
+    var n = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', '번호']) || row[2]).trim(), 10);
     if (!isNaN(g) && !isNaN(c) && !isNaN(n) && g > 0 && c > 0 && n > 0) {
       gradesSet[g] = true;
       if (!classesByGrade[g]) classesByGrade[g] = [];
@@ -207,14 +240,13 @@ function getRosterOptions(ss) {
   };
 }
 
-function getProgress(ss, studentKey) {
-  return loadProgress(ss, studentKey);
-}
-
-function loadProgress(ss, studentKey) {
-  var sheet = ss.getSheetByName('Progress');
-  if (!sheet) return { success: true, found: false };
+function getStudentTests(ss, studentKey) {
+  var sheet = ss.getSheetByName('Tests');
+  if (!sheet) return null;
   var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return null;
+
+  var headerMap = getHeaderMap(sheet);
   var targetKey = String(studentKey || '').trim();
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
@@ -222,10 +254,68 @@ function loadProgress(ss, studentKey) {
   var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
 
   for (var i = 1; i < data.length; i++) {
-    var rowKey = String(data[i][0] || '').trim();
-    var rGrade = parseInt(String(data[i][1]).trim(), 10);
-    var rClass = parseInt(String(data[i][2]).trim(), 10);
-    var rNum = parseInt(String(data[i][3]).trim(), 10);
+    var row = data[i];
+    var rowKey = String(getValByHeader(row, headerMap, ['studentKey', 'student_key', 'key']) || row[0] || '').trim();
+    var rGrade = parseInt(String(getValByHeader(row, headerMap, ['grade', '학년'])).trim(), 10);
+    var rClass = parseInt(String(getValByHeader(row, headerMap, ['class', 'classNum', 'classNo', '반'])).trim(), 10);
+    var rNum = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', '번호'])).trim(), 10);
+
+    if (!rowKey && !isNaN(rGrade) && !isNaN(rClass) && !isNaN(rNum) && rGrade > 0 && rClass > 0 && rNum > 0) {
+      rowKey = rGrade + '-' + rClass + '-' + rNum;
+    }
+
+    var isMatch = (rowKey && targetKey && rowKey === targetKey);
+    if (!isMatch && targetGrade > 0 && targetClass > 0 && targetNum > 0) {
+      if (rGrade === targetGrade && rClass === targetClass && rNum === targetNum) {
+        isMatch = true;
+      } else {
+        var rParts = rowKey.split('-');
+        if (rParts.length >= 3 && parseInt(rParts[0], 10) === targetGrade && parseInt(rParts[1], 10) === targetClass && parseInt(rParts[2], 10) === targetNum) {
+          isMatch = true;
+        }
+      }
+    }
+
+    if (isMatch) {
+      return {
+        test1Result: String(getValByHeader(row, headerMap, ['test1Result', 'test1']) || row[1] || ''),
+        test2Result: String(getValByHeader(row, headerMap, ['test2Result', 'test2']) || row[2] || ''),
+        test3Result: String(getValByHeader(row, headerMap, ['test3Result', 'test3']) || row[3] || ''),
+        test4Result: String(getValByHeader(row, headerMap, ['test4Result', 'test4']) || row[4] || ''),
+        test5Result: String(getValByHeader(row, headerMap, ['test5Result', 'test5']) || row[5] || ''),
+        test6Result: String(getValByHeader(row, headerMap, ['test6Result', 'test6']) || row[6] || ''),
+        problemDescription: String(getValByHeader(row, headerMap, ['problemDescription', 'problem', '문제점']) || row[7] || ''),
+        revisionNote: String(getValByHeader(row, headerMap, ['revisionNote', 'revision', '수정계획']) || row[8] || ''),
+        testedAt: String(getValByHeader(row, headerMap, ['testedAt', 'timestamp', 'date', '일시']) || row[9] || '')
+      };
+    }
+  }
+  return null;
+}
+
+function getStudentSubmission(ss, studentKey) {
+  var sheet = ss.getSheetByName('Submissions');
+  if (!sheet) return null;
+  var data = sheet.getDataRange().getValues();
+  if (data.length <= 1) return null;
+
+  var headerMap = getHeaderMap(sheet);
+  var targetKey = String(studentKey || '').trim();
+  var parts = targetKey.split('-');
+  var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
+  var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
+  var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
+
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var rowKey = String(getValByHeader(row, headerMap, ['studentKey', 'student_key', 'key']) || '').trim();
+    var rGrade = parseInt(String(getValByHeader(row, headerMap, ['grade', '학년'])).trim(), 10);
+    var rClass = parseInt(String(getValByHeader(row, headerMap, ['class', 'classNum', 'classNo', 'class_num', '반'])).trim(), 10);
+    var rNum = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', 'studentNumber', '번호'])).trim(), 10);
+
+    if (!rowKey && !isNaN(rGrade) && !isNaN(rClass) && !isNaN(rNum) && rGrade > 0 && rClass > 0 && rNum > 0) {
+      rowKey = rGrade + '-' + rClass + '-' + rNum;
+    }
 
     var isMatch = false;
     if (rowKey && targetKey && rowKey === targetKey) {
@@ -235,58 +325,265 @@ function loadProgress(ss, studentKey) {
     }
 
     if (isMatch) {
-      var progressData = {
-        studentKey: targetKey,
+      var barrierAnswer = String(getValByHeader(row, headerMap, ['barrierAnswer', 'sampleQuestion1', 'barrierQ', 'barrier', '진로장벽답변', '진로장벽', '질문1']) || '');
+      var barrierReflection = String(getValByHeader(row, headerMap, ['barrierReflection', 'sampleAnswer1', 'barrierA', '진로장벽성찰', '성찰1']) || '');
+      var decisionAnswer = String(getValByHeader(row, headerMap, ['decisionAnswer', 'sampleQuestion2', 'decisionQ', 'decision', '진로의사결정답변', '진로선택답변', '질문2']) || '');
+      var decisionReflection = String(getValByHeader(row, headerMap, ['decisionReflection', 'sampleAnswer2', 'decisionA', '진로의사결정성찰', '진로선택성찰', '성찰2']) || '');
+      var educationAnswer = String(getValByHeader(row, headerMap, ['educationAnswer', 'sampleQuestion3', 'educationQ', 'education', '진학설계답변', '진학답변', '질문3']) || '');
+      var educationReflection = String(getValByHeader(row, headerMap, ['educationReflection', 'sampleAnswer3', 'educationA', '진학설계성찰', '진학성찰', '성찰3']) || '');
+      var finalCareerReflection = String(getValByHeader(row, headerMap, ['finalCareerReflection', 'reflection', 'careerReflection', '최종진로성찰', '최종성찰', '진로성찰', '소감']) || '');
+      var revisionSummary = String(getValByHeader(row, headerMap, ['revisionSummary', 'revisionNote', 'problemDescription', '수정요약', '수정내용']) || '');
+      var submittedAt = String(getValByHeader(row, headerMap, ['submittedAt', 'createdAt', 'updatedAt', 'timestamp', 'date', '제출시간', '제출일시', '일시']) || '');
+      var gemUrl = String(getValByHeader(row, headerMap, ['gemUrl', 'gem_url', 'gem', 'gemlink', 'gem링크', '챗봇링크']) || '');
+
+      return {
+        studentKey: rowKey || targetKey,
         grade: !isNaN(rGrade) ? rGrade : targetGrade,
         class: !isNaN(rClass) ? rClass : targetClass,
         classNum: !isNaN(rClass) ? rClass : targetClass,
         number: !isNaN(rNum) ? rNum : targetNum,
-        name: String(data[i][4] || '').trim(),
-        currentStep: Number(data[i][5] || 1),
-        roleModelName: String(data[i][6] || ''),
-        roleModelJob: String(data[i][7] || ''),
-        roleModelReason: String(data[i][8] || ''),
-        jobDescription: String(data[i][9] || ''),
-        competencies: String(data[i][10] || ''),
-        careerHistory: String(data[i][11] || ''),
-        strengths: String(data[i][12] || ''),
-        values: String(data[i][13] || ''),
-        challengeExperience: String(data[i][14] || ''),
-        chatbotPurposes: String(data[i][15] || ''),
-        targetUser: String(data[i][16] || ''),
-        expectedOutcome: String(data[i][17] || ''),
-        personality: String(data[i][18] || ''),
-        speakingStyle: String(data[i][19] || ''),
-        honorificStyle: String(data[i][20] || ''),
-        desiredFeeling: String(data[i][21] || ''),
-        answerLength: String(data[i][22] || ''),
-        answerElements: String(data[i][23] || ''),
-        chatbotName: String(data[i][24] || ''),
-        initialPrompt: String(data[i][25] || ''),
-        revisedPrompt: String(data[i][26] || ''),
-        finalPrompt: String(data[i][27] || ''),
-        createdAt: String(data[i][28] || ''),
-        updatedAt: String(data[i][29] || '')
-      };
-
-      // Also attach Tests and Submissions if available
-      var testData = getStudentTests(ss, targetKey);
-      if (testData) {
-        progressData.tests = testData;
-      }
-      var subData = getStudentSubmission(ss, targetKey);
-      if (subData) {
-        progressData.submission = subData;
-      }
-
-      return {
-        success: true,
-        found: true,
-        data: progressData
+        name: String(getValByHeader(row, headerMap, ['name', '이름']) || '').trim(),
+        roleModelName: String(getValByHeader(row, headerMap, ['roleModelName', 'roleModel', '롤모델이름', '롤모델']) || ''),
+        roleModelJob: String(getValByHeader(row, headerMap, ['roleModelJob', 'job', '롤모델직업', '직업']) || ''),
+        chatbotName: String(getValByHeader(row, headerMap, ['chatbotName', 'botName', '챗봇이름', '챗봇명']) || ''),
+        finalPrompt: String(getValByHeader(row, headerMap, ['finalPrompt', 'prompt', '최종프롬프트', '프롬프트']) || ''),
+        gemUrl: gemUrl,
+        barrierAnswer: barrierAnswer,
+        barrierReflection: barrierReflection,
+        decisionAnswer: decisionAnswer,
+        decisionReflection: decisionReflection,
+        educationAnswer: educationAnswer,
+        educationReflection: educationReflection,
+        finalCareerReflection: finalCareerReflection,
+        revisionSummary: revisionSummary,
+        sampleQuestion1: barrierAnswer,
+        sampleAnswer1: barrierReflection,
+        sampleQuestion2: decisionAnswer,
+        sampleAnswer2: decisionReflection,
+        sampleQuestion3: educationAnswer,
+        sampleAnswer3: educationReflection,
+        reflection: finalCareerReflection,
+        submittedAt: submittedAt
       };
     }
   }
-  return { success: true, found: false };
+  return null;
+}
+
+function getProgress(ss, studentKey) {
+  return loadProgress(ss, studentKey);
+}
+
+function loadProgress(ss, studentKey) {
+  var targetKey = String(studentKey || '').trim();
+  var parts = targetKey.split('-');
+  var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
+  var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
+  var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
+
+  var sheet = ss.getSheetByName('Progress');
+  var progressData = null;
+
+  if (sheet) {
+    var data = sheet.getDataRange().getValues();
+    if (data.length > 1) {
+      var headerMap = getHeaderMap(sheet);
+      for (var i = 1; i < data.length; i++) {
+        var row = data[i];
+        var rowKey = String(getValByHeader(row, headerMap, ['studentKey', 'student_key', 'key']) || row[0] || '').trim();
+        var rGrade = parseInt(String(getValByHeader(row, headerMap, ['grade', '학년']) || row[1]).trim(), 10);
+        var rClass = parseInt(String(getValByHeader(row, headerMap, ['class', 'classNum', 'classNo', '반']) || row[2]).trim(), 10);
+        var rNum = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', '번호']) || row[3]).trim(), 10);
+
+        if (!rowKey && !isNaN(rGrade) && !isNaN(rClass) && !isNaN(rNum) && rGrade > 0 && rClass > 0 && rNum > 0) {
+          rowKey = rGrade + '-' + rClass + '-' + rNum;
+        }
+
+        var isMatch = false;
+        if (rowKey && targetKey && rowKey === targetKey) {
+          isMatch = true;
+        } else if (targetGrade > 0 && targetClass > 0 && targetNum > 0 && rGrade === targetGrade && rClass === targetClass && rNum === targetNum) {
+          isMatch = true;
+        }
+
+        if (isMatch) {
+          progressData = {
+            studentKey: targetKey,
+            grade: !isNaN(rGrade) ? rGrade : targetGrade,
+            class: !isNaN(rClass) ? rClass : targetClass,
+            classNum: !isNaN(rClass) ? rClass : targetClass,
+            number: !isNaN(rNum) ? rNum : targetNum,
+            name: String(getValByHeader(row, headerMap, ['name', '이름']) || row[4] || '').trim(),
+            currentStep: Number(getValByHeader(row, headerMap, ['currentStep', 'step']) || row[5] || 1),
+            roleModelName: String(getValByHeader(row, headerMap, ['roleModelName', 'roleModel', '롤모델이름']) || row[6] || ''),
+            roleModelJob: String(getValByHeader(row, headerMap, ['roleModelJob', 'job', '롤모델직업']) || row[7] || ''),
+            roleModelReason: String(getValByHeader(row, headerMap, ['roleModelReason', 'reason']) || row[8] || ''),
+            jobDescription: String(getValByHeader(row, headerMap, ['jobDescription']) || row[9] || ''),
+            competencies: String(getValByHeader(row, headerMap, ['competencies']) || row[10] || ''),
+            careerHistory: String(getValByHeader(row, headerMap, ['careerHistory']) || row[11] || ''),
+            strengths: String(getValByHeader(row, headerMap, ['strengths']) || row[12] || ''),
+            values: String(getValByHeader(row, headerMap, ['values']) || row[13] || ''),
+            challengeExperience: String(getValByHeader(row, headerMap, ['challengeExperience']) || row[14] || ''),
+            chatbotPurposes: String(getValByHeader(row, headerMap, ['chatbotPurposes']) || row[15] || ''),
+            targetUser: String(getValByHeader(row, headerMap, ['targetUser']) || row[16] || ''),
+            expectedOutcome: String(getValByHeader(row, headerMap, ['expectedOutcome']) || row[17] || ''),
+            personality: String(getValByHeader(row, headerMap, ['personality', 'personalities']) || row[18] || ''),
+            speakingStyle: String(getValByHeader(row, headerMap, ['speakingStyle']) || row[19] || ''),
+            honorificStyle: String(getValByHeader(row, headerMap, ['honorificStyle']) || row[20] || ''),
+            desiredFeeling: String(getValByHeader(row, headerMap, ['desiredFeeling']) || row[21] || ''),
+            answerLength: String(getValByHeader(row, headerMap, ['answerLength']) || row[22] || ''),
+            answerElements: String(getValByHeader(row, headerMap, ['answerElements']) || row[23] || ''),
+            chatbotName: String(getValByHeader(row, headerMap, ['chatbotName']) || row[24] || ''),
+            initialPrompt: String(getValByHeader(row, headerMap, ['initialPrompt']) || row[25] || ''),
+            revisedPrompt: String(getValByHeader(row, headerMap, ['revisedPrompt']) || row[26] || ''),
+            finalPrompt: String(getValByHeader(row, headerMap, ['finalPrompt']) || row[27] || ''),
+            createdAt: String(getValByHeader(row, headerMap, ['createdAt']) || row[28] || ''),
+            updatedAt: String(getValByHeader(row, headerMap, ['updatedAt']) || row[29] || '')
+          };
+          break;
+        }
+      }
+    }
+  }
+
+  // Load associated Tests and Submissions data
+  var testData = getStudentTests(ss, targetKey);
+  var subData = getStudentSubmission(ss, targetKey);
+
+  // If not found in Progress sheet, but exists in Submissions, reconstruct progressData
+  if (!progressData && subData) {
+    progressData = {
+      studentKey: targetKey,
+      grade: subData.grade || targetGrade,
+      class: subData.class || targetClass,
+      classNum: subData.class || targetClass,
+      number: subData.number || targetNum,
+      name: subData.name || '',
+      currentStep: 10,
+      roleModelName: subData.roleModelName || '',
+      roleModelJob: subData.roleModelJob || '',
+      roleModelReason: '',
+      jobDescription: '',
+      competencies: '',
+      careerHistory: '',
+      strengths: '',
+      values: '',
+      challengeExperience: '',
+      chatbotPurposes: '',
+      targetUser: '이 직업에 관심 있는 중학생',
+      expectedOutcome: '',
+      personality: '',
+      speakingStyle: '선배처럼 조언하듯이',
+      honorificStyle: '친근한 존댓말',
+      desiredFeeling: '',
+      answerLength: 'medium',
+      answerElements: '',
+      chatbotName: subData.chatbotName || '',
+      initialPrompt: '',
+      revisedPrompt: '',
+      finalPrompt: subData.finalPrompt || '',
+      createdAt: subData.submittedAt || new Date().toISOString(),
+      updatedAt: subData.submittedAt || new Date().toISOString()
+    };
+  }
+
+  if (!progressData && !subData && !testData) {
+    return { success: true, found: false };
+  }
+
+  if (!progressData) {
+    progressData = {
+      studentKey: targetKey,
+      grade: targetGrade > 0 ? targetGrade : 1,
+      class: targetClass > 0 ? targetClass : 1,
+      classNum: targetClass > 0 ? targetClass : 1,
+      number: targetNum > 0 ? targetNum : 1,
+      name: '',
+      currentStep: 1,
+      roleModelName: '',
+      roleModelJob: '',
+      roleModelReason: '',
+      jobDescription: '',
+      competencies: '',
+      careerHistory: '',
+      strengths: '',
+      values: '',
+      challengeExperience: '',
+      chatbotPurposes: '',
+      targetUser: '이 직업에 관심 있는 중학생',
+      expectedOutcome: '',
+      personality: '',
+      speakingStyle: '선배처럼 조언하듯이',
+      honorificStyle: '친근한 존댓말',
+      desiredFeeling: '',
+      answerLength: 'medium',
+      answerElements: '',
+      chatbotName: '',
+      initialPrompt: '',
+      revisedPrompt: '',
+      finalPrompt: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+  }
+
+  // Attach tests and submission objects
+  if (testData) progressData.tests = testData;
+  if (subData) {
+    progressData.submission = subData;
+    progressData.step10 = subData;
+    if (subData.gemUrl) progressData.gemUrl = subData.gemUrl;
+    if (subData.barrierAnswer) progressData.barrierAnswer = subData.barrierAnswer;
+    if (subData.barrierReflection) progressData.barrierReflection = subData.barrierReflection;
+    if (subData.decisionAnswer) progressData.decisionAnswer = subData.decisionAnswer;
+    if (subData.decisionReflection) progressData.decisionReflection = subData.decisionReflection;
+    if (subData.educationAnswer) progressData.educationAnswer = subData.educationAnswer;
+    if (subData.educationReflection) progressData.educationReflection = subData.educationReflection;
+    if (subData.finalCareerReflection) progressData.finalCareerReflection = subData.finalCareerReflection;
+    if (subData.revisionSummary) progressData.revisionSummary = subData.revisionSummary;
+    if (subData.submittedAt) progressData.submittedAt = subData.submittedAt;
+  }
+
+  // Infer actual max reached step
+  var isFinalSubmitted = Boolean(
+    subData && (
+      subData.submittedAt ||
+      subData.gemUrl ||
+      subData.barrierAnswer ||
+      subData.decisionAnswer ||
+      subData.educationAnswer ||
+      subData.finalCareerReflection ||
+      subData.sampleQuestion1 ||
+      subData.sampleAnswer1
+    )
+  );
+
+  var inferredStep = 1;
+  if (isFinalSubmitted) {
+    inferredStep = 10;
+  } else if ((progressData && progressData.revisedPrompt) || (testData && (testData.revisionNote || testData.problemDescription))) {
+    inferredStep = 9;
+  } else if (testData && (testData.testedAt || testData.test1Result || testData.test2Result || testData.test3Result || testData.test4Result || testData.test5Result || testData.test6Result)) {
+    inferredStep = 8;
+  } else if (progressData && (progressData.finalPrompt || progressData.initialPrompt || progressData.chatbotName)) {
+    inferredStep = 6;
+  }
+
+  var effectiveCurrentStep = Math.max(Number((progressData && progressData.currentStep) || 1), inferredStep);
+  if (isFinalSubmitted) {
+    effectiveCurrentStep = 10;
+  }
+  progressData.currentStep = effectiveCurrentStep;
+  progressData.isFinalSubmitted = isFinalSubmitted;
+  progressData.isGemSubmitted = Boolean(subData && subData.gemUrl);
+  progressData.isTestCompleted = Boolean(testData && (testData.testedAt || testData.test1Result)) || effectiveCurrentStep >= 8;
+  progressData.isPromptCompleted = Boolean((progressData && (progressData.finalPrompt || progressData.initialPrompt)) || (subData && subData.finalPrompt)) || effectiveCurrentStep >= 6;
+
+  return {
+    success: true,
+    found: true,
+    data: progressData
+  };
 }
 
 function saveProgress(ss, progress) {
@@ -887,40 +1184,70 @@ function getAdminDashboard(ss) {
   var subMap = {};
   if (subSheet) {
     var sData = subSheet.getDataRange().getValues();
-    for (var m = 1; m < sData.length; m++) {
-      var sKey = String(sData[m][0] || '');
-      if (sKey) {
-        subMap[sKey] = {
-          studentKey: sKey,
-          grade: Number(sData[m][1]),
-          classNum: Number(sData[m][2]),
-          number: Number(sData[m][3]),
-          name: String(sData[m][4] || ''),
-          roleModelName: String(sData[m][5] || ''),
-          roleModelJob: String(sData[m][6] || ''),
-          chatbotName: String(sData[m][7] || ''),
-          finalPrompt: String(sData[m][8] || ''),
-          gemUrl: String(sData[m][9] || ''),
-          barrierAnswer: String(sData[m][10] || ''),
-          barrierReflection: String(sData[m][11] || ''),
-          decisionAnswer: String(sData[m][12] || ''),
-          decisionReflection: String(sData[m][13] || ''),
-          educationAnswer: String(sData[m][14] || ''),
-          educationReflection: String(sData[m][15] || ''),
-          finalCareerReflection: String(sData[m][16] || ''),
-          revisionSummary: String(sData[m][17] || ''),
-          submittedAt: String(sData[m][18] || '')
-        };
-        if (!rosterKeys[sKey]) {
-          rosterKeys[sKey] = true;
-          rosterList.push({
-            grade: Number(sData[m][1]),
-            classNum: Number(sData[m][2]),
-            number: Number(sData[m][3]),
-            name: String(sData[m][4] || ''),
-            googleId: '',
-            studentKey: sKey
-          });
+    if (sData.length > 1) {
+      var sHeaderMap = getHeaderMap(subSheet);
+      for (var m = 1; m < sData.length; m++) {
+        var sRow = sData[m];
+        var sKey = String(getValByHeader(sRow, sHeaderMap, ['studentKey', 'student_key', 'key']) || '').trim();
+        var sGrade = parseInt(String(getValByHeader(sRow, sHeaderMap, ['grade', '학년'])).trim(), 10);
+        var sClass = parseInt(String(getValByHeader(sRow, sHeaderMap, ['class', 'classNum', 'classNo', '반'])).trim(), 10);
+        var sNum = parseInt(String(getValByHeader(sRow, sHeaderMap, ['number', 'num', '번호'])).trim(), 10);
+
+        if (!sKey && !isNaN(sGrade) && !isNaN(sClass) && !isNaN(sNum) && sGrade > 0 && sClass > 0 && sNum > 0) {
+          sKey = sGrade + '-' + sClass + '-' + sNum;
+        }
+
+        if (sKey) {
+          var barrierAnswer = String(getValByHeader(sRow, sHeaderMap, ['barrierAnswer', 'sampleQuestion1', 'barrierQ', 'barrier', '진로장벽답변', '진로장벽']) || '');
+          var barrierReflection = String(getValByHeader(sRow, sHeaderMap, ['barrierReflection', 'sampleAnswer1', 'barrierA', '진로장벽성찰']) || '');
+          var decisionAnswer = String(getValByHeader(sRow, sHeaderMap, ['decisionAnswer', 'sampleQuestion2', 'decisionQ', 'decision', '진로의사결정답변', '진로선택답변']) || '');
+          var decisionReflection = String(getValByHeader(sRow, sHeaderMap, ['decisionReflection', 'sampleAnswer2', 'decisionA', '진로의사결정성찰', '진로선택성찰']) || '');
+          var educationAnswer = String(getValByHeader(sRow, sHeaderMap, ['educationAnswer', 'sampleQuestion3', 'educationQ', 'education', '진학설계답변', '진학답변']) || '');
+          var educationReflection = String(getValByHeader(sRow, sHeaderMap, ['educationReflection', 'sampleAnswer3', 'educationA', '진학설계성찰', '진학성찰']) || '');
+          var finalCareerReflection = String(getValByHeader(sRow, sHeaderMap, ['finalCareerReflection', 'reflection', 'careerReflection', '최종진로성찰', '최종성찰', '소감']) || '');
+          var revisionSummary = String(getValByHeader(sRow, sHeaderMap, ['revisionSummary', 'revisionNote', 'problemDescription', '수정요약', '수정내용']) || '');
+          var submittedAt = String(getValByHeader(sRow, sHeaderMap, ['submittedAt', 'createdAt', 'updatedAt', 'timestamp', 'date', '제출시간', '제출일시']) || '');
+          var gemUrl = String(getValByHeader(sRow, sHeaderMap, ['gemUrl', 'gem_url', 'gem', 'gemlink', 'gem링크']) || '');
+
+          subMap[sKey] = {
+            studentKey: sKey,
+            grade: !isNaN(sGrade) ? sGrade : Number(sRow[1]),
+            classNum: !isNaN(sClass) ? sClass : Number(sRow[2]),
+            number: !isNaN(sNum) ? sNum : Number(sRow[3]),
+            name: String(getValByHeader(sRow, sHeaderMap, ['name', '이름']) || sRow[4] || ''),
+            roleModelName: String(getValByHeader(sRow, sHeaderMap, ['roleModelName', 'roleModel', '롤모델이름']) || ''),
+            roleModelJob: String(getValByHeader(sRow, sHeaderMap, ['roleModelJob', 'job', '롤모델직업']) || ''),
+            chatbotName: String(getValByHeader(sRow, sHeaderMap, ['chatbotName', 'botName', '챗봇이름']) || ''),
+            finalPrompt: String(getValByHeader(sRow, sHeaderMap, ['finalPrompt', 'prompt', '최종프롬프트']) || ''),
+            gemUrl: gemUrl,
+            barrierAnswer: barrierAnswer,
+            barrierReflection: barrierReflection,
+            decisionAnswer: decisionAnswer,
+            decisionReflection: decisionReflection,
+            educationAnswer: educationAnswer,
+            educationReflection: educationReflection,
+            finalCareerReflection: finalCareerReflection,
+            revisionSummary: revisionSummary,
+            sampleQuestion1: barrierAnswer,
+            sampleAnswer1: barrierReflection,
+            sampleQuestion2: decisionAnswer,
+            sampleAnswer2: decisionReflection,
+            sampleQuestion3: educationAnswer,
+            sampleAnswer3: educationReflection,
+            reflection: finalCareerReflection,
+            submittedAt: submittedAt
+          };
+          if (!rosterKeys[sKey]) {
+            rosterKeys[sKey] = true;
+            rosterList.push({
+              grade: !isNaN(sGrade) ? sGrade : Number(sRow[1]),
+              classNum: !isNaN(sClass) ? sClass : Number(sRow[2]),
+              number: !isNaN(sNum) ? sNum : Number(sRow[3]),
+              name: String(getValByHeader(sRow, sHeaderMap, ['name', '이름']) || sRow[4] || ''),
+              googleId: '',
+              studentKey: sKey
+            });
+          }
         }
       }
     }
@@ -1150,7 +1477,8 @@ function getStudentDetail(ss, studentKey) {
   }
 
   // Load Submissions
-  var subObj = {
+  var subDataLoaded = getStudentSubmission(ss, studentKey);
+  var subObj = subDataLoaded || {
     gemUrl: '',
     barrierAnswer: '',
     barrierReflection: '',
@@ -1162,30 +1490,8 @@ function getStudentDetail(ss, studentKey) {
     revisionSummary: '',
     submittedAt: ''
   };
-
-  var subSheet = ss.getSheetByName('Submissions');
-  if (subSheet) {
-    var sData = subSheet.getDataRange().getValues();
-    for (var k = 1; k < sData.length; k++) {
-      var sRowKey = String(sData[k][0] || '').trim();
-      if (
-        sRowKey === studentKey ||
-        (parsedGrade && (Number(sData[k][1]) === grade && Number(sData[k][2]) === classNum && Number(sData[k][3]) === number))
-      ) {
-        if (!name) name = String(sData[k][4] || '').trim();
-        subObj.gemUrl = String(sData[k][9] || '');
-        subObj.barrierAnswer = String(sData[k][10] || '');
-        subObj.barrierReflection = String(sData[k][11] || '');
-        subObj.decisionAnswer = String(sData[k][12] || '');
-        subObj.decisionReflection = String(sData[k][13] || '');
-        subObj.educationAnswer = String(sData[k][14] || '');
-        subObj.educationReflection = String(sData[k][15] || '');
-        subObj.finalCareerReflection = String(sData[k][16] || '');
-        subObj.revisionSummary = String(sData[k][17] || '');
-        subObj.submittedAt = String(sData[k][18] || '');
-        break;
-      }
-    }
+  if (subDataLoaded && subDataLoaded.name && !name) {
+    name = subDataLoaded.name;
   }
 
   function toArr(val) {
@@ -1194,7 +1500,7 @@ function getStudentDetail(ss, studentKey) {
     return String(val).split(',').map(function(s) { return s.trim(); }).filter(Boolean);
   }
 
-  var currentStep = Number(p.currentStep || (subObj.gemUrl ? 10 : (testedAt ? 8 : 1)));
+  var currentStep = Number(p.currentStep || (subObj.gemUrl || subObj.submittedAt ? 10 : (testedAt ? 8 : 1)));
   var initialPrompt = p.initialPrompt || '';
   var revisedPrompt = p.revisedPrompt || '';
   var finalPrompt = p.finalPrompt || '';

@@ -1743,44 +1743,106 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     ''
   ).trim();
 
-  // Determine currentStep priority (clamped to 10):
-  let currentStep = 1;
-  if (progressObj.currentStep !== undefined && progressObj.currentStep !== null && Number(progressObj.currentStep) > 0) {
-    currentStep = Math.min(10, Number(progressObj.currentStep));
-  } else if (raw.currentStep !== undefined && raw.currentStep !== null && Number(raw.currentStep) > 0) {
-    currentStep = Math.min(10, Number(raw.currentStep));
-  } else if (barrierAnswer || gemUrl || submittedAt) {
-    currentStep = 10;
-  } else if (testedAt) {
-    currentStep = 8;
-  } else if (finalPrompt || initialPrompt) {
-    currentStep = 6;
-  }
-
-  const isFinalSubmitted = Boolean(
-    (gemUrl && barrierAnswer && barrierReflection && decisionAnswer && decisionReflection && educationAnswer && educationReflection && finalCareerReflection) ||
+  // Step 10 & Submission flags
+  const hasStep10Data = Boolean(
+    gemUrl ||
+    barrierAnswer ||
+    decisionAnswer ||
+    educationAnswer ||
+    finalCareerReflection ||
+    barrierReflection ||
+    decisionReflection ||
+    educationReflection ||
+    revisionSummary ||
+    submittedAt ||
     raw.isFinalSubmitted ||
     raw.submitted ||
-    (submittedAt && barrierAnswer)
+    raw.isGemSubmitted
   );
 
+  const isFinalSubmitted = Boolean(
+    hasStep10Data ||
+    raw.isFinalSubmitted ||
+    raw.submitted
+  );
+
+  // Step 9 revision data
+  const hasStep9Data = Boolean(
+    revisedPrompt ||
+    revisionNote ||
+    revisionSummary ||
+    problemDescription
+  );
+
+  // Step 8 test data
   const hasAnyTestEvaluated = Object.values(testsObj).some((t) => t.result !== '');
-  const isTestCompleted = Boolean(
-    raw.isTestCompleted ||
-    raw.testCompleted ||
-    hasAnyTestEvaluated ||
+  const hasStep8Data = Boolean(
     testedAt ||
-    currentStep >= 9 ||
+    hasAnyTestEvaluated ||
+    raw.isTestCompleted ||
+    raw.testCompleted
+  );
+
+  // Step 6 prompt data
+  const hasStep6Data = Boolean(
+    finalPrompt ||
+    initialPrompt ||
+    chatbotName ||
+    raw.isPromptCompleted ||
+    raw.promptCompleted
+  );
+
+  // Step 5 quiz data
+  const hasStep5Data = Boolean(
+    step5Raw.quizPassed ||
+    step5Raw.agreedToRules
+  );
+
+  // Inferred maximum reached step
+  let inferredReachedStep = 1;
+  if (isFinalSubmitted || hasStep10Data) {
+    inferredReachedStep = 10;
+  } else if (hasStep9Data) {
+    inferredReachedStep = 9;
+  } else if (hasStep8Data) {
+    inferredReachedStep = 8;
+  } else if (hasStep6Data) {
+    inferredReachedStep = 6;
+  } else if (hasStep5Data) {
+    inferredReachedStep = 5;
+  } else if (answerElements.length > 0 || (answerLength && answerLength !== 'medium')) {
+    inferredReachedStep = 4;
+  } else if (personalities.length > 0 || desiredFeeling) {
+    inferredReachedStep = 3;
+  } else if (chatbotPurposes.length > 0 || expectedOutcome) {
+    inferredReachedStep = 2;
+  } else if (roleModelName || roleModelJob) {
+    inferredReachedStep = 1;
+  }
+
+  // Saved currentStep from Progress or raw
+  const savedCurrentStep = Number(
+    progressObj.currentStep !== undefined && progressObj.currentStep !== null
+      ? progressObj.currentStep
+      : (raw.currentStep !== undefined && raw.currentStep !== null ? raw.currentStep : 1)
+  );
+
+  // Effective currentStep = max(saved, inferred)
+  let effectiveCurrentStep = Math.max(savedCurrentStep || 1, inferredReachedStep);
+  if (isFinalSubmitted) {
+    effectiveCurrentStep = 10;
+  }
+  effectiveCurrentStep = Math.min(10, Math.max(1, effectiveCurrentStep));
+
+  const isTestCompleted = Boolean(
+    hasStep8Data ||
+    effectiveCurrentStep >= 8 ||
     isFinalSubmitted
   );
 
   const isPromptCompleted = Boolean(
-    raw.isPromptCompleted ||
-    raw.promptCompleted ||
-    finalPrompt ||
-    revisedPrompt ||
-    initialPrompt ||
-    currentStep >= 6 ||
+    hasStep6Data ||
+    effectiveCurrentStep >= 6 ||
     isFinalSubmitted
   );
 
@@ -1791,7 +1853,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     number,
     name,
     googleId,
-    currentStep,
+    currentStep: effectiveCurrentStep,
     step1: {
       roleModelName,
       roleModelJob,
@@ -1826,12 +1888,12 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
     },
     step5: {
       quizAnswer: step5Raw.quizAnswer || 'C',
-      quizPassed: step5Raw.quizPassed !== undefined ? step5Raw.quizPassed : currentStep >= 5,
-      agreedToRules: step5Raw.agreedToRules !== undefined ? step5Raw.agreedToRules : currentStep >= 5,
+      quizPassed: step5Raw.quizPassed !== undefined ? step5Raw.quizPassed : effectiveCurrentStep >= 5,
+      agreedToRules: step5Raw.agreedToRules !== undefined ? step5Raw.agreedToRules : effectiveCurrentStep >= 5,
       checkedFactualityRules: step5Raw.checkedFactualityRules || [true, true, true, true, true],
       checkedDisclaimer: step5Raw.checkedDisclaimer !== undefined ? step5Raw.checkedDisclaimer : true,
       checkedSafetyRules: step5Raw.checkedSafetyRules || [true, true, true, true],
-      allRulesChecked: step5Raw.allRulesChecked !== undefined ? step5Raw.allRulesChecked : currentStep >= 5,
+      allRulesChecked: step5Raw.allRulesChecked !== undefined ? step5Raw.allRulesChecked : effectiveCurrentStep >= 5,
     },
     step6: {
       chatbotName,

@@ -430,10 +430,15 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-[#6B7280]">현재 진행 단계:</span>
+                    <span className="text-[#6B7280]">현재 진행 상태:</span>
                     <span className="font-bold text-[#4B6344]">
-                      STEP {verifiedState.progress.currentStep}.{' '}
-                      {STEP_NAMES[verifiedState.progress.currentStep - 1] || '롤모델 정보'}
+                      {verifiedState.progress.isFinalSubmitted || verifiedState.progress.currentStep >= 10 ? (
+                        'STEP 10. 최종 제출 (완료)'
+                      ) : (
+                        `STEP ${verifiedState.progress.currentStep}. ${
+                          STEP_NAMES[verifiedState.progress.currentStep - 1] || '롤모델 정보'
+                        }`
+                      )}
                     </span>
                   </div>
                   <div className="flex justify-between">
@@ -453,7 +458,11 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
                   onClick={handleContinue}
                   className="w-full py-3.5 px-4 bg-[#4B6344] hover:bg-[#3D5237] text-white font-bold rounded-xl shadow-md shadow-[#4B6344]/20 flex items-center justify-center gap-2 transition-all cursor-pointer text-base"
                 >
-                  <span>이어서 만들기</span>
+                  <span>
+                    {verifiedState.progress.isFinalSubmitted || verifiedState.progress.currentStep >= 10
+                      ? '완료된 내용 확인 및 이어서 하기'
+                      : '이어서 만들기'}
+                  </span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
 

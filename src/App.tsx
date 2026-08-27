@@ -75,7 +75,7 @@ export default function App() {
   // Completed student flag
   const isStudentCompleted = Boolean(
     currentStudent?.isFinalSubmitted ||
-    (currentStudent && currentStudent.currentStep >= 10)
+    (currentStudent && (currentStudent.currentStep >= 10 || currentStudent.step10?.submittedAt || currentStudent.step10?.gemUrl))
   );
 
   const maxAllowedStep = isStudentCompleted
@@ -117,8 +117,19 @@ export default function App() {
         if (savedKey) {
           fetchStudentProgress(savedKey).then((progress) => {
             if (progress) {
-              setCurrentStudent(progress);
-              setViewStep(progress.currentStep || 1);
+              const isCompleted = Boolean(
+                progress.isFinalSubmitted ||
+                progress.currentStep >= 10 ||
+                progress.step10?.submittedAt ||
+                progress.step10?.gemUrl
+              );
+              const sanitized: StudentProgress = {
+                ...progress,
+                currentStep: isCompleted ? 10 : Math.max(1, progress.currentStep || 1),
+                isFinalSubmitted: isCompleted ? true : Boolean(progress.isFinalSubmitted),
+              };
+              setCurrentStudent(sanitized);
+              setViewStep(isCompleted ? 10 : (sanitized.currentStep || 1));
             }
           });
         }
@@ -171,9 +182,20 @@ export default function App() {
 
   // Student Authentication handler
   const handleStudentAuthenticated = (progress: StudentProgress) => {
-    setCurrentStudent(progress);
-    setViewStep(progress.currentStep || 1);
-    localStorage.setItem('rolemodel_current_student_key', progress.studentKey);
+    const isCompleted = Boolean(
+      progress.isFinalSubmitted ||
+      progress.currentStep >= 10 ||
+      progress.step10?.submittedAt ||
+      progress.step10?.gemUrl
+    );
+    const sanitizedProgress: StudentProgress = {
+      ...progress,
+      currentStep: isCompleted ? 10 : Math.max(1, progress.currentStep || 1),
+      isFinalSubmitted: isCompleted ? true : Boolean(progress.isFinalSubmitted),
+    };
+    setCurrentStudent(sanitizedProgress);
+    setViewStep(isCompleted ? 10 : (sanitizedProgress.currentStep || 1));
+    localStorage.setItem('rolemodel_current_student_key', sanitizedProgress.studentKey);
     setIsPreviewStudentMode(false);
   };
 
@@ -297,11 +319,33 @@ export default function App() {
       setLoadingStudentKey(student.studentKey);
       const detail = await fetchStudentDetail(student.studentKey);
       const p = detail || student;
-      setCurrentStudent(p);
-      setViewStep(p.currentStep || 1);
+      const isCompleted = Boolean(
+        p.isFinalSubmitted ||
+        p.currentStep >= 10 ||
+        p.step10?.submittedAt ||
+        p.step10?.gemUrl
+      );
+      const sanitized: StudentProgress = {
+        ...p,
+        currentStep: isCompleted ? 10 : Math.max(1, p.currentStep || 1),
+        isFinalSubmitted: isCompleted ? true : Boolean(p.isFinalSubmitted),
+      };
+      setCurrentStudent(sanitized);
+      setViewStep(isCompleted ? 10 : (sanitized.currentStep || 1));
     } catch (e) {
-      setCurrentStudent(student);
-      setViewStep(student.currentStep || 1);
+      const isCompleted = Boolean(
+        student.isFinalSubmitted ||
+        student.currentStep >= 10 ||
+        student.step10?.submittedAt ||
+        student.step10?.gemUrl
+      );
+      const sanitized: StudentProgress = {
+        ...student,
+        currentStep: isCompleted ? 10 : Math.max(1, student.currentStep || 1),
+        isFinalSubmitted: isCompleted ? true : Boolean(student.isFinalSubmitted),
+      };
+      setCurrentStudent(sanitized);
+      setViewStep(isCompleted ? 10 : (sanitized.currentStep || 1));
     } finally {
       setLoadingStudentKey(null);
       setIsPreviewStudentMode(true);

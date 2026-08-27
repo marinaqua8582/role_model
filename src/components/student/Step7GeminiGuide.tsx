@@ -1,6 +1,19 @@
 import React, { useState } from 'react';
 import { PromptData, StudentInfo } from '../../types';
-import { Sparkles, Copy, ExternalLink, Check, ArrowRight, ArrowLeft, Layers, PlayCircle, AlertCircle } from 'lucide-react';
+import {
+  Sparkles,
+  Copy,
+  ExternalLink,
+  Check,
+  ArrowRight,
+  ArrowLeft,
+  Layers,
+  PlayCircle,
+  AlertCircle,
+  UserCheck,
+  Mail,
+  Info,
+} from 'lucide-react';
 import { updateCurrentStep } from '../../api/client';
 
 interface Step7GeminiGuideProps {
@@ -15,7 +28,7 @@ const GUIDE_STEPS = [
   {
     num: 1,
     title: 'Gemini 접속하기',
-    desc: '아래 [Gemini 열기] 버튼을 눌러 새 탭에서 Google Gemini를 엽니다.',
+    desc: '내 Google 계정으로 로그인되어 있는지 확인 후 [Gemini 열기] 버튼을 눌러 새 탭에서 Gemini를 엽니다.',
   },
   {
     num: 2,
@@ -56,15 +69,25 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
   onPrev,
   isReadOnly = false,
 }) => {
-  const [copied, setCopied] = useState(false);
+  const [copiedPrompt, setCopiedPrompt] = useState(false);
+  const [copiedGoogleId, setCopiedGoogleId] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const handleCopy = () => {
+  const googleId = student?.googleId?.trim() || '';
+
+  const handleCopyPrompt = () => {
     const text = promptData.finalPrompt || promptData.revisedPrompt || promptData.initialPrompt;
     navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    setCopiedPrompt(true);
+    setTimeout(() => setCopiedPrompt(false), 2000);
+  };
+
+  const handleCopyGoogleId = () => {
+    if (!googleId) return;
+    navigator.clipboard.writeText(googleId);
+    setCopiedGoogleId(true);
+    setTimeout(() => setCopiedGoogleId(false), 2000);
   };
 
   const handleSaveAndNext = async () => {
@@ -108,7 +131,7 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
       </div>
 
       {/* Main Guide Card */}
-      <div className="bg-white rounded-3xl border border-[#E1E4D8] shadow-sm p-6 sm:p-8 space-y-8">
+      <div className="bg-white rounded-3xl border border-[#E1E4D8] shadow-sm p-6 sm:p-8 space-y-7">
         <div className="text-center space-y-2">
           <div className="w-14 h-14 rounded-2xl bg-[#4B6344] text-white flex items-center justify-center mx-auto shadow-md shadow-[#4B6344]/20">
             <Sparkles className="w-7 h-7" />
@@ -121,8 +144,76 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
           </p>
         </div>
 
-        {/* Action Buttons Box */}
-        <div className="bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+        {/* 1. Gemini 접속하기 & 내 Google 계정 확인 Box */}
+        <div className="bg-white rounded-2xl border-2 border-[#4B6344]/30 shadow-xs p-5 sm:p-6 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-[#E1E4D8]">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-[#F1F4EF] text-[#4B6344] flex items-center justify-center font-bold">
+                <UserCheck className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-sm sm:text-base text-[#2C362B]">
+                  내 Google 계정 확인
+                </h4>
+                <p className="text-xs text-[#6B7280]">
+                  학교 수업용으로 배정된 Google 계정입니다.
+                </p>
+              </div>
+            </div>
+            {student?.name && (
+              <span className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-[#F9FAF8] border border-[#E1E4D8] text-[#5D6B58]">
+                {student.grade}학년 {student.classNum}반 {student.number}번 {student.name}
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-[#F9FAF8] p-4 rounded-xl border border-[#E1E4D8]">
+            <div className="space-y-1">
+              <span className="text-xs font-medium text-[#6B7280] block">Google ID:</span>
+              {googleId ? (
+                <div className="text-base sm:text-lg font-bold font-mono text-[#2C362B] tracking-tight">
+                  {googleId}
+                </div>
+              ) : (
+                <div className="text-sm font-medium text-amber-700 flex items-center gap-1.5">
+                  <Info className="w-4 h-4 shrink-0" />
+                  <span>등록된 Google ID가 없습니다. 선생님께 확인하세요.</span>
+                </div>
+              )}
+            </div>
+
+            {googleId && (
+              <button
+                type="button"
+                onClick={handleCopyGoogleId}
+                className="w-full sm:w-auto px-4 py-2.5 bg-white hover:bg-[#F1F4EF] text-[#2C362B] border border-[#DCE2D7] hover:border-[#4B6344] font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-2xs cursor-pointer shrink-0"
+              >
+                {copiedGoogleId ? (
+                  <>
+                    <Check className="w-4 h-4 text-emerald-600" />
+                    <span className="text-emerald-700">Google ID 복사됨!</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-4 h-4 text-[#4B6344]" />
+                    <span>Google ID 복사</span>
+                  </>
+                )}
+              </button>
+            )}
+          </div>
+
+          {/* 안내 문구 */}
+          <div className="p-3.5 bg-[#FFFBEB] border border-[#FDE68A] rounded-xl text-xs text-[#92400E] leading-relaxed flex items-start gap-2.5">
+            <Info className="w-4 h-4 text-[#D97706] shrink-0 mt-0.5" />
+            <p>
+              Gemini를 열기 전에 위 Google 계정으로 로그인되어 있는지 확인하세요. 다른 계정으로 로그인되어 있으면 Gem 저장 및 공유 과정에서 문제가 생길 수 있습니다.
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons Box (챗봇 이름, 프롬프트 복사, Gemini 열기) */}
+        <div className="bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="space-y-1 text-center sm:text-left">
             <div className="text-xs text-[#6B7280]">등록할 챗봇 이름</div>
             <div className="text-base font-bold text-[#2C362B]">
@@ -133,11 +224,11 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
           <div className="flex items-center gap-3 w-full sm:w-auto">
             <button
               type="button"
-              onClick={handleCopy}
+              onClick={handleCopyPrompt}
               className="flex-1 sm:flex-none px-5 py-3 bg-[#4B6344] hover:bg-[#3D5237] text-white font-bold rounded-xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all shadow-md shadow-[#4B6344]/20 cursor-pointer"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
-              <span>{copied ? '프롬프트를 복사했습니다.' : '최종 프롬프트 복사'}</span>
+              {copiedPrompt ? <Check className="w-4 h-4 text-emerald-300" /> : <Copy className="w-4 h-4" />}
+              <span>{copiedPrompt ? '프롬프트를 복사했습니다.' : '최종 프롬프트 복사'}</span>
             </button>
 
             <a

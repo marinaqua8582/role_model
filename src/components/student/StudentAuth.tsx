@@ -198,6 +198,9 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
 
       if (res.success && res.student) {
         const progress = res.progress || createInitialStudentProgress(res.student);
+        if (res.student.googleId) {
+          progress.googleId = res.student.googleId;
+        }
         setVerifiedState({
           student: res.student,
           hasExisting: Boolean(res.hasExisting),
@@ -218,13 +221,20 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
   const handleStartFresh = () => {
     if (!verifiedState) return;
     const fresh = createInitialStudentProgress(verifiedState.student);
+    if (verifiedState.student.googleId) {
+      fresh.googleId = verifiedState.student.googleId;
+    }
     setShowResetConfirm(false);
     onAuthenticated(fresh, fresh);
   };
 
   const handleContinue = () => {
     if (!verifiedState) return;
-    onAuthenticated(verifiedState.progress, verifiedState.progress);
+    const progressToUse = { ...verifiedState.progress };
+    if (verifiedState.student.googleId) {
+      progressToUse.googleId = verifiedState.student.googleId;
+    }
+    onAuthenticated(progressToUse, progressToUse);
   };
 
   return (

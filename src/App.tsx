@@ -190,6 +190,7 @@ export default function App() {
     );
     const sanitizedProgress: StudentProgress = {
       ...progress,
+      googleId: progress.googleId || '',
       currentStep: isCompleted ? 10 : Math.max(1, progress.currentStep || 1),
       isFinalSubmitted: isCompleted ? true : Boolean(progress.isFinalSubmitted),
     };
@@ -219,6 +220,7 @@ export default function App() {
 
     const payload: StudentProgress = {
       ...updated,
+      googleId: updated.googleId || currentStudent?.googleId || '',
       currentStep: preservedCurrentStep,
       isFinalSubmitted: isStudentCompleted || updated.isFinalSubmitted,
     };
@@ -574,6 +576,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step1) =>
@@ -597,6 +600,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step2) =>
@@ -620,6 +624,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step3) =>
@@ -643,6 +648,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step4) =>
@@ -667,6 +673,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step5) =>
@@ -694,6 +701,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step6) =>
@@ -719,6 +727,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onNext={() => handleNextStep(8)}
@@ -736,6 +745,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step8) =>
@@ -761,6 +771,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChangePrompt={(step6) =>
@@ -791,6 +802,7 @@ export default function App() {
                 number: currentStudent.number,
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
+                googleId: currentStudent.googleId,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step10) =>

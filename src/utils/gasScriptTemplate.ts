@@ -181,16 +181,27 @@ function verifyStudent(ss, params) {
     var rNum = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', '번호']) || row[2]).trim(), 10);
     var rRawName = String(getValByHeader(row, headerMap, ['name', '이름']) || row[3] || '').trim();
     var rName = rRawName.replace(/\s+/g, '');
-    var rGoogleId = String(getValByHeader(row, headerMap, ['googleId', 'google_id']) || row[4] || '').trim();
+    var rGoogleId = String(getValByHeader(row, headerMap, ['googleId', 'google_id', 'google id', 'googleid', '구글아이디', '구글id', '구글 id', '이메일', 'email', 'google', '계정', '아이디']) || (row.length > 4 ? row[4] : '') || '').trim();
     
     if (rGrade === grade && rClass === classNum && rNum === number && rName === name) {
       var studentKey = grade + '-' + classNum + '-' + number;
       var existingProgress = getProgress(ss, studentKey);
+      var progressData = existingProgress.data || {};
+      if (typeof progressData === 'object') {
+        progressData.googleId = rGoogleId;
+      }
       return {
         success: true,
-        student: { grade: grade, classNum: classNum, number: number, name: rRawName || name, googleId: rGoogleId, studentKey: studentKey },
+        student: {
+          studentKey: studentKey,
+          grade: grade,
+          classNum: classNum,
+          number: number,
+          name: rRawName || name,
+          googleId: rGoogleId
+        },
         hasExisting: existingProgress.found,
-        progress: existingProgress.data
+        progress: progressData
       };
     }
   }
@@ -578,6 +589,30 @@ function loadProgress(ss, studentKey) {
   progressData.isGemSubmitted = Boolean(subData && subData.gemUrl);
   progressData.isTestCompleted = Boolean(testData && (testData.testedAt || testData.test1Result)) || effectiveCurrentStep >= 8;
   progressData.isPromptCompleted = Boolean((progressData && (progressData.finalPrompt || progressData.initialPrompt)) || (subData && subData.finalPrompt)) || effectiveCurrentStep >= 6;
+
+  // Lookup and retain googleId from Roster sheet
+  try {
+    var rosterSheet = ss.getSheetByName('Roster');
+    if (rosterSheet) {
+      var rData = rosterSheet.getDataRange().getValues();
+      if (rData.length > 1) {
+        var rHeaderMap = getHeaderMap(rosterSheet);
+        for (var rIdx = 1; rIdx < rData.length; rIdx++) {
+          var rRow = rData[rIdx];
+          var rg = parseInt(String(getValByHeader(rRow, rHeaderMap, ['grade', '학년']) || rRow[0]).trim(), 10);
+          var rc = parseInt(String(getValByHeader(rRow, rHeaderMap, ['class', 'classNum', 'classNo', '반']) || rRow[1]).trim(), 10);
+          var rn = parseInt(String(getValByHeader(rRow, rHeaderMap, ['number', 'num', '번호']) || rRow[2]).trim(), 10);
+          if (targetGrade > 0 && targetClass > 0 && targetNum > 0 && rg === targetGrade && rc === targetClass && rn === targetNum) {
+            var rGid = String(getValByHeader(rRow, rHeaderMap, ['googleId', 'google_id', 'google id', 'googleid', '구글아이디', '구글id', '구글 id', '이메일', 'email', 'google', '계정', '아이디']) || (rRow.length > 4 ? rRow[4] : '') || '').trim();
+            if (rGid) {
+              progressData.googleId = rGid;
+            }
+            break;
+          }
+        }
+      }
+    }
+  } catch (eRoster) {}
 
   return {
     success: true,

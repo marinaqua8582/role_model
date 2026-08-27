@@ -367,60 +367,37 @@ export function mapSheetDataToProgress(raw: any): StudentProgress {
 export async function loadStudentProgress(
   studentKey: string
 ): Promise<{ success: boolean; found: boolean; progress?: StudentProgress; message?: string }> {
-  const gasUrl = getEffectiveGasUrl();
-  if (gasUrl) {
-    try {
-      const res = await callGasApi({
-        action: 'loadProgress',
-        studentKey,
-      });
+  try {
+    const res = await callGasApi({
+      action: 'loadProgress',
+      studentKey,
+    });
 
-      if (res && res.success) {
-        if (res.found && res.data) {
-          const raw = res.data;
-          const restoredProgress = mapFullStudentDetail(raw);
-          // Sync local storage cache
-          const localMap = getStoredProgressMap();
-          localMap[studentKey] = restoredProgress;
-          saveStoredProgressMap(localMap);
+    if (res && res.success && res.found && res.data) {
+      const restoredProgress = mapFullStudentDetail(res.data);
 
-          return {
-            success: true,
-            found: true,
-            progress: restoredProgress,
-          };
-        } else {
-          return {
-            success: true,
-            found: false,
-          };
-        }
-      }
-    } catch (err) {
-      console.warn('Error loading progress from GAS:', err);
+      const localMap = getStoredProgressMap();
+      localMap[studentKey] = restoredProgress;
+      saveStoredProgressMap(localMap);
+
+      return {
+        success: true,
+        found: true,
+        progress: restoredProgress,
+      };
     }
+
+    if (res && res.success && !res.found) {
+      return {
+        success: true,
+        found: false,
+      };
+    }
+  } catch (err) {
+    console.warn('Error loading progress from GAS:', err);
   }
 
-  // Also check server fallback endpoint
-  try {
-    const sRes = await fetch(`/api/student/progress?studentKey=${encodeURIComponent(studentKey)}`);
-    if (sRes.ok) {
-      const sJson = await sRes.json();
-      if (sJson.success && sJson.progress) {
-        const restoredProgress = mapFullStudentDetail(sJson.progress);
-        const localMap = getStoredProgressMap();
-        localMap[studentKey] = restoredProgress;
-        saveStoredProgressMap(localMap);
-        return {
-          success: true,
-          found: true,
-          progress: restoredProgress,
-        };
-      }
-    }
-  } catch {}
-
-  // Fallback to local cache if no GAS or GAS not reachable
+  // Fallback to local cache only if GAS lookup failed/errored
   const localMap = getStoredProgressMap();
   const local = localMap[studentKey];
   if (local && (local.step1?.roleModelName || local.currentStep > 1 || local.step6?.finalPrompt)) {

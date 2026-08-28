@@ -140,7 +140,7 @@ function getHeaderMap(sheet) {
   for (var c = 0; c < headers.length; c++) {
     var rawHeader = String(headers[c] || '').trim();
     if (!rawHeader) continue;
-    var norm = rawHeader.toLowerCase().replace(/[\s_\-\.\:\/]+/g, '');
+    var norm = rawHeader.toLowerCase().replace(/[\\s_.:/-]+/g, '');
     map[norm] = c;
     map[rawHeader] = c;
   }
@@ -152,7 +152,7 @@ function getValByHeader(row, headerMap, aliases, defaultVal) {
   if (!Array.isArray(aliases)) aliases = [aliases];
   for (var i = 0; i < aliases.length; i++) {
     var alias = aliases[i];
-    var norm = String(alias).toLowerCase().replace(/[\s_\-\.\:\/]+/g, '');
+    var norm = String(alias).toLowerCase().replace(/[\\s_.:/-]+/g, '');
     if (headerMap[norm] !== undefined) {
       var colIdx = headerMap[norm];
       if (row[colIdx] !== undefined && row[colIdx] !== null && String(row[colIdx]).trim() !== '') {

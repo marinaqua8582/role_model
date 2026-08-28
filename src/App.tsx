@@ -75,7 +75,7 @@ export default function App() {
   // Completed student flag
   const isStudentCompleted = Boolean(
     currentStudent?.isFinalSubmitted ||
-    (currentStudent && (currentStudent.currentStep >= 10 || currentStudent.step10?.submittedAt || currentStudent.step10?.gemUrl))
+    currentStudent?.step10?.submittedAt
   );
 
   const maxAllowedStep = isStudentCompleted
@@ -119,9 +119,7 @@ export default function App() {
             if (progress) {
               const isCompleted = Boolean(
                 progress.isFinalSubmitted ||
-                progress.currentStep >= 10 ||
-                progress.step10?.submittedAt ||
-                progress.step10?.gemUrl
+                progress.step10?.submittedAt
               );
               const sanitized: StudentProgress = {
                 ...progress,
@@ -184,9 +182,7 @@ export default function App() {
   const handleStudentAuthenticated = (progress: StudentProgress) => {
     const isCompleted = Boolean(
       progress.isFinalSubmitted ||
-      progress.currentStep >= 10 ||
-      progress.step10?.submittedAt ||
-      progress.step10?.gemUrl
+      progress.step10?.submittedAt
     );
     const sanitizedProgress: StudentProgress = {
       ...progress,

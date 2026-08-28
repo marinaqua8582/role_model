@@ -68,6 +68,8 @@ function handleRequest(e) {
       result = loadProgress(ss, params.studentKey);
     } else if (action === 'saveProgress') {
       result = saveProgress(ss, params.progress || params);
+    } else if (action === 'resetStudentData') {
+      result = resetStudentData(ss, params);
     } else if (action === 'saveTests') {
       result = saveTests(ss, params.tests || params);
     } else if (action === 'updateRevision') {
@@ -109,7 +111,7 @@ function initSheetsIfNeeded(ss) {
   var sheetNames = ['Roster', 'Progress', 'Tests', 'Submissions'];
   var headers = {
     'Roster': ['grade', 'class', 'number', 'name', 'googleId'],
-    'Progress': ['studentKey', 'grade', 'class', 'number', 'name', 'currentStep', 'roleModelName', 'roleModelJob', 'roleModelReason', 'jobDescription', 'competencies', 'careerHistory', 'strengths', 'values', 'challengeExperience', 'chatbotPurposes', 'targetUser', 'expectedOutcome', 'personality', 'speakingStyle', 'honorificStyle', 'desiredFeeling', 'answerLength', 'answerElements', 'chatbotName', 'initialPrompt', 'revisedPrompt', 'finalPrompt', 'createdAt', 'updatedAt'],
+    'Progress': ['studentKey', 'grade', 'class', 'number', 'name', 'currentStep', 'roleModelName', 'roleModelJob', 'roleModelReason', 'jobDescription', 'competencies', 'careerHistory', 'strengths', 'values', 'challengeExperience', 'chatbotPurposes', 'targetUser', 'expectedOutcome', 'personality', 'speakingStyle', 'honorificStyle', 'desiredFeeling', 'answerLength', 'answerElements', 'chatbotName', 'initialPrompt', 'revisedPrompt', 'finalPrompt', 'createdAt', 'updatedAt', 'googleId'],
     'Tests': ['studentKey', 'test1Result', 'test2Result', 'test3Result', 'test4Result', 'test5Result', 'test6Result', 'problemDescription', 'revisionNote', 'testedAt'],
     'Submissions': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'revisionSummary', 'submittedAt']
   };
@@ -119,6 +121,11 @@ function initSheetsIfNeeded(ss) {
     if (!sheet) {
       sheet = ss.insertSheet(name);
       sheet.appendRow(headers[name]);
+    } else if (name === 'Progress') {
+      var progressHeaderMap = getHeaderMap(sheet);
+      if (progressHeaderMap['googleid'] === undefined) {
+        sheet.getRange(1, sheet.getLastColumn() + 1).setValue('googleId');
+      }
     }
   });
 }
@@ -187,7 +194,17 @@ function verifyStudent(ss, params) {
       var studentKey = grade + '-' + classNum + '-' + number;
       var existingProgress = getProgress(ss, studentKey);
       var progressData = existingProgress.data || {};
-      if (typeof progressData === 'object') {
+      var savedName = String(progressData.name || '').trim().replace(/\s+/g, '');
+      var savedGoogleId = String(progressData.googleId || '').trim().toLowerCase();
+      var rosterGoogleId = String(rGoogleId || '').trim().toLowerCase();
+      var identityMismatch = Boolean(
+        existingProgress.found &&
+        ((savedName && savedName !== rName) ||
+         (savedGoogleId && rosterGoogleId && savedGoogleId !== rosterGoogleId))
+      );
+      if (identityMismatch) {
+        progressData = {};
+      } else if (typeof progressData === 'object') {
         progressData.googleId = rGoogleId;
       }
       return {
@@ -200,7 +217,8 @@ function verifyStudent(ss, params) {
           name: rRawName || name,
           googleId: rGoogleId
         },
-        hasExisting: existingProgress.found,
+        hasExisting: existingProgress.found && !identityMismatch,
+        identityMismatch: identityMismatch,
         progress: progressData
       };
     }
@@ -449,7 +467,8 @@ function loadProgress(ss, studentKey) {
             revisedPrompt: String(getValByHeader(row, headerMap, ['revisedPrompt']) || row[26] || ''),
             finalPrompt: String(getValByHeader(row, headerMap, ['finalPrompt']) || row[27] || ''),
             createdAt: String(getValByHeader(row, headerMap, ['createdAt']) || row[28] || ''),
-            updatedAt: String(getValByHeader(row, headerMap, ['updatedAt']) || row[29] || '')
+            updatedAt: String(getValByHeader(row, headerMap, ['updatedAt']) || row[29] || ''),
+            googleId: String(getValByHeader(row, headerMap, ['googleId', 'google_id']) || row[30] || '')
           };
           break;
         }
@@ -556,18 +575,7 @@ function loadProgress(ss, studentKey) {
   }
 
   // Infer actual max reached step
-  var isFinalSubmitted = Boolean(
-    subData && (
-      subData.submittedAt ||
-      subData.gemUrl ||
-      subData.barrierAnswer ||
-      subData.decisionAnswer ||
-      subData.educationAnswer ||
-      subData.finalCareerReflection ||
-      subData.sampleQuestion1 ||
-      subData.sampleAnswer1
-    )
-  );
+  var isFinalSubmitted = Boolean(subData && subData.submittedAt);
 
   var inferredStep = 1;
   if (isFinalSubmitted) {
@@ -695,6 +703,7 @@ function saveProgress(ss, progress) {
   var finalPrompt = progress.finalPrompt !== undefined ? progress.finalPrompt : ((progress.step6 && progress.step6.finalPrompt !== undefined) ? progress.step6.finalPrompt : (existingRow ? existingRow[27] : ''));
 
   var createdAt = (existingRow && existingRow[28]) ? existingRow[28] : (progress.createdAt || now);
+  var googleId = progress.googleId !== undefined ? String(progress.googleId || '').trim() : (existingRow ? String(existingRow[30] || '').trim() : '');
 
   var rowData = [
     studentKey, grade, classNum, number, name,
@@ -722,7 +731,8 @@ function saveProgress(ss, progress) {
     revisedPrompt,
     finalPrompt,
     createdAt,
-    now
+    now,
+    googleId
   ];
   
   if (rowIndex > 0) {
@@ -732,6 +742,44 @@ function saveProgress(ss, progress) {
   }
   
   return { success: true, message: '진행 상황이 저장되었습니다.', studentKey: studentKey, savedAt: now };
+}
+
+function resetStudentData(ss, params) {
+  var studentKey = String(params.studentKey || '').trim();
+  if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
+
+  var rosterSheet = ss.getSheetByName('Roster');
+  if (!rosterSheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
+
+  var verified = verifyStudent(ss, {
+    grade: params.grade,
+    classNo: params.classNo || params.classNum,
+    number: params.number,
+    name: params.name
+  });
+  if (!verified.success || !verified.student || verified.student.studentKey !== studentKey) {
+    return { success: false, message: '학생 정보 확인에 실패하여 초기화하지 않았습니다.' };
+  }
+  var expectedGoogleId = String(verified.student.googleId || '').trim().toLowerCase();
+  var suppliedGoogleId = String(params.googleId || '').trim().toLowerCase();
+  if (expectedGoogleId && suppliedGoogleId && expectedGoogleId !== suppliedGoogleId) {
+    return { success: false, message: '구글 아이디가 일치하지 않아 초기화하지 않았습니다.' };
+  }
+
+  ['Progress', 'Tests', 'Submissions'].forEach(function(sheetName) {
+    var sheet = ss.getSheetByName(sheetName);
+    if (!sheet || sheet.getLastRow() <= 1) return;
+    var data = sheet.getDataRange().getValues();
+    var headerMap = getHeaderMap(sheet);
+    for (var i = data.length - 1; i >= 1; i--) {
+      var rowKey = String(getValByHeader(data[i], headerMap, ['studentKey', 'student_key', 'key']) || data[i][0] || '').trim();
+      if (rowKey === studentKey) {
+        sheet.deleteRow(i + 1);
+      }
+    }
+  });
+
+  return { success: true, message: '기존 활동 자료를 초기화했습니다.' };
 }
 
 function saveTests(ss, params) {
@@ -1311,7 +1359,7 @@ function getAdminDashboard(ss) {
     var s = subMap[key];
 
     var currentStep = 1;
-    if (s && s.gemUrl) {
+    if (s && s.submittedAt) {
       currentStep = 10;
     } else if (p && p.currentStep) {
       currentStep = p.currentStep;
@@ -1323,7 +1371,7 @@ function getAdminDashboard(ss) {
     var roleModelJob = (p && p.roleModelJob) || (s && s.roleModelJob) || '';
     var chatbotName = (p && p.chatbotName) || (s && s.chatbotName) || '';
     var gemUrl = (s && s.gemUrl) || '';
-    var submitted = Boolean(s && (s.submittedAt || s.gemUrl));
+    var submitted = Boolean(s && s.submittedAt);
     var testCompleted = Boolean(t || currentStep >= 9);
     var promptCompleted = Boolean((p && (p.finalPrompt || p.initialPrompt)) || currentStep >= 6 || submitted);
     var hasStarted = Boolean(roleModelName || currentStep > 1 || p);

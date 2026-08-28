@@ -1708,7 +1708,7 @@ function getStudentDetail(ss, studentKey) {
     isPromptCompleted: Boolean(finalPrompt || initialPrompt || currentStep >= 6),
     isTestCompleted: Boolean(testedAt || currentStep >= 9),
     isGemSubmitted: Boolean(subObj.gemUrl),
-    isFinalSubmitted: Boolean(subObj.submittedAt || subObj.gemUrl)
+    isFinalSubmitted: Boolean(subObj.submittedAt)
   };
 
   return {

@@ -223,7 +223,7 @@ function verifyStudent(ss, params) {
       };
     }
   }
-  return { success: false, message: '학생 정보를 확인할 수 없습니다.\n학년, 반, 번호, 이름을 다시 확인해 주세요.' };
+  return { success: false, message: '학생 정보를 확인할 수 없습니다.\\n학년, 반, 번호, 이름을 다시 확인해 주세요.' };
 }
 
 function getRosterOptions(ss) {

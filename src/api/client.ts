@@ -490,23 +490,26 @@ export async function verifyStudentAuth(params: {
         googleId: studentGid,
       };
 
-      // Call loadProgress action to get fresh progress from Progress sheet
-      const loadRes = await loadStudentProgress(student.studentKey);
+      // Never attach an old occupant's progress when the roster identity changed.
+      const identityMismatch = Boolean(data.identityMismatch);
+      const loadRes = identityMismatch
+        ? { success: true, found: false }
+        : await loadStudentProgress(student.studentKey);
 
       let finalProgress: StudentProgress | undefined = loadRes.progress;
-      if (!finalProgress && data.progress) {
+      if (!identityMismatch && !finalProgress && data.progress) {
         finalProgress = mapFullStudentDetail(data.progress);
       }
 
       const localMap = getStoredProgressMap();
-      const localExisting = localMap[student.studentKey];
+      const localExisting = identityMismatch ? undefined : localMap[student.studentKey];
       if (!finalProgress && localExisting) {
         finalProgress = localExisting;
       }
 
       const hasExisting = Boolean(
-        loadRes.found ||
-          data.hasExisting ||
+        (!identityMismatch && loadRes.found) ||
+          (!identityMismatch && data.hasExisting) ||
           (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1 || finalProgress.step6?.finalPrompt))
       );
 
@@ -710,10 +713,10 @@ export async function saveProgressPayload(
     console.warn('saveProgress to GAS skipped/failed, saving locally:', err?.message);
   }
 
-  // 2. Standalone fallback
+  // 2. Keep the local cache for recovery, but never report a remote failure as saved.
   return {
-    success: true,
-    message: '진행 상황이 저장되었습니다.',
+    success: false,
+    message: '서버 저장에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.',
     studentKey,
   };
 }
@@ -1297,19 +1300,24 @@ export async function saveStudentProgress(progress: StudentProgress): Promise<{ 
  * Reset student progress back to step 1
  */
 export async function resetStudentProgress(student: StudentInfo): Promise<StudentProgress> {
+  const result = await callGasApi({
+    action: 'resetStudentData',
+    studentKey: student.studentKey,
+    grade: student.grade,
+    classNo: student.classNum,
+    number: student.number,
+    name: student.name,
+    googleId: student.googleId || '',
+  });
+
+  if (!result || !result.success) {
+    throw new Error(result?.message || '기존 활동 초기화에 실패했습니다.');
+  }
+
   const newProgress = createInitialStudentProgress(student);
   const map = getStoredProgressMap();
   map[student.studentKey] = newProgress;
   saveStoredProgressMap(map);
-
-  try {
-    await fetch('/api/student/reset', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ studentKey: student.studentKey }),
-    });
-  } catch (e) {}
-
   return newProgress;
 }
 
@@ -1848,7 +1856,7 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
   );
 
   const isFinalSubmitted = Boolean(
-    hasStep10Data ||
+    submittedAt ||
     raw.isFinalSubmitted ||
     raw.submitted
   );

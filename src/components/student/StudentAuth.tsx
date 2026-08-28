@@ -218,14 +218,20 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     }
   };
 
-  const handleStartFresh = () => {
+  const handleStartFresh = async () => {
     if (!verifiedState) return;
-    const fresh = createInitialStudentProgress(verifiedState.student);
-    if (verifiedState.student.googleId) {
-      fresh.googleId = verifiedState.student.googleId;
+    setIsLoading(true);
+    setErrorMessage('');
+    try {
+      const fresh = await resetStudentProgress(verifiedState.student);
+      setShowResetConfirm(false);
+      onAuthenticated(fresh, fresh);
+    } catch (err: any) {
+      setShowResetConfirm(false);
+      setErrorMessage(err?.message || '기존 활동 초기화에 실패했습니다. 다시 시도해 주세요.');
+    } finally {
+      setIsLoading(false);
     }
-    setShowResetConfirm(false);
-    onAuthenticated(fresh, fresh);
   };
 
   const handleContinue = () => {

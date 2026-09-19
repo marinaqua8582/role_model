@@ -8,7 +8,7 @@ export default async function handler(req: any, res: any) {
     const action = payload.action;
 
     // Block client attempts to run admin actions through public proxy
-    if (action === 'getAdminDashboard' || action === 'getStudentDetail' || action === 'updateRoster' || action === 'getAllProgress' || action === 'deleteRosterStudents') {
+    if (action === 'checkAdminConfig' || action === 'getAdminDashboard' || action === 'getStudentDetail' || action === 'updateRoster' || action === 'getAllProgress' || action === 'deleteRosterStudents') {
       return res.status(403).json({
         success: false,
         message: '관리자 전용 기능은 클라이언트에서 직접 호출할 수 없습니다.',

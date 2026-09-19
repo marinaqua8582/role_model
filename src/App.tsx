@@ -16,6 +16,7 @@ import {
   fetchStudentDetail,
   checkAdminSession,
   logoutAdmin,
+  logoutStudent,
 } from './api/client';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Header } from './components/common/Header';
@@ -234,7 +235,7 @@ export default function App() {
     if (isStudentSaving() || navigatingRef.current) return;
     if (dirtyRef.current && !window.confirm('저장하지 않은 입력은 사라질 수 있습니다. 로그아웃할까요?')) return;
     sessionRef.current++;
-    clearStudentSession();
+    void logoutStudent();
     dirtyRef.current = false;
     setCurrentStudent(null);
     setViewStep(1);

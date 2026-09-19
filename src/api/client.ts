@@ -38,6 +38,25 @@ export function clearStudentSession() {
 }
 
 
+/** Best-effort server revocation; local logout always completes. */
+export async function logoutStudent(): Promise<void> {
+  let session: {token?: string} | null = null;
+  try { session = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null'); } catch { /* Corrupt local sessions must still log out. */ }
+  clearStudentSession();
+  if (!session?.token) return;
+  try {
+    const response = await fetch('/api/gas-proxy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({action:'logoutStudent',studentToken:session.token}),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok || !(await response.json())?.success) throw new Error('logout failed');
+  } catch {
+    // Offline clients cannot revoke a remote token; the local session is already gone.
+    console.warn('서버 로그아웃을 확인하지 못했습니다. 로컬 세션은 제거되었습니다.');
+  }
+}
+
 // Default initial sample roster for 3학년 1반
 export const DEFAULT_ROSTER: RosterItem[] = [];
 
@@ -400,7 +419,7 @@ export async function loadStudentProgress(studentKey: string): Promise<{ success
 export async function verifyStudentAuth(params: { grade: number; classNum: number; number: number; name: string }): Promise<{
   success: boolean; message?: string; student?: StudentInfo; hasExisting?: boolean; progress?: StudentProgress;
 }> {
-  clearStudentSession();
+  await logoutStudent();
   try {
     const studentKey = createStudentKey(params);
     const data = await callGasApi({ action: 'verifyStudent', ...params, classNo: params.classNum, name: normalizeKoreanName(params.name) });

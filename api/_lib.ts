@@ -138,3 +138,10 @@ export async function callServerGas(payload: Record<string, any>): Promise<any> 
   }
 }
 
+
+/** Confirm the shared GAS secret before issuing an administrator session. */
+export async function checkAdminConfiguration(): Promise<void> {
+  if (!process.env.ADMIN_API_SECRET?.trim()) throw new Error('Vercel의 ADMIN_API_SECRET 설정이 필요합니다.');
+  const result = await callServerGas({action:'checkAdminConfig'});
+  if (result?.success !== true) throw new Error('GAS와 Vercel의 ADMIN_API_SECRET 설정 또는 GAS 배포 버전을 확인해 주세요.');
+}

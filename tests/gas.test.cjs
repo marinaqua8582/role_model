@@ -11,7 +11,10 @@ vm.runInNewContext(compiled, moduleContext);
 const code = moduleContext.exports.getGoogleAppsScriptCode();
 
 class Sheet {
-  constructor() { this.rows = []; }
+  constructor(name) { this.name = name; this.rows = []; this.maxColumns = 26; }
+  getName() { return this.name; }
+  getMaxColumns() { return Math.max(this.maxColumns, this.getLastColumn()); }
+  insertColumnsAfter(after, count) { this.maxColumns = after + count; }
   getLastRow() { return this.rows.length; }
   getLastColumn() { return Math.max(0, ...this.rows.map(r => r.length)); }
   getRange(r, c, nr = 1, nc = 1) {
@@ -27,13 +30,13 @@ class Sheet {
 }
 function backend() {
   const sheets = new Map(); const cache = new Map(); let id = 0;
-  const ss = { getSheetByName: name => sheets.get(name), insertSheet: name => { const sheet = new Sheet(); sheets.set(name,sheet); return sheet; } };
+  const ss = { getSheetByName: name => sheets.get(name), insertSheet: name => { const sheet = new Sheet(name); sheets.set(name,sheet); return sheet; } };
   const state = { locked:false, denyLock:false, acquired:0, released:0 };
   const context = {
     SpreadsheetApp: {getActiveSpreadsheet: () => ss, flush() {}},
     ContentService: {MimeType:{JSON:'json'},createTextOutput:()=>({setMimeType(){}, setContent(text){this.text=text;}})},
     PropertiesService: { getScriptProperties:()=>({getProperty:()=> 'test-admin-secret'}) },
-    CacheService: {getScriptCache:()=>({put:(k,v)=>cache.set(k,v),get:k=>cache.get(k)})},
+    CacheService: {getScriptCache:()=>({put:(k,v)=>cache.set(k,v),get:k=>cache.get(k),remove:k=>cache.delete(k)})},
     Utilities: {getUuid:()=>String(++id)},
     LockService: {getScriptLock:()=>({tryLock(){if(state.denyLock)return false;assert.equal(state.locked,false);state.locked=true;state.acquired++;return true;},hasLock:()=>state.locked,releaseLock(){state.locked=false;state.released++;}})},
   };
@@ -67,7 +70,10 @@ test('duplicate rows choose newest data and merge same-identity missing fields w
   const b=backend(); const token=b.login().studentToken;
   b.request({action:'saveProgress',studentToken:token,studentKey:'3-1-1',roleModelName:'옛 값',targetUser:'보존'});
   const sheet=b.sheets.get('Progress'); const old=sheet.rows[1];old[29]='2025-01-01';
-  const latest=old.slice();latest[0]='03-01-001';latest[6]='최근 값';latest[16]='';latest[29]='2026-01-01';sheet.appendRow(latest);
+  const latest=old.slice();latest[0]='03-01-001';latest[6]='최근 값';latest[16]='';latest[29]='2026-01-01';
+  // This scenario represents legacy rows without explicit-write metadata.
+  latest[sheet.rows[0].indexOf('writtenFields')]='';
+  sheet.appendRow(latest);
   const loaded=b.login().progress;assert.equal(loaded.roleModelName,'최근 값');assert.equal(loaded.targetUser,'보존');
   b.request({action:'saveProgress',studentToken:token,studentKey:'3-1-1',expectedOutcome:'추가'});
   assert.equal(sheet.rows.length,3); assert.equal(sheet.rows[1][6],'옛 값');assert.equal(sheet.rows[2][17],'추가');

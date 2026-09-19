@@ -5,7 +5,7 @@ const {backend}=require('./gas.test.cjs');
 function client(b) {
   const storage=new Map(); const modules=new Map();
   const state={fail:false,negative:false,calls:[],deferred:null};
-  const context={console:{...console,warn(){},error(){}},Event:class{constructor(type){this.type=type}},window:{dispatchEvent(){}},
+  const context={AbortSignal,console:{...console,warn(){},error(){}},Event:class{constructor(type){this.type=type}},window:{dispatchEvent(){}},
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     sessionStorage:{getItem:()=>null,removeItem(){}},
     fetch:async(url,options)=>{
@@ -93,4 +93,19 @@ test('STEP7 renders the current full Google ID; admin report still renders',asyn
   const {AdminPrintView}=c.load('src/components/admin/AdminPrintView.tsx');
   const report=renderToStaticMarkup(React.createElement(AdminPrintView,{studentsToPrint:[p],title:'테스트 보고서',onBack(){}}));
   assert.equal(report.includes('가상학생가'),true);
+});
+
+test('real client logout revokes token; offline and corrupt-session logout still clear local state',async()=>{
+  for(const offline of [false,true]) {
+    const b=backend();const c=client(b);await c.api.verifyStudentAuth(credentials);
+    const token=JSON.parse([...b.cache.values()][0]);assert.equal(token.name,credentials.name);
+    const rawToken=[...b.cache.keys()][0].slice('student:'.length);
+    c.state.fail=offline;await c.api.logoutStudent();
+    assert.equal(JSON.stringify([...c.storage]).includes('a@example.invalid'),false);
+    assert.equal(c.state.calls.at(-1).payload.action,'logoutStudent');
+    if(!offline) for(const action of ['loadProgress','saveProgress']) assert.equal(b.request({action,studentKey:'3-1-1',studentToken:rawToken}).success,false);
+  }
+  const c=client(backend());await c.api.verifyStudentAuth(credentials);
+  for(const key of c.storage.keys()) if(key.includes('session')) c.storage.set(key,'{corrupt');
+  await c.api.logoutStudent();assert.equal(JSON.stringify([...c.storage]).includes('corrupt'),false);
 });

@@ -137,3 +137,4 @@ export async function callServerGas(payload: Record<string, any>): Promise<any> 
     throw new Error(`Google Apps Script non-JSON response: ${text.slice(0, 200)}`);
   }
 }
+

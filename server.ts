@@ -21,11 +21,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '10mb' }));
 
 // In-memory store initialized with sample roster (for fallback or local sync)
-let rosterStore: RosterItem[] = [
-  { grade: 3, classNum: 1, number: 1, name: '김민지', googleId: 'student01@school.kr' },
-  { grade: 3, classNum: 1, number: 2, name: '박하은', googleId: 'student02@school.kr' },
-  { grade: 3, classNum: 1, number: 3, name: '홍은네', googleId: 'student03@school.kr' },
-];
+let rosterStore: RosterItem[] = [];
 const progressStore = new Map<string, StudentProgress>();
 
 /**
@@ -593,3 +589,4 @@ if (process.env.RUN_SERVER === 'true' || (process.argv[1] && process.argv[1].end
 }
 
 export default app;
+

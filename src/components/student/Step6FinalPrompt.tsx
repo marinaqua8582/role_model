@@ -388,3 +388,4 @@ export const Step6FinalPrompt: React.FC<Step6FinalPromptProps> = ({
     </div>
   );
 };
+

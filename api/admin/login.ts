@@ -45,3 +45,4 @@ export default async function handler(req: any, res: any) {
     message: '관리자 로그인이 완료되었습니다.',
   });
 }
+

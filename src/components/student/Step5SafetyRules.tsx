@@ -576,3 +576,4 @@ export const Step5SafetyRules: React.FC<Step5SafetyRulesProps> = ({
     </div>
   );
 };
+

@@ -22,6 +22,7 @@ function doPost(e) {
 }
 
 function handleRequest(e) {
+  var lock = null;
   var output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
   
@@ -35,7 +36,16 @@ function handleRequest(e) {
     
     var action = params.action || (e.parameter && e.parameter.action);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var writes = ['saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData', 'updateRoster', 'deleteRosterStudents'];
+    if (writes.indexOf(action) !== -1) {
+      lock = LockService.getScriptLock();
+      if (!lock.tryLock(20000)) throw new Error('저장 요청이 많습니다. 잠시 후 다시 저장해 주세요.');
+    }
     initSheetsIfNeeded(ss);
+    if (['loadProgress', 'getProgress', 'saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData'].indexOf(action) !== -1) {
+      authorizeStudent_(ss, params);
+    }
+
     
     // Validate admin secret for privileged teacher/admin actions
     if (
@@ -92,17 +102,131 @@ function handleRequest(e) {
     
     output.setContent(JSON.stringify(result));
   } catch (err) {
-    output.setContent(JSON.stringify({ success: false, error: err.toString() }));
+    output.setContent(JSON.stringify({ success: false, message: err.message || err.toString() }));
+  } finally {
+    if (lock && lock.hasLock()) {
+      try { SpreadsheetApp.flush(); } finally { lock.releaseLock(); }
+    }
   }
   
   return output;
+}
+
+
+function studentKey_(value) {
+  var parts = typeof value === 'object' ? [value.grade, value.classNum || value.classNo || value.class, value.number] : String(value || '').split('-');
+  if (parts.length !== 3) throw new Error('학년, 반, 번호를 확인해 주세요.');
+  parts = parts.map(function(v) { return Number(String(v || '').normalize('NFKC').trim()); });
+  if (parts.some(function(v) { return !Number.isInteger(v) || v <= 0; })) throw new Error('학년, 반, 번호를 확인해 주세요.');
+  return parts.join('-');
+}
+
+function objectJson_(value) {
+  try { var parsed = JSON.parse(value || '{}'); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}; }
+  catch (err) { return {}; }
+}
+
+// Pick the newest valid row; fill missing cells from older rows of the same identity.
+// Never delete duplicates or rewrite the other rows.
+function selectStudentRow_(sheet, key) {
+  var data = sheet.getDataRange().getValues();
+  var headers = data[0] || [];
+  var map = getHeaderMap(sheet);
+  var matches = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    var rowKey;
+    try { rowKey = studentKey_(getValByHeader(row, map, ['studentKey', 'student_key', 'key']) || row[0]); }
+    catch (err) {
+      try { rowKey = studentKey_({ grade: getValByHeader(row, map, ['grade', '학년']), classNum: getValByHeader(row, map, ['class', 'classNum', '반']), number: getValByHeader(row, map, ['number', '번호']) }); }
+      catch (ignored) { continue; }
+    }
+    if (rowKey !== key) continue;
+    var time = new Date(getValByHeader(row, map, ['updatedAt', 'testedAt', 'submittedAt', 'createdAt']) || 0).getTime();
+    matches.push({ row: row, index: i + 1, time: isNaN(time) ? 0 : time });
+  }
+  matches.sort(function(a, b) { return b.time - a.time || b.index - a.index; });
+  if (!matches.length) return null;
+  var selected = matches[0];
+  var merged = selected.row.slice();
+  var name = String(getValByHeader(merged, map, ['name', '이름']) || '').normalize('NFC').replace(/\\s+/g, '');
+  var gid = String(getValByHeader(merged, map, ['googleId']) || '').trim().toLowerCase();
+  matches.slice(1).forEach(function(entry) {
+    var otherName = String(getValByHeader(entry.row, map, ['name', '이름']) || '').normalize('NFC').replace(/\\s+/g, '');
+    var otherGid = String(getValByHeader(entry.row, map, ['googleId']) || '').trim().toLowerCase();
+    if ((name && otherName && name !== otherName) || (gid && otherGid && gid !== otherGid)) return;
+    for (var col = 0; col < headers.length; col++) {
+      if (headers[col] === 'stepData') {
+        merged[col] = JSON.stringify(Object.assign({}, objectJson_(entry.row[col]), objectJson_(merged[col])));
+      } else if (merged[col] === '' || merged[col] === null || merged[col] === undefined) merged[col] = entry.row[col];
+      else if (headers[col] === 'currentStep') merged[col] = Math.max(Number(merged[col]) || 1, Number(entry.row[col]) || 1);
+    }
+  });
+  merged[0] = key;
+  return { index: selected.index, row: merged };
+}
+
+function studentRowsForRead_(sheet, key) {
+  var selected = selectStudentRow_(sheet, key);
+  return selected ? [sheet.getDataRange().getValues()[0], selected.row] : [sheet.getDataRange().getValues()[0]];
+}
+
+function writeExtraJson_(sheet, rowIndex, header, value) {
+  var headers = sheet.getDataRange().getValues()[0];
+  var col = headers.indexOf(header) + 1;
+  if (!col) {
+    col = headers.length + 1;
+    if (sheet.getMaxColumns && col > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), col - sheet.getMaxColumns());
+    sheet.getRange(1, col).setValue(header);
+  }
+  sheet.getRange(rowIndex, col).setValue(JSON.stringify(value));
+}
+
+function issueStudentToken_(student) {
+  var token = Utilities.getUuid() + Utilities.getUuid();
+  CacheService.getScriptCache().put('student:' + token, JSON.stringify(student), 21600);
+  return token;
+}
+
+function authorizeStudent_(ss, params) {
+  var raw = CacheService.getScriptCache().get('student:' + String(params.studentToken || ''));
+  if (!raw) throw new Error('학생 세션이 만료되었습니다. 다시 로그인해 주세요.');
+  var student = JSON.parse(raw);
+  var payload = params.progress || params.submission || params.counseling || params.tests || params;
+  var key = studentKey_(payload.studentKey || payload);
+  if (key !== student.studentKey) throw new Error('본인의 자료만 조회하거나 저장할 수 있습니다.');
+  // Roster changes invalidate a previous occupant's session without changing the login form.
+  var sheet = ss.getSheetByName('Roster');
+  var data = sheet.getDataRange().getValues();
+  var map = getHeaderMap(sheet);
+  var valid = data.slice(1).some(function(row) {
+    var rowKey;
+    try { rowKey = studentKey_({grade: getValByHeader(row, map, ['grade', '학년']), classNum: getValByHeader(row, map, ['class', 'classNum', 'classNo', '반']), number: getValByHeader(row, map, ['number', '번호'])}); }
+    catch (err) { return false; }
+    var name = String(getValByHeader(row, map, ['name', '이름']) || '').normalize('NFC').replace(/\\s+/g, '');
+    var gid = String(getValByHeader(row, map, ['googleId', 'google_id', 'google id', 'googleid', '구글아이디', '구글id', '구글 id', '이메일', 'email', 'google', '계정', '아이디']) || row[4] || '').trim();
+    return rowKey === key && name === student.name.normalize('NFC').replace(/\\s+/g, '') && gid === student.googleId;
+  });
+  if (!valid) throw new Error('학생 명단이 변경되었습니다. 다시 로그인해 주세요.');
+  var progressSheet = ss.getSheetByName('Progress');
+  var existing = progressSheet && selectStudentRow_(progressSheet, key);
+  if (existing && params.action !== 'resetStudentData') {
+    var savedName = String(existing.row[4] || '').normalize('NFC').replace(/\\s+/g, '');
+    if (savedName && savedName !== student.name.normalize('NFC').replace(/\\s+/g, '')) {
+      throw new Error('같은 학번의 이전 학생 자료가 있습니다. 선생님께 확인해 주세요.');
+    }
+  }
+  payload.studentKey = key;
+  payload.grade = student.grade; payload.classNum = student.classNum; payload.class = student.classNum;
+  payload.number = student.number; payload.name = student.name; payload.googleId = student.googleId;
+  return student;
 }
 
 function isValidAdminRequest_(data) {
   var expected = PropertiesService.getScriptProperties().getProperty('ADMIN_API_SECRET');
   // If no ADMIN_API_SECRET is configured in Script Properties yet, allow access during initial setup
   if (!expected) {
-    return true;
+    return false;
   }
   return Boolean(data && data.adminSecret && String(data.adminSecret) === String(expected));
 }
@@ -179,7 +303,7 @@ function verifyStudent(ss, params) {
   var grade = parseInt(params.grade, 10);
   var classNum = parseInt(params.classNo || params.classNum || params.class, 10);
   var number = parseInt(params.number, 10);
-  var name = String(params.name || '').trim().replace(/\s+/g, '');
+  var name = String(params.name || '').normalize('NFC').trim().replace(/\\s+/g, '');
   
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -187,14 +311,14 @@ function verifyStudent(ss, params) {
     var rClass = parseInt(String(getValByHeader(row, headerMap, ['class', 'classNum', 'classNo', '반']) || row[1]).trim(), 10);
     var rNum = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', '번호']) || row[2]).trim(), 10);
     var rRawName = String(getValByHeader(row, headerMap, ['name', '이름']) || row[3] || '').trim();
-    var rName = rRawName.replace(/\s+/g, '');
+    var rName = rRawName.normalize('NFC').replace(/\\s+/g, '');
     var rGoogleId = String(getValByHeader(row, headerMap, ['googleId', 'google_id', 'google id', 'googleid', '구글아이디', '구글id', '구글 id', '이메일', 'email', 'google', '계정', '아이디']) || (row.length > 4 ? row[4] : '') || '').trim();
     
     if (rGrade === grade && rClass === classNum && rNum === number && rName === name) {
-      var studentKey = grade + '-' + classNum + '-' + number;
+      var studentKey = studentKey_({grade: grade, classNum: classNum, number: number});
       var existingProgress = getProgress(ss, studentKey);
       var progressData = existingProgress.data || {};
-      var savedName = String(progressData.name || '').trim().replace(/\s+/g, '');
+      var savedName = String(progressData.name || '').trim().replace(/\\s+/g, '');
       var savedGoogleId = String(progressData.googleId || '').trim().toLowerCase();
       var rosterGoogleId = String(rGoogleId || '').trim().toLowerCase();
       var identityMismatch = Boolean(
@@ -217,6 +341,7 @@ function verifyStudent(ss, params) {
           name: rRawName || name,
           googleId: rGoogleId
         },
+        studentToken: issueStudentToken_({studentKey: studentKey, grade: grade, classNum: classNum, number: number, name: rRawName || name, googleId: rGoogleId}),
         hasExisting: existingProgress.found && !identityMismatch,
         identityMismatch: identityMismatch,
         progress: progressData
@@ -272,11 +397,11 @@ function getRosterOptions(ss) {
 function getStudentTests(ss, studentKey) {
   var sheet = ss.getSheetByName('Tests');
   if (!sheet) return null;
-  var data = sheet.getDataRange().getValues();
+  var data = studentRowsForRead_(sheet, studentKey_(studentKey));
   if (data.length <= 1) return null;
 
   var headerMap = getHeaderMap(sheet);
-  var targetKey = String(studentKey || '').trim();
+  var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
   var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
@@ -307,6 +432,7 @@ function getStudentTests(ss, studentKey) {
 
     if (isMatch) {
       return {
+        step8: objectJson_(getValByHeader(row, headerMap, ['step8Data'])),
         test1Result: String(getValByHeader(row, headerMap, ['test1Result', 'test1']) || row[1] || ''),
         test2Result: String(getValByHeader(row, headerMap, ['test2Result', 'test2']) || row[2] || ''),
         test3Result: String(getValByHeader(row, headerMap, ['test3Result', 'test3']) || row[3] || ''),
@@ -325,11 +451,11 @@ function getStudentTests(ss, studentKey) {
 function getStudentSubmission(ss, studentKey) {
   var sheet = ss.getSheetByName('Submissions');
   if (!sheet) return null;
-  var data = sheet.getDataRange().getValues();
+  var data = studentRowsForRead_(sheet, studentKey_(studentKey));
   if (data.length <= 1) return null;
 
   var headerMap = getHeaderMap(sheet);
-  var targetKey = String(studentKey || '').trim();
+  var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
   var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
@@ -404,7 +530,7 @@ function getProgress(ss, studentKey) {
 }
 
 function loadProgress(ss, studentKey) {
-  var targetKey = String(studentKey || '').trim();
+  var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
   var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
@@ -414,7 +540,7 @@ function loadProgress(ss, studentKey) {
   var progressData = null;
 
   if (sheet) {
-    var data = sheet.getDataRange().getValues();
+    var data = studentRowsForRead_(sheet, studentKey_(studentKey));
     if (data.length > 1) {
       var headerMap = getHeaderMap(sheet);
       for (var i = 1; i < data.length; i++) {
@@ -437,6 +563,7 @@ function loadProgress(ss, studentKey) {
 
         if (isMatch) {
           progressData = {
+            stepData: objectJson_(getValByHeader(row, headerMap, ['stepData'])),
             studentKey: targetKey,
             grade: !isNaN(rGrade) ? rGrade : targetGrade,
             class: !isNaN(rClass) ? rClass : targetClass,
@@ -632,35 +759,16 @@ function loadProgress(ss, studentKey) {
 function saveProgress(ss, progress) {
   var sheet = ss.getSheetByName('Progress');
   if (!sheet) return { success: false, message: 'Progress 시트를 찾을 수 없습니다.' };
-  var data = sheet.getDataRange().getValues();
-  var studentKey = String(progress.studentKey || (progress.grade + '-' + (progress.class || progress.classNum) + '-' + progress.number)).trim();
-  var parts = studentKey.split('-');
-  var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
-  var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
-  var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
-
-  var rowIndex = -1;
-  var existingRow = null;
-  
-  for (var i = 1; i < data.length; i++) {
-    var rowKey = String(data[i][0] || '').trim();
-    var rGrade = parseInt(String(data[i][1]).trim(), 10);
-    var rClass = parseInt(String(data[i][2]).trim(), 10);
-    var rNum = parseInt(String(data[i][3]).trim(), 10);
-
-    if ((rowKey && rowKey === studentKey) || (targetGrade > 0 && targetClass > 0 && targetNum > 0 && rGrade === targetGrade && rClass === targetClass && rNum === targetNum)) {
-      rowIndex = i + 1;
-      existingRow = data[i];
-      break;
-    }
-  }
-  
+  var studentKey = studentKey_(progress.studentKey || progress);
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+  var existingRow = selected ? selected.row : null;
   var now = new Date().toISOString();
   var grade = progress.grade !== undefined ? progress.grade : (existingRow ? existingRow[1] : '');
   var classNum = progress.class !== undefined ? progress.class : (progress.classNum !== undefined ? progress.classNum : (existingRow ? existingRow[2] : ''));
   var number = progress.number !== undefined ? progress.number : (existingRow ? existingRow[3] : '');
   var name = progress.name || (existingRow ? existingRow[4] : '');
-  var currentStep = progress.currentStep || (existingRow ? existingRow[5] : 1);
+  var currentStep = Math.max(Number(progress.currentStep) || 1, Number(existingRow && existingRow[5]) || 1);
 
   var roleModelName = progress.roleModelName !== undefined ? progress.roleModelName : ((progress.step1 && progress.step1.roleModelName !== undefined) ? progress.step1.roleModelName : (existingRow ? existingRow[6] : ''));
   var roleModelJob = progress.roleModelJob !== undefined ? progress.roleModelJob : ((progress.step1 && progress.step1.roleModelJob !== undefined) ? progress.step1.roleModelJob : (existingRow ? existingRow[7] : ''));
@@ -741,6 +849,11 @@ function saveProgress(ss, progress) {
     sheet.appendRow(rowData);
   }
   
+  var extra = existingRow ? objectJson_(getValByHeader(existingRow, getHeaderMap(sheet), ['stepData'])) : {};
+  ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'].forEach(function(key) {
+    if (progress[key] !== undefined) extra[key] = progress[key];
+  });
+  if (Object.keys(extra).length) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'stepData', extra);
   return { success: true, message: '진행 상황이 저장되었습니다.', studentKey: studentKey, savedAt: now };
 }
 
@@ -785,29 +898,21 @@ function resetStudentData(ss, params) {
 function saveTests(ss, params) {
   var sheet = ss.getSheetByName('Tests');
   if (!sheet) return { success: false, message: 'Tests 시트를 찾을 수 없습니다.' };
-  var studentKey = String(params.studentKey || '');
-  if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
-  
-  var data = sheet.getDataRange().getValues();
-  var rowIndex = -1;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === studentKey) {
-      rowIndex = i + 1;
-      break;
-    }
-  }
-  
+  var studentKey = studentKey_(params.studentKey);
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+  var previous = selected ? selected.row : [];
   var now = params.testedAt || new Date().toISOString();
   var rowData = [
     studentKey,
-    params.test1Result || '',
-    params.test2Result || '',
-    params.test3Result || '',
-    params.test4Result || '',
-    params.test5Result || '',
-    params.test6Result || '',
-    params.problemDescription || '',
-    params.revisionNote || '',
+    params.test1Result !== undefined ? params.test1Result : (previous[1] || ''),
+    params.test2Result !== undefined ? params.test2Result : (previous[2] || ''),
+    params.test3Result !== undefined ? params.test3Result : (previous[3] || ''),
+    params.test4Result !== undefined ? params.test4Result : (previous[4] || ''),
+    params.test5Result !== undefined ? params.test5Result : (previous[5] || ''),
+    params.test6Result !== undefined ? params.test6Result : (previous[6] || ''),
+    params.problemDescription !== undefined ? params.problemDescription : (previous[7] || ''),
+    params.revisionNote !== undefined ? params.revisionNote : (previous[8] || ''),
     now
   ];
   
@@ -817,6 +922,8 @@ function saveTests(ss, params) {
     sheet.appendRow(rowData);
   }
   
+  if (params.step8) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'step8Data', params.step8);
+
   // Update currentStep in Progress sheet to at least 8
   var progressSheet = ss.getSheetByName('Progress');
   if (progressSheet) {
@@ -837,52 +944,9 @@ function saveTests(ss, params) {
 }
 
 function updateRevision(ss, params) {
-  var studentKey = String(params.studentKey || '');
-  if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
-  
-  var now = new Date().toISOString();
-  
-  // 1. Update Progress sheet with revisedPrompt, finalPrompt, currentStep: 9
-  var progressSheet = ss.getSheetByName('Progress');
-  if (progressSheet) {
-    var pData = progressSheet.getDataRange().getValues();
-    for (var i = 1; i < pData.length; i++) {
-      if (String(pData[i][0]) === studentKey) {
-        var currentStep = Number(pData[i][5] || 1);
-        if (currentStep < 9) {
-          progressSheet.getRange(i + 1, 6).setValue(9);
-        }
-        if (params.revisedPrompt !== undefined) {
-          progressSheet.getRange(i + 1, 27).setValue(params.revisedPrompt);
-        }
-        if (params.finalPrompt !== undefined) {
-          progressSheet.getRange(i + 1, 28).setValue(params.finalPrompt);
-        }
-        progressSheet.getRange(i + 1, 30).setValue(now);
-        break;
-      }
-    }
-  }
-  
-  // 2. Update Tests sheet with revisionNote / problemDescription if provided
-  var testSheet = ss.getSheetByName('Tests');
-  if (testSheet && (params.revisionNote !== undefined || params.problemDescription !== undefined)) {
-    var tData = testSheet.getDataRange().getValues();
-    for (var j = 1; j < tData.length; j++) {
-      if (String(tData[j][0]) === studentKey) {
-        if (params.problemDescription !== undefined) {
-          testSheet.getRange(j + 1, 8).setValue(params.problemDescription);
-        }
-        if (params.revisionNote !== undefined) {
-          testSheet.getRange(j + 1, 9).setValue(params.revisionNote);
-        }
-        testSheet.getRange(j + 1, 10).setValue(now);
-        break;
-      }
-    }
-  }
-  
-  return { success: true, message: '수정 내용이 저장되었습니다.', studentKey: studentKey, savedAt: now };
+  var result = saveProgress(ss, params);
+  if (!result.success) return result;
+  return saveTests(ss, {studentKey: params.studentKey, problemDescription: params.problemDescription, revisionNote: params.revisionNote});
 }
 
 function submitFinal(ss, submission) {
@@ -900,23 +964,14 @@ function submitFinal(ss, submission) {
     sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
   }
   
-  var studentKey = submission.studentKey || (submission.grade + '-' + (submission.class || submission.classNum) + '-' + submission.number);
+  var studentKey = studentKey_(submission.studentKey || submission);
   var now = new Date().toISOString();
   
   var data = sheet.getDataRange().getValues();
-  var rowIndex = -1;
-  var existingSubmittedAt = '';
-  
-  for (var i = 1; i < data.length; i++) {
-    // Check by studentKey (col 0) or by grade/class/number match
-    if (String(data[i][0]) === String(studentKey)) {
-      rowIndex = i + 1;
-      existingSubmittedAt = String(data[i][18] || '');
-      break;
-    }
-  }
-  
-  var submittedAt = existingSubmittedAt || submission.submittedAt || now;
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+
+  var submittedAt = (selected && selected.row[18]) || submission.submittedAt || now;
   var grade = submission.grade !== undefined ? Number(submission.grade) : '';
   var classNum = submission.class !== undefined ? Number(submission.class) : (submission.classNum !== undefined ? Number(submission.classNum) : '');
   var number = submission.number !== undefined ? Number(submission.number) : '';
@@ -970,21 +1025,15 @@ function submitCounseling(ss, counseling) {
   var sheet = ss.getSheetByName('Counseling');
   if (!sheet) return { success: false, message: 'Counseling 시트를 찾을 수 없습니다.' };
   
-  var studentKey = counseling.studentKey || (counseling.grade + '-' + (counseling.class || counseling.classNum) + '-' + counseling.number);
+  var studentKey = studentKey_(counseling.studentKey || counseling);
   var now = new Date().toISOString();
   
   var data = sheet.getDataRange().getValues();
-  var rowIndex = -1;
-  
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(studentKey)) {
-      rowIndex = i + 1;
-      break;
-    }
-  }
-  
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+
   var grade = counseling.grade !== undefined ? Number(counseling.grade) : '';
-  var classNum = counseling.class !== undefined ? Number(counseling.class) : (counseling.classNum !== undefined ? Number(counseling.classNum) : '');
+  var classNum = counseling.class !== undefined ? Number(counseling.class) : Number(counseling.classNum || '');
   var number = counseling.number !== undefined ? Number(counseling.number) : '';
   var name = String(counseling.name || '').trim();
   var completedAt = counseling.counselingCompletedAt || counseling.completedAt || now;
@@ -1591,6 +1640,7 @@ function getStudentDetail(ss, studentKey) {
   if (!finalPrompt && initialPrompt) finalPrompt = initialPrompt;
 
   var progressData = {
+    stepData: p.stepData || {},
     currentStep: currentStep,
     roleModelName: p.roleModelName || '',
     roleModelJob: p.roleModelJob || '',
@@ -1619,6 +1669,7 @@ function getStudentDetail(ss, studentKey) {
   };
 
   var testsData = {
+    step8: (p.tests && p.tests.step8) || {},
     test1Result: testsObj.test1.result,
     test2Result: testsObj.test2.result,
     test3Result: testsObj.test3.result,
@@ -1730,3 +1781,4 @@ function getStudentDetail(ss, studentKey) {
 
 `;
 }
+

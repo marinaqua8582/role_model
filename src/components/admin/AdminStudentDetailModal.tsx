@@ -491,3 +491,4 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
     </div>
   );
 };
+

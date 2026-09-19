@@ -333,3 +333,4 @@ export function normalizeAnswerElements(rawList: unknown): string[] {
 
   return normalized;
 }
+

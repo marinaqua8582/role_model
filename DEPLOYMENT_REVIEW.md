@@ -6,7 +6,9 @@
 
 학생 API는 Roster, 토큰 신원, 해당 학번의 모든 Progress / Tests / Submissions / Counseling 행을 확인한다. 이름 또는 저장된 Google ID가 다르면 조회, 저장, 초기화를 거부한다. 새로 저장하는 행에는 ownerName / ownerGoogleId를 기록한다.
 
-과거 Tests처럼 studentKey만 있고 이름/소유자 정보가 없는 행은 현재 Roster만으로 실제 소유자를 증명할 수 없다. 다른 시트에 같은 이름이 있더라도 이를 근거로 자동 귀속하지 않는다. 따라서 이런 자료가 있는 기존 학생은 로그인/복원이 차단될 수 있다. 운영 전 교사가 원본 기록을 바탕으로 신원을 확인하는 별도 복구 절차가 필요하다. 이번 작업에서는 실제 자료를 변경하거나 자동 마이그레이션하지 않았다. 이 제한 때문에 기존 학생 전체의 복원 호환성이 확인되기 전 운영 배포를 보류한다.
+과거 Tests처럼 studentKey만 있고 이름/Google ID/소유자 정보가 없는 행은 신뢰할 수 없는 legacy 자료로 격리한다. 물리적 이동이나 변경 없이 학생·관리자 조회, 저장 대상 선택, 초기화 대상에서 제외한다. 현재 Roster 학생의 로그인과 Progress 복원은 허용하며, 새 Tests는 인증된 ownerName / ownerGoogleId를 가진 별도 행에 기록한다. 다른 이름 또는 Google ID가 명시된 행은 계속 접근을 차단한다. Progress / Submissions / Counseling의 신원 검증은 유지한다.
+
+`npm test` 29개와 TypeScript 검사가 통과했다. 기존 legacy 로그인 차단 테스트는 새 요구사항에 맞게 기대 결과를 수정했고, 학번 재사용 테스트는 명시적 이전 소유자 정보를 가진 Tests 행으로 검증한다. 실제 GAS/Sheets 통합 검증은 수행하지 않았다.
 
 ## 저장 호환성
 

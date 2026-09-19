@@ -14,6 +14,7 @@ for(const sheetName of ['Progress','Tests','Submissions','Counseling']) {
     if(!s) {s=b.ss.insertSheet(sheetName);s.appendRow(b.context.schemas_()[sheetName]);}
     const row=s.rows[0].map(h=>h==='studentKey'?'03-01-001':h==='name'?student.name:h==='googleId'?student.googleId:'private old data');
     s.appendRow(row);
+    if(sheetName==='Tests') b.context.recordOwner_(s,2,student);
     const roster=b.sheets.get('Roster');put(roster,1,'name','새학생');put(roster,1,'googleId','new@example.invalid');
     const before=snapshot(b);
     const login=b.request({action:'verifyStudent',grade:3,classNum:1,number:1,name:'새학생'});
@@ -28,11 +29,11 @@ for(const sheetName of ['Progress','Tests','Submissions','Counseling']) {
   });
 }
 
-test('legacy nameless Tests fail closed even with a named anchor; conflicting names cannot be hidden',()=>{
+test('legacy nameless Tests are isolated; conflicting Progress names cannot be hidden',()=>{
   const b=backend();const token=b.login().studentToken;
   b.request({action:'saveProgress',studentToken:token,studentKey:'3-1-1',roleModelName:'retained'});
   b.sheets.get('Tests').appendRow(['3-1-1','legacy result']);
-  assert.equal(b.login().success,false);
+  assert.equal(b.login().success,true);
   b.sheets.get('Tests').rows.pop();
   put(b.sheets.get('Progress'),1,'name','이전학생');
   assert.equal(b.login().success,false);

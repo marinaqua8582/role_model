@@ -148,6 +148,7 @@ function selectStudentRow_(sheet, key) {
   var matches = [];
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
+    if (isUnownedLegacyTest_(sheet, row, map)) continue;
     var rowKey;
     try { rowKey = studentKey_(getValByHeader(row, map, ['studentKey', 'student_key', 'key']) || row[0]); }
     catch (err) {
@@ -319,6 +320,12 @@ function matchingRows_(sheet, key) {
   });
 }
 function normalizeName_(name) { return String(name || '').normalize('NFC').replace(/\\s+/g, ''); }
+// Quarantine by exclusion: never adopt, return, update or delete unidentified Tests.
+function isUnownedLegacyTest_(sheet, row, map) {
+  return sheet.getName() === 'Tests' && ['ownerName','ownerGoogleId','name','googleId'].every(function(field) {
+    return !String(getValByHeader(row,map,[field]) || '').trim();
+  });
+}
 function assertStudentOwnsRows_(ss, student) {
   var rows = [];
   ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
@@ -326,6 +333,7 @@ function assertStudentOwnsRows_(ss, student) {
     if (!sheet) return;
     var map = getHeaderMap(sheet);
     matchingRows_(sheet, student.studentKey).forEach(function(entry) {
+      if (isUnownedLegacyTest_(sheet, entry.row, map)) return;
       if (!getValByHeader(entry.row,map,['ownerName','name'])) throw new Error('기존 자료의 학생 신원을 확인할 수 없습니다. 선생님께 확인해 주세요.');
       ['name','ownerName'].forEach(function(field) { rows.push({name:String(getValByHeader(entry.row,map,[field]) || ''),gid:''}); });
       ['googleId','ownerGoogleId'].forEach(function(field) { rows.push({name:'',gid:String(getValByHeader(entry.row,map,[field]) || '')}); });
@@ -347,7 +355,7 @@ function latestTable_(sheet) {
   data.slice(1).forEach(function(row) {
     try { var key=studentKey_(getValByHeader(row,map,['studentKey']) || {grade:getValByHeader(row,map,['grade']),classNum:getValByHeader(row,map,['class']),number:getValByHeader(row,map,['number'])}); keys[key]=true; } catch(e) {}
   });
-  return [data[0]].concat(Object.keys(keys).sort().map(function(key){return selectStudentRow_(sheet,key).row;}));
+  return [data[0]].concat(Object.keys(keys).sort().map(function(key){return selectStudentRow_(sheet,key);}).filter(function(selected){return Boolean(selected);}).map(function(selected){return selected.row;}));
 }
 
 function isValidAdminRequest_(data) {
@@ -986,7 +994,7 @@ function resetStudentData(ss, params) {
   ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
     var sheet = ss.getSheetByName(name);
     if (!sheet) return;
-    matchingRows_(sheet, params.studentKey).sort(function(a,b){return b.index-a.index;}).forEach(function(entry){sheet.deleteRow(entry.index);});
+    matchingRows_(sheet, params.studentKey).filter(function(entry){return !isUnownedLegacyTest_(sheet,entry.row,getHeaderMap(sheet));}).sort(function(a,b){return b.index-a.index;}).forEach(function(entry){sheet.deleteRow(entry.index);});
   });
   return {success:true,message:'기존 활동 자료를 초기화했습니다.'};
 }
@@ -1027,6 +1035,7 @@ function saveTests(ss, params) {
     rowIndex = writeRow_(sheet, -1, rowData);
   }
   
+  recordOwner_(sheet, rowIndex, params);
   if (params.step8) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'step8Data', params.step8);
 
   // Update currentStep in Progress sheet to at least 8
@@ -1038,7 +1047,7 @@ function saveTests(ss, params) {
 function updateRevision(ss, params) {
   var result = saveProgress(ss, params);
   if (!result.success) return result;
-  return saveTests(ss, {studentKey: params.studentKey, problemDescription: params.problemDescription, revisionNote: params.revisionNote});
+  return saveTests(ss, {studentKey: params.studentKey, name:params.name, googleId:params.googleId, problemDescription: params.problemDescription, revisionNote: params.revisionNote});
 }
 
 function submitFinal(ss, submission) {

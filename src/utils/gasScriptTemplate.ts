@@ -41,8 +41,10 @@ function handleRequest(e) {
       if (!lock.tryLock(20000)) throw new Error('저장 요청이 많습니다. 잠시 후 다시 저장해 주세요.');
     }
     initSheetsIfNeeded(ss);
+    // Local to this read-only request; never used by writes or administrator actions.
+    var readContext = ['verifyStudent','loadProgress','getProgress'].indexOf(action) !== -1 ? {tables:{},headerMaps:{},emptySheets:{}} : undefined;
     if (['loadProgress', 'getProgress', 'saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData'].indexOf(action) !== -1) {
-      authorizeStudent_(ss, params);
+      authorizeStudent_(ss, params, readContext);
     }
 
     
@@ -72,7 +74,7 @@ function handleRequest(e) {
     } else if (action === 'checkAdminConfig') {
       result = {success:true};
     } else if (action === 'verifyStudent') {
-      result = verifyStudent(ss, params);
+      result = verifyStudent(ss, params, readContext);
     } else if (action === 'getRosterOptions') {
       result = getRosterOptions(ss);
     } else if (action === 'getAdminDashboard') {
@@ -80,7 +82,7 @@ function handleRequest(e) {
     } else if (action === 'getStudentDetail') {
       result = getStudentDetail(ss, params.studentKey);
     } else if (action === 'getProgress' || action === 'loadProgress') {
-      result = loadProgress(ss, params.studentKey);
+      result = loadProgress(ss, params.studentKey, readContext);
     } else if (action === 'saveProgress') {
       result = saveProgress(ss, params.progress || params);
     } else if (action === 'resetStudentData') {
@@ -141,10 +143,10 @@ function objectJson_(value) {
 
 // Pick the newest valid row; fill missing cells from older rows of the same identity.
 // Never delete duplicates or rewrite the other rows.
-function selectStudentRow_(sheet, key, table) {
-  var data = table || readTable_(sheet);
+function selectStudentRow_(sheet, key, table, readContext) {
+  var data = table || readTable_(sheet, readContext);
   var headers = data[0] || [];
-  var map = getHeaderMap(sheet);
+  var map = getHeaderMap(sheet, readContext);
   var matches = [];
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -181,9 +183,9 @@ function selectStudentRow_(sheet, key, table) {
   return { index: selected.index, row: merged };
 }
 
-function studentRowsForRead_(sheet, key) {
-  var table = readTable_(sheet);
-  var selected = selectStudentRow_(sheet, key, table);
+function studentRowsForRead_(sheet, key, readContext) {
+  var table = readTable_(sheet, readContext);
+  var selected = selectStudentRow_(sheet, key, table, readContext);
   return selected ? [table[0], selected.row] : [table[0]];
 }
 
@@ -198,7 +200,7 @@ function issueStudentToken_(student) {
   return token;
 }
 
-function authorizeStudent_(ss, params) {
+function authorizeStudent_(ss, params, readContext) {
   var raw = CacheService.getScriptCache().get('student:' + String(params.studentToken || ''));
   if (!raw) throw new Error('학생 세션이 만료되었습니다. 다시 로그인해 주세요.');
   var student = JSON.parse(raw);
@@ -207,8 +209,8 @@ function authorizeStudent_(ss, params) {
   if (key !== student.studentKey) throw new Error('본인의 자료만 조회하거나 저장할 수 있습니다.');
   // Roster changes invalidate a previous occupant's session without changing the login form.
   var sheet = ss.getSheetByName('Roster');
-  var data = readTable_(sheet);
-  var map = getHeaderMap(sheet);
+  var data = readTable_(sheet, readContext);
+  var map = getHeaderMap(sheet, readContext);
   var valid = data.slice(1).some(function(row) {
     var rowKey;
     try { rowKey = studentKey_({grade: getValByHeader(row, map, ['grade', '학년']), classNum: getValByHeader(row, map, ['class', 'classNum', 'classNo', '반']), number: getValByHeader(row, map, ['number', '번호'])}); }
@@ -218,7 +220,7 @@ function authorizeStudent_(ss, params) {
     return rowKey === key && name === student.name.normalize('NFC').replace(/\\s+/g, '') && gid === student.googleId;
   });
   if (!valid) throw new Error('학생 명단이 변경되었습니다. 다시 로그인해 주세요.');
-  assertStudentOwnsRows_(ss, student);
+  assertStudentOwnsRows_(ss, student, readContext);
   payload.studentKey = key;
   payload.grade = student.grade; payload.classNum = student.classNum; payload.class = student.classNum;
   payload.number = student.number; payload.name = student.name; payload.googleId = student.googleId;
@@ -259,21 +261,28 @@ function headerName_(name) {
 function physicalHeaders_(sheet) {
   return sheet.getLastColumn() ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
 }
-function logicalHeaders_(sheet) {
+function logicalHeaders_(sheet, physical) {
   var names = (schemas_()[sheet.getName()] || []).slice();
-  physicalHeaders_(sheet).forEach(function(header) {
+  (physical || physicalHeaders_(sheet)).forEach(function(header) {
     if (names.every(function(name) { return headerName_(name) !== headerName_(header); })) names.push(header);
   });
   return names;
 }
-function readTable_(sheet) {
+function readTable_(sheet, readContext) {
+  var name = sheet.getName();
+  if (readContext && readContext.tables[name]) return readContext.tables[name];
   var data = sheet.getDataRange().getValues();
   var physical = data[0] || [];
-  var logical = logicalHeaders_(sheet);
+  var logical = logicalHeaders_(sheet, readContext ? physical : undefined);
   var columns = logical.map(function(header) { return physical.findIndex(function(h) { return headerName_(h) === headerName_(header); }); });
-  return [logical].concat(data.slice(1).map(function(row) {
+  var table = [logical].concat(data.slice(1).map(function(row) {
     return columns.map(function(col) { return col < 0 ? undefined : row[col]; });
   }));
+  if (readContext) {
+    readContext.tables[name] = table;
+    readContext.emptySheets[name] = sheet.getLastRow() === 0 || sheet.getLastColumn() === 0;
+  }
+  return table;
 }
 function writePatch_(sheet, index, patch) {
   var headers = physicalHeaders_(sheet), originalLength = headers.length;
@@ -309,9 +318,9 @@ function writeRow_(sheet, index, row) {
   writePatch_(sheet, index, {writtenFields: JSON.stringify({fields: fields.filter(function(v, i) { return fields.indexOf(v) === i; })})});
   return index;
 }
-function matchingRows_(sheet, key) {
-  var data = readTable_(sheet);
-  var map = getHeaderMap(sheet);
+function matchingRows_(sheet, key, readContext) {
+  var data = readTable_(sheet, readContext);
+  var map = getHeaderMap(sheet, readContext);
   return data.slice(1).map(function(row, i) { return {row:row,index:i+2}; }).filter(function(entry) {
     try {
       var rawKey = getValByHeader(entry.row,map,['studentKey']);
@@ -327,13 +336,13 @@ function isUnownedLegacyTest_(sheet, row, map) {
     return !String(getValByHeader(row,map,[field]) || '').trim();
   });
 }
-function assertStudentOwnsRows_(ss, student) {
+function assertStudentOwnsRows_(ss, student, readContext) {
   var rows = [];
   ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
     var sheet = ss.getSheetByName(name);
     if (!sheet) return;
-    var map = getHeaderMap(sheet);
-    matchingRows_(sheet, student.studentKey).forEach(function(entry) {
+    var map = getHeaderMap(sheet, readContext);
+    matchingRows_(sheet, student.studentKey, readContext).forEach(function(entry) {
       if (isUnownedLegacyTest_(sheet, entry.row, map)) return;
       if (!getValByHeader(entry.row,map,['ownerName','name'])) throw new Error('기존 자료의 학생 신원을 확인할 수 없습니다. 선생님께 확인해 주세요.');
       ['name','ownerName'].forEach(function(field) { rows.push({name:String(getValByHeader(entry.row,map,[field]) || ''),gid:''}); });
@@ -386,12 +395,20 @@ function initSheetsIfNeeded(ss) {
   });
 }
 
-function getHeaderMap(sheet) {
+function getHeaderMap(sheet, readContext) {
   if (!sheet) return {};
-  var lastRow = sheet.getLastRow();
-  var lastCol = sheet.getLastColumn();
-  if (lastRow === 0 || lastCol === 0) return {};
-  var headers = logicalHeaders_(sheet);
+  var name = sheet.getName();
+  if (readContext && readContext.headerMaps[name]) return readContext.headerMaps[name];
+  var headers;
+  if (readContext) {
+    headers = readTable_(sheet, readContext)[0];
+    if (readContext.emptySheets[name]) return readContext.headerMaps[name] = {};
+  } else {
+    var lastRow = sheet.getLastRow();
+    var lastCol = sheet.getLastColumn();
+    if (lastRow === 0 || lastCol === 0) return {};
+    headers = logicalHeaders_(sheet);
+  }
   var map = {};
   for (var c = 0; c < headers.length; c++) {
     var rawHeader = String(headers[c] || '').trim();
@@ -400,6 +417,7 @@ function getHeaderMap(sheet) {
     map[norm] = c;
     map[rawHeader] = c;
   }
+  if (readContext) readContext.headerMaps[name] = map;
   return map;
 }
 
@@ -425,13 +443,13 @@ function getValByHeader(row, headerMap, aliases, defaultVal) {
   return defaultVal !== undefined ? defaultVal : '';
 }
 
-function verifyStudent(ss, params) {
+function verifyStudent(ss, params, readContext) {
   var sheet = ss.getSheetByName('Roster');
   if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
-  var data = readTable_(sheet);
+  var data = readTable_(sheet, readContext);
   if (data.length <= 1) return { success: false, message: '등록된 학생 명단이 없습니다.' };
 
-  var headerMap = getHeaderMap(sheet);
+  var headerMap = getHeaderMap(sheet, readContext);
   var grade = parseInt(params.grade, 10);
   var classNum = parseInt(params.classNo || params.classNum || params.class, 10);
   var number = parseInt(params.number, 10);
@@ -448,8 +466,8 @@ function verifyStudent(ss, params) {
     
     if (rGrade === grade && rClass === classNum && rNum === number && rName === name) {
       var studentKey = studentKey_({grade: grade, classNum: classNum, number: number});
-      assertStudentOwnsRows_(ss, {studentKey:studentKey,name:rRawName,googleId:rGoogleId});
-      var existingProgress = getProgress(ss, studentKey);
+      assertStudentOwnsRows_(ss, {studentKey:studentKey,name:rRawName,googleId:rGoogleId}, readContext);
+      var existingProgress = getProgress(ss, studentKey, readContext);
       var progressData = existingProgress.data || {};
       var savedName = String(progressData.name || '').trim().replace(/\\s+/g, '');
       var savedGoogleId = String(progressData.googleId || '').trim().toLowerCase();
@@ -527,13 +545,13 @@ function getRosterOptions(ss) {
   };
 }
 
-function getStudentTests(ss, studentKey) {
+function getStudentTests(ss, studentKey, readContext) {
   var sheet = ss.getSheetByName('Tests');
   if (!sheet) return null;
-  var data = studentRowsForRead_(sheet, studentKey_(studentKey));
+  var data = studentRowsForRead_(sheet, studentKey_(studentKey), readContext);
   if (data.length <= 1) return null;
 
-  var headerMap = getHeaderMap(sheet);
+  var headerMap = getHeaderMap(sheet, readContext);
   var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
@@ -581,13 +599,13 @@ function getStudentTests(ss, studentKey) {
   return null;
 }
 
-function getStudentSubmission(ss, studentKey) {
+function getStudentSubmission(ss, studentKey, readContext) {
   var sheet = ss.getSheetByName('Submissions');
   if (!sheet) return null;
-  var data = studentRowsForRead_(sheet, studentKey_(studentKey));
+  var data = studentRowsForRead_(sheet, studentKey_(studentKey), readContext);
   if (data.length <= 1) return null;
 
-  var headerMap = getHeaderMap(sheet);
+  var headerMap = getHeaderMap(sheet, readContext);
   var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
@@ -658,11 +676,11 @@ function getStudentSubmission(ss, studentKey) {
   return null;
 }
 
-function getProgress(ss, studentKey) {
-  return loadProgress(ss, studentKey);
+function getProgress(ss, studentKey, readContext) {
+  return loadProgress(ss, studentKey, readContext);
 }
 
-function loadProgress(ss, studentKey) {
+function loadProgress(ss, studentKey, readContext) {
   var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
@@ -673,9 +691,9 @@ function loadProgress(ss, studentKey) {
   var progressData = null;
 
   if (sheet) {
-    var data = studentRowsForRead_(sheet, studentKey_(studentKey));
+    var data = studentRowsForRead_(sheet, studentKey_(studentKey), readContext);
     if (data.length > 1) {
-      var headerMap = getHeaderMap(sheet);
+      var headerMap = getHeaderMap(sheet, readContext);
       for (var i = 1; i < data.length; i++) {
         var row = data[i];
         var rowKey = String(getValByHeader(row, headerMap, ['studentKey', 'student_key', 'key']) || row[0] || '').trim();
@@ -737,8 +755,8 @@ function loadProgress(ss, studentKey) {
   }
 
   // Load associated Tests and Submissions data
-  var testData = getStudentTests(ss, targetKey);
-  var subData = getStudentSubmission(ss, targetKey);
+  var testData = getStudentTests(ss, targetKey, readContext);
+  var subData = getStudentSubmission(ss, targetKey, readContext);
 
   // If not found in Progress sheet, but exists in Submissions, reconstruct progressData
   if (!progressData && subData) {
@@ -862,9 +880,9 @@ function loadProgress(ss, studentKey) {
   try {
     var rosterSheet = ss.getSheetByName('Roster');
     if (rosterSheet) {
-      var rData = readTable_(rosterSheet);
+      var rData = readTable_(rosterSheet, readContext);
       if (rData.length > 1) {
-        var rHeaderMap = getHeaderMap(rosterSheet);
+        var rHeaderMap = getHeaderMap(rosterSheet, readContext);
         for (var rIdx = 1; rIdx < rData.length; rIdx++) {
           var rRow = rData[rIdx];
           var rg = parseInt(String(getValByHeader(rRow, rHeaderMap, ['grade', '학년']) || rRow[0]).trim(), 10);

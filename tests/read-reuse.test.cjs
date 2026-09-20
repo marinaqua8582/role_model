@@ -28,6 +28,9 @@ function fixture(counseling){
 }
 for(const counseling of [false,true])test(`full-read counts and identical responses; Counseling=${counseling}`,()=>{
  const {b,req}=fixture(counseling),c=counter(b),current=b.context.studentRowsForRead_;
+ // Isolate the first optimization: disable request reuse for its historical comparison.
+ const read=b.context.readTable_,headers=b.context.getHeaderMap;
+ b.context.readTable_=sheet=>read(sheet);b.context.getHeaderMap=sheet=>headers(sheet);
  const actions=[{action:'verifyStudent',grade:3,classNum:1,number:1,name:'가상학생가'},{action:'loadProgress'},{action:'saveProgress',roleModelReason:'same'}];
  for(const payload of actions){
   b.context.studentRowsForRead_=(...args)=>previousRows.apply(b.context,args);c.reset();const before=req(payload),oldReads=c.get();

@@ -129,7 +129,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isReadOnly) return;
+    if (isReadOnly || isSubmitting) return;
 
     if (!isGemUrlValid) {
       setSubmitError('https://gemini.google.com 으로 시작하는 올바른 Gemini Gem 공유 링크를 입력해 주세요.');
@@ -156,12 +156,9 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
     setSubmitError(null);
 
     try {
-      if (onSubmit) {
-        await onSubmit();
-      }
-
       const res = await submitFinal(studentInfo, data, progress);
       if (res.success) {
+        if (onSubmit) await onSubmit();
         setIsSubmittedSuccess(true);
         try {
           confetti({
@@ -716,3 +713,4 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
     </div>
   );
 };
+

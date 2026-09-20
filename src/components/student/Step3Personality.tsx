@@ -340,3 +340,4 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
     </div>
   );
 };
+

@@ -119,3 +119,4 @@ export const StepProgressBar: React.FC<StepProgressBarProps> = ({
     </div>
   );
 };
+

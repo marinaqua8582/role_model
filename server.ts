@@ -8,6 +8,7 @@ import {
   verifyAdminSessionToken,
   extractAdminToken,
   callServerGas,
+  checkAdminConfiguration,
 } from './api/_lib.js';
 
 dotenv.config();
@@ -21,12 +22,7 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json({ limit: '10mb' }));
 
 // In-memory store initialized with sample roster (for fallback or local sync)
-let rosterStore: RosterItem[] = [
-  { grade: 3, classNum: 1, number: 1, name: '김민지', googleId: 'student01@school.kr' },
-  { grade: 3, classNum: 1, number: 2, name: '박하은', googleId: 'student02@school.kr' },
-  { grade: 3, classNum: 1, number: 3, name: '홍은네', googleId: 'student03@school.kr' },
-];
-const progressStore = new Map<string, StudentProgress>();
+let rosterStore: RosterItem[] = [];
 
 /**
  * Server-side Admin Auth Middleware
@@ -62,6 +58,7 @@ app.post('/api/gas-proxy', async (req, res) => {
 
     // Block client attempts to run admin actions through public proxy
     if (
+      action === 'checkAdminConfig' ||
       action === 'getAdminDashboard' ||
       action === 'getStudentDetail' ||
       action === 'updateRoster' ||
@@ -154,219 +151,12 @@ app.get('/api/roster/options', (req, res) => {
 });
 
 // 2. Verify Student
-app.post('/api/auth/student', (req, res) => {
-  const { grade, classNum, number, name } = req.body;
-  const cleanName = String(name || '').trim();
-  const normalizedInputName = normalizeName(cleanName);
-  const studentKey = `${Number(grade)}-${Number(classNum)}-${Number(number)}`;
-
-  const existing = progressStore.get(studentKey);
-
-  const matchedRoster = rosterStore.find(
-    (r) =>
-      r.grade === Number(grade) &&
-      r.classNum === Number(classNum) &&
-      r.number === Number(number) &&
-      normalizeName(r.name) === normalizedInputName
-  );
-
-  const matchedExisting = existing && normalizeName(existing.name) === normalizedInputName;
-
-  if (!matchedRoster && !matchedExisting) {
-    return res.status(401).json({
-      success: false,
-      message: '입력한 학생 정보를 확인할 수 없습니다.\n학년, 반, 번호, 이름을 다시 확인해 주세요.',
-    });
-  }
-
-  const gid = matchedRoster?.googleId ? String(matchedRoster.googleId).trim() : (existing?.googleId ? String(existing.googleId).trim() : '');
-
-  const student: StudentInfo = {
-    grade: Number(grade),
-    classNum: Number(classNum),
-    number: Number(number),
-    name: matchedRoster ? matchedRoster.name : existing ? existing.name : cleanName,
-    studentKey,
-    googleId: gid,
-  };
-
-  const hasExisting = Boolean(existing && (existing.step1?.roleModelName || existing.currentStep > 1));
-
-  const progress: StudentProgress = existing ? { ...existing, grade: student.grade, classNum: student.classNum, number: student.number, name: student.name, studentKey: student.studentKey, googleId: gid || existing.googleId } : {
-    studentKey,
-    grade: student.grade,
-    classNum: student.classNum,
-    number: student.number,
-    name: student.name,
-    googleId: gid,
-    currentStep: 1,
-    step1: {
-      roleModelName: '',
-      roleModelJob: '',
-      roleModelReason: '',
-      jobDescription: '',
-      competencies: [],
-      competencyCustom: '',
-      careerHistory: '',
-      strengths: [],
-      strengthCustom: '',
-      values: [],
-      valueCustom: '',
-      challengeExperience: '',
-    },
-    step2: {
-      chatbotPurposes: [],
-      targetUser: '이 직업에 관심 있는 중학생',
-      targetUserCustom: '',
-      expectedOutcome: '',
-      purposeSummarySentence: '',
-    },
-    step3: {
-      personalities: [],
-      speakingStyle: '선배처럼 조언하듯이',
-      honorificStyle: '친근한 존댓말',
-      desiredFeeling: '',
-      personalityRulesSummary: '',
-    },
-    step4: {
-      answerLength: 'medium',
-      answerElements: ['질문에 대한 핵심 답부터 말하기', '롤모델의 경험이나 사례 연결하기', '학생이 생각할 질문 던지기'],
-    },
-    step5: {
-      quizAnswer: '',
-      quizPassed: false,
-      agreedToRules: false,
-      checkedFactualityRules: [false, false, false, false, false],
-      checkedDisclaimer: false,
-      checkedSafetyRules: [false, false, false, false],
-      allRulesChecked: false,
-    },
-    step6: {
-      chatbotName: '',
-      initialPrompt: '',
-      revisedPrompt: '',
-      finalPrompt: '',
-      isConfirmed: false,
-    },
-    step8: {
-      tests: {
-        test1: { result: '', note: '' },
-        test2: { result: '', note: '' },
-        test3: { result: '', note: '' },
-        test4: { result: '', note: '' },
-        test5: { result: '', note: '' },
-        test6: { result: '', note: '' },
-      },
-      problemDescription: '',
-      revisionNote: '',
-    },
-    step10: {
-      gemUrl: '',
-      barrierAnswer: '',
-      barrierReflection: '',
-      decisionAnswer: '',
-      decisionReflection: '',
-      educationAnswer: '',
-      educationReflection: '',
-      finalCareerReflection: '',
-      revisionSummary: '',
-      sampleQuestion1: '',
-      sampleAnswer1: '',
-      sampleQuestion2: '',
-      sampleAnswer2: '',
-      sampleQuestion3: '',
-      sampleAnswer3: '',
-      reflection: '',
-    },
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-    isPromptCompleted: false,
-    isTestCompleted: false,
-    isGemSubmitted: false,
-    isFinalSubmitted: false,
-  };
-
-  res.json({
-    success: true,
-    student,
-    hasExisting,
-    progress,
-  });
+app.all(['/api/auth/student','/api/student/save-step','/api/student/progress','/api/student/reset'], (_req, res) => {
+  return res.status(410).json({success:false,message:'현재 학생 API(/api/gas-proxy)를 사용해 주세요.'});
 });
-
-// 3. Save Student Progress
-app.post('/api/student/save-step', (req, res) => {
-  const { progress } = req.body;
-  if (!progress || !progress.studentKey) {
-    return res.status(400).json({ success: false, message: 'Invalid data' });
-  }
-
-  const existing = progressStore.get(progress.studentKey);
-  const now = new Date().toISOString();
-  progress.updatedAt = now;
-
-  // Preserve highest reached currentStep and completion status
-  if (existing) {
-    const isCompleted = Boolean(
-      existing.isFinalSubmitted ||
-      existing.currentStep >= 10 ||
-      progress.isFinalSubmitted ||
-      progress.currentStep >= 10
-    );
-
-    if (isCompleted) {
-      progress.isFinalSubmitted = true;
-      progress.currentStep = 10;
-    } else {
-      progress.currentStep = Math.max(existing.currentStep || 1, progress.currentStep || 1);
-    }
-  }
-
-  progressStore.set(progress.studentKey, progress);
-
-  res.json({
-    success: true,
-    savedAt: now,
-  });
-});
-
-// 3.1. Get Student Progress
-app.get('/api/student/progress', (req, res) => {
-  const studentKey = String(req.query.studentKey || '').trim();
-  if (!studentKey) {
-    return res.status(400).json({ success: false, message: 'studentKey required' });
-  }
-
-  const existing = progressStore.get(studentKey);
-  if (existing) {
-    return res.json({
-      success: true,
-      found: true,
-      progress: existing,
-    });
-  }
-
-  return res.json({
-    success: true,
-    found: false,
-  });
-});
-
-// 4. Reset Student Progress
-app.post('/api/student/reset', (req, res) => {
-  const { studentKey } = req.body;
-  if (studentKey) {
-    progressStore.delete(studentKey);
-  }
-  res.json({ success: true });
-});
-
-// -------------------------------------------------------------
-// Admin Authentication & Session Management Endpoints
-// -------------------------------------------------------------
 
 // Admin Login: verifies ADMIN_PASSWORD from process.env strictly
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', async (req, res) => {
   const configuredPassword = process.env.ADMIN_PASSWORD;
 
   if (!configuredPassword || typeof configuredPassword !== 'string' || configuredPassword.trim() === '') {
@@ -384,6 +174,8 @@ app.post('/api/admin/login', (req, res) => {
     });
   }
 
+  try { await checkAdminConfiguration(); }
+  catch { return res.status(503).json({success:false,message:'Vercel과 GAS의 ADMIN_API_SECRET 및 GAS 배포 버전을 확인해 주세요.'}); }
   const sessionToken = generateAdminSessionToken();
   const maxAge = 8 * 60 * 60; // 8 hours in seconds
   const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
@@ -593,3 +385,4 @@ if (process.env.RUN_SERVER === 'true' || (process.argv[1] && process.argv[1].end
 }
 
 export default app;
+

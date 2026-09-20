@@ -7,12 +7,16 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StudentProgress, RosterItem, DashboardStats } from './types';
 import {
   fetchRoster,
+  clearStudentSession,
+  isStudentSaving,
+  saveCurrentStudentStep,
   fetchStudentProgress,
   saveStudentProgress,
   fetchAdminOverview,
   fetchStudentDetail,
   checkAdminSession,
   logoutAdmin,
+  logoutStudent,
 } from './api/client';
 import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Header } from './components/common/Header';
@@ -82,15 +86,26 @@ export default function App() {
     ? 10
     : Math.max(1, currentStudent?.currentStep || 1);
 
-  // Auto-save debounce timer
-  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const sessionRef = useRef(0);
+  const navigatingRef = useRef(false);
+  const dirtyRef = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
+  useEffect(() => {
+    const update = () => setIsSaving(isStudentSaving());
+    window.addEventListener('student-save-state', update);
+    const beforeUnload = (event: BeforeUnloadEvent) => {
+      if (currentStudent && !isPreviewStudentMode && (dirtyRef.current || isStudentSaving())) { event.preventDefault(); event.returnValue = ''; }
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => { window.removeEventListener('student-save-state', update); window.removeEventListener('beforeunload', beforeUnload); };
+  }, [currentStudent, isPreviewStudentMode]);
 
   // Constant key for session storage to remember if current tab was viewing admin dashboard
   const ADMIN_VIEW_SESSION_KEY = 'rolemodel_admin_view_active';
 
   // Initial load of roster and localStorage session
   useEffect(() => {
-    loadRoster();
+    const session = sessionRef.current;
 
     // Clean up any legacy admin auth localStorage keys
     localStorage.removeItem('isAdmin');
@@ -114,9 +129,9 @@ export default function App() {
       // If not viewing admin dashboard (or not admin), restore student progress if available
       if (!isValid || !adminViewActive) {
         const savedKey = localStorage.getItem('rolemodel_current_student_key');
-        if (savedKey) {
+        if (savedKey && session === sessionRef.current) {
           fetchStudentProgress(savedKey).then((progress) => {
-            if (progress) {
+            if (progress && session === sessionRef.current) {
               const isCompleted = Boolean(
                 progress.isFinalSubmitted ||
                 progress.step10?.submittedAt
@@ -128,6 +143,11 @@ export default function App() {
               };
               setCurrentStudent(sanitized);
               setViewStep(isCompleted ? 10 : (sanitized.currentStep || 1));
+            }
+          }).catch(() => {
+            if (session === sessionRef.current) {
+              clearStudentSession();
+              setSaveStatus('error');
             }
           });
         }
@@ -141,6 +161,12 @@ export default function App() {
     setIsAdminLoggedIn(false);
     setIsAdminView(false);
     setIsPreviewStudentMode(false);
+    setCurrentStudent(null);
+    setRoster([]);
+    setAllStudentsProgress([]);
+    setSelectedStudentDetail(null);
+    clearStudentSession();
+    sessionRef.current++;
   };
 
   const loadRoster = async () => {
@@ -180,6 +206,9 @@ export default function App() {
 
   // Student Authentication handler
   const handleStudentAuthenticated = (progress: StudentProgress) => {
+    sessionRef.current++;
+    dirtyRef.current = false;
+    setSaveStatus('idle');
     const isCompleted = Boolean(
       progress.isFinalSubmitted ||
       progress.step10?.submittedAt
@@ -203,14 +232,19 @@ export default function App() {
       sessionStorage.setItem(ADMIN_VIEW_SESSION_KEY, 'true');
       return;
     }
-    localStorage.removeItem('rolemodel_current_student_key');
+    if (isStudentSaving() || navigatingRef.current) return;
+    if (dirtyRef.current && !window.confirm('저장하지 않은 입력은 사라질 수 있습니다. 로그아웃할까요?')) return;
+    sessionRef.current++;
+    void logoutStudent();
+    dirtyRef.current = false;
     setCurrentStudent(null);
     setViewStep(1);
     setSaveStatus('idle');
   };
 
-  // Student Progress Updater: updates local state and optionally persists
-  const updateProgress = (updated: StudentProgress, saveToStorage = false) => {
+  // Field edits remain local until the step's save or navigation completes.
+  const updateProgress = (updated: StudentProgress) => {
+    if (!isPreviewStudentMode) dirtyRef.current = true;
     // Ensure currentStep is never lowered for completed student or past steps
     const preservedCurrentStep = isStudentCompleted
       ? 10
@@ -224,61 +258,35 @@ export default function App() {
     };
 
     setCurrentStudent(payload);
-    if (isPreviewStudentMode) return; // Read-only in preview mode
-
-    if (saveToStorage) {
-      setSaveStatus('saving');
-      saveStudentProgress(payload)
-        .then(() => {
-          setSaveStatus('saved');
-          setTimeout(() => setSaveStatus('idle'), 2500);
-        })
-        .catch(() => {
-          setSaveStatus('error');
-        });
-    }
   };
 
-  // Click on a step tab in StepProgressBar (reviewing past or reached steps)
-  const handleSelectStep = (step: number) => {
-    if (!currentStudent) return;
-    if (!isStudentCompleted && !isPreviewStudentMode && step > maxAllowedStep) {
-      return;
-    }
-    setViewStep(step);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
-
-  // Step "Next" button handler
-  const handleNextStep = (nextStep: number) => {
-    if (!currentStudent) return;
-
-    if (isStudentCompleted) {
-      // Completed student: simply move to next step without dropping completion or max progress
-      setViewStep(nextStep);
+  const navigateStep = async (step: number, advance = false) => {
+    if (!currentStudent || navigatingRef.current || isStudentSaving()) return;
+    if (!advance && !isStudentCompleted && !isPreviewStudentMode && step > maxAllowedStep) return;
+    if (step === viewStep) return;
+    if (isPreviewStudentMode) { setViewStep(step); return; }
+    // Final activity drafts are not submissions; warn before leaving them.
+    if (viewStep === 10 && dirtyRef.current && !window.confirm('최종 제출 전 입력은 아직 저장되지 않았습니다. 이동할까요?')) return;
+    const session = sessionRef.current;
+    navigatingRef.current = true;
+    setSaveStatus('saving');
+    try {
+      if (!advance) await saveCurrentStudentStep(currentStudent, viewStep);
+      const updated = { ...currentStudent, currentStep: Math.max(currentStudent.currentStep, step) };
+      await saveStudentProgress(updated);
+      if (session !== sessionRef.current) return;
+      if (viewStep !== 10) dirtyRef.current = false;
+      setCurrentStudent(updated);
+      setViewStep(step);
+      setSaveStatus('saved');
       window.scrollTo({ top: 0, behavior: 'smooth' });
-      return;
-    }
-
-    // In-progress student: advance currentStep if nextStep is greater
-    const newCurrentStep = Math.max(currentStudent.currentStep || 1, nextStep);
-    const updated: StudentProgress = {
-      ...currentStudent,
-      currentStep: newCurrentStep,
-      isPromptCompleted: currentStudent.isPromptCompleted || nextStep >= 7,
-      isTestCompleted: currentStudent.isTestCompleted || nextStep >= 9,
-    };
-    setViewStep(nextStep);
-    updateProgress(updated, true);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      if (session === sessionRef.current) setSaveStatus('error');
+    } finally { navigatingRef.current = false; }
   };
-
-  // Step "Prev" button handler
-  const handlePrevStep = (prevStep: number) => {
-    if (!currentStudent) return;
-    setViewStep(prevStep);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  };
+  const handleSelectStep = (step: number) => { void navigateStep(step); };
+  const handleNextStep = (step: number) => { void navigateStep(step, true); };
+  const handlePrevStep = (step: number) => { void navigateStep(step); };
 
   const handleFinalSubmit = async () => {
     if (!currentStudent) return;
@@ -294,7 +302,9 @@ export default function App() {
       },
       updatedAt: now,
     };
-    updateProgress(updated, true);
+    setCurrentStudent(updated);
+    dirtyRef.current = false;
+    setSaveStatus('saved');
   };
 
   // Open detail modal with full student detail
@@ -550,11 +560,14 @@ export default function App() {
       ) : !currentStudent ? (
         /* STUDENT LOGIN / AUTHENTICATION SCREEN */
         <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
-          <StudentAuth roster={roster} onAuthenticated={handleStudentAuthenticated} />
+          {saveStatus === 'error' && <p role="alert">진행 내용을 불러오지 못했습니다. 인터넷 연결을 확인하고 다시 로그인해 주세요.</p>}
+          <StudentAuth roster={[]} onAuthenticated={handleStudentAuthenticated} />
         </main>
       ) : (
         /* STUDENT 10-STEP WORKFLOW SCREEN */
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+          {saveStatus === 'error' && <p role="alert" className="text-rose-700">서버 저장 또는 불러오기에 실패했습니다. 연결을 확인하고 다시 시도해 주세요.</p>}
+          <fieldset disabled={isSaving || saveStatus === 'saving'} className="contents">
           {/* Step Progress Bar */}
           <StepProgressBar
             currentStep={viewStep}
@@ -566,7 +579,7 @@ export default function App() {
 
           {/* STEP 1: Role Model Information */}
           {viewStep === 1 && (
-            <Step1RoleModel
+            <Step1RoleModel key={currentStudent.studentKey}
               data={currentStudent.step1}
               student={{
                 grade: currentStudent.grade,
@@ -813,6 +826,7 @@ export default function App() {
               onPrev={() => handlePrevStep(9)}
             />
           )}
+          </fieldset>
         </main>
       )}
 
@@ -823,3 +837,4 @@ export default function App() {
     </div>
   );
 }
+

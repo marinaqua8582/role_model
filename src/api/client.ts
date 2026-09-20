@@ -1,3 +1,4 @@
+import { createStudentKey } from '../utils/studentKey';
 import {
   StudentInfo,
   StudentProgress,
@@ -26,13 +27,38 @@ const STORAGE_PREFIX = 'rolemodel_chatbot_';
 const ROSTER_KEY = `${STORAGE_PREFIX}roster`;
 const PROGRESS_MAP_KEY = `${STORAGE_PREFIX}progress_map`;
 const GAS_URL_KEY = `${STORAGE_PREFIX}gas_url`;
+const STUDENT_SESSION_KEY = `${STORAGE_PREFIX}student_session`;
+let sessionGeneration = 0;
+export function clearStudentSession() {
+  sessionGeneration++;
+  localStorage.removeItem(STUDENT_SESSION_KEY);
+  localStorage.removeItem('rolemodel_current_student_key');
+  localStorage.removeItem(PROGRESS_MAP_KEY);
+  localStorage.removeItem(ROSTER_KEY);
+}
+
+
+/** Best-effort server revocation; local logout always completes. */
+export async function logoutStudent(): Promise<void> {
+  let session: {token?: string} | null = null;
+  try { session = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null'); } catch { /* Corrupt local sessions must still log out. */ }
+  clearStudentSession();
+  if (!session?.token) return;
+  try {
+    const response = await fetch('/api/gas-proxy', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({action:'logoutStudent',studentToken:session.token}),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!response.ok || !(await response.json())?.success) throw new Error('logout failed');
+  } catch {
+    // Offline clients cannot revoke a remote token; the local session is already gone.
+    console.warn('서버 로그아웃을 확인하지 못했습니다. 로컬 세션은 제거되었습니다.');
+  }
+}
 
 // Default initial sample roster for 3학년 1반
-export const DEFAULT_ROSTER: RosterItem[] = [
-  { grade: 3, classNum: 1, number: 1, name: '김민지', googleId: 'student01@school.kr' },
-  { grade: 3, classNum: 1, number: 2, name: '박하은', googleId: 'student02@school.kr' },
-  { grade: 3, classNum: 1, number: 3, name: '홍은네', googleId: 'student03@school.kr' },
-];
+export const DEFAULT_ROSTER: RosterItem[] = [];
 
 export const DEFAULT_GAS_URL = '';
 
@@ -51,7 +77,24 @@ export function getEffectiveGasUrl(): string {
  * Tries server-side proxy first (bypasses browser CORS & 302 redirect blocking),
  * and falls back to direct client fetch if needed.
  */
+let pendingWrites = 0;
+export function isStudentSaving() { return pendingWrites > 0; }
 export async function callGasApi(payload: Record<string, any>): Promise<any> {
+  const writing = ['saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData'].includes(payload.action);
+  if (writing) { pendingWrites++; window.dispatchEvent(new Event('student-save-state')); }
+  try { return await requestGasApi(payload); }
+  finally { if (writing) { pendingWrites--; window.dispatchEvent(new Event('student-save-state')); } }
+}
+
+async function requestGasApi(payload: Record<string, any>): Promise<any> {
+  const generation = sessionGeneration;
+  const session = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null');
+  payload = { ...payload, studentToken: session?.token };
+  const checkResponse = (data: any) => {
+    const currentSession = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null');
+    if (generation !== sessionGeneration || session?.token !== currentSession?.token) throw new Error('학생 세션이 변경되었습니다.');
+    return data;
+  };
   // 1. Primary: Use backend server proxy to reliably handle Google Apps Script 302 redirect & CORS
   try {
     const proxyRes = await fetch('/api/gas-proxy', {
@@ -64,10 +107,13 @@ export async function callGasApi(payload: Record<string, any>): Promise<any> {
 
     if (proxyRes.ok) {
       const data = await proxyRes.json();
-      return data;
+      return checkResponse(data);
     }
+    if (proxyRes.status === 403) throw new Error('요청 권한이 없습니다.');
+    if (proxyRes.status !== 404) throw new Error(`서버 연결 오류 (HTTP ${proxyRes.status}). 다시 저장해 주세요.`);
   } catch (proxyErr) {
-    console.warn('Backend GAS proxy failed, attempting direct fetch fallback:', proxyErr);
+    if (payload.action !== 'getRosterOptions') throw proxyErr;
+    console.warn('Backend GAS proxy failed:', proxyErr);
   }
 
   // 2. Direct browser fetch fallback (if VITE_GAS_URL is provided in client)
@@ -79,7 +125,7 @@ export async function callGasApi(payload: Record<string, any>): Promise<any> {
     });
 
     if (directRes.ok) {
-      return await directRes.json();
+      return checkResponse(await directRes.json());
     }
 
     throw new Error(`Google Apps Script 서버 응답 오류 (HTTP ${directRes.status})`);
@@ -93,12 +139,7 @@ function getStoredRoster(): RosterItem[] {
     const raw = localStorage.getItem(ROSTER_KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      // If legacy storage still contains default 56 dummy students (starts with 강민서 and ends with 황지민), clear it
-      if (Array.isArray(parsed) && parsed.length === 56 && parsed[0]?.name === '강민서' && parsed[27]?.name === '조유진') {
-        localStorage.removeItem(ROSTER_KEY);
-        return [];
-      }
-      return parsed;
+      return Array.isArray(parsed) ? parsed : [];
     }
   } catch (e) {
     console.error('Error reading roster from storage', e);
@@ -368,318 +409,31 @@ export function mapSheetDataToProgress(raw: any): StudentProgress {
 /**
  * Load student progress directly from Google Apps Script (loadProgress action)
  */
-export async function loadStudentProgress(
-  studentKey: string
-): Promise<{ success: boolean; found: boolean; progress?: StudentProgress; message?: string }> {
-  try {
-    const res = await callGasApi({
-      action: 'loadProgress',
-      studentKey,
-    });
-
-    if (res && res.success && res.found && res.data) {
-      const restoredProgress = mapFullStudentDetail(res.data);
-
-      const localMap = getStoredProgressMap();
-      if (!restoredProgress.googleId) {
-        if (localMap[studentKey]?.googleId) {
-          restoredProgress.googleId = localMap[studentKey].googleId;
-        } else {
-          const roster = getStoredRoster();
-          const found = roster.find((r) => `${r.grade}-${r.classNum}-${r.number}` === studentKey);
-          if (found?.googleId) {
-            restoredProgress.googleId = found.googleId;
-          }
-        }
-      }
-
-      localMap[studentKey] = restoredProgress;
-      saveStoredProgressMap(localMap);
-
-      return {
-        success: true,
-        found: true,
-        progress: restoredProgress,
-      };
-    }
-
-    if (res && res.success && !res.found) {
-      return {
-        success: true,
-        found: false,
-      };
-    }
-  } catch (err) {
-    console.warn('Error loading progress from GAS:', err);
-  }
-
-  // Fallback to local cache only if GAS lookup failed/errored
-  const localMap = getStoredProgressMap();
-  const local = localMap[studentKey];
-  if (local && (local.step1?.roleModelName || local.currentStep > 1 || local.step6?.finalPrompt)) {
-    if (!local.googleId) {
-      const roster = getStoredRoster();
-      const found = roster.find((r) => `${r.grade}-${r.classNum}-${r.number}` === studentKey);
-      if (found?.googleId) {
-        local.googleId = found.googleId;
-      }
-    }
-    return {
-      success: true,
-      found: true,
-      progress: local,
-    };
-  }
-
-  return {
-    success: true,
-    found: false,
-  };
+export async function loadStudentProgress(studentKey: string): Promise<{ success: boolean; found: boolean; progress?: StudentProgress; message?: string }> {
+  const res = await callGasApi({ action: 'loadProgress', studentKey });
+  if (res?.success !== true) throw new Error(res?.message || '진행 내용을 불러오지 못했습니다. 다시 로그인해 주세요.');
+  return { success: true, found: Boolean(res.found), progress: res.found ? mapFullStudentDetail(res.data) : undefined };
 }
 
-/**
- * Verify Student Auth and load existing progress
- */
-export async function verifyStudentAuth(params: {
-  grade: number;
-  classNum: number;
-  number: number;
-  name: string;
-}): Promise<{
-  success: boolean;
-  message?: string;
-  student?: StudentInfo;
-  hasExisting?: boolean;
-  progress?: StudentProgress;
+/** Roster verification remains grade/class/number/name; no student password or code. */
+export async function verifyStudentAuth(params: { grade: number; classNum: number; number: number; name: string }): Promise<{
+  success: boolean; message?: string; student?: StudentInfo; hasExisting?: boolean; progress?: StudentProgress;
 }> {
-  const cleanName = params.name.trim();
-  const studentKey = `${params.grade}-${params.classNum}-${params.number}`;
-
-  // 1. Primary: Authenticate directly against Google Sheets Roster via GAS
+  await logoutStudent();
   try {
-    const payload = {
-      action: 'verifyStudent',
-      grade: Number(params.grade),
-      classNo: Number(params.classNum),
-      classNum: Number(params.classNum),
-      number: Number(params.number),
-      name: cleanName,
-    };
-
-    const data = await callGasApi(payload);
-
-    if (data && data.success && data.student) {
-      let studentGid = data.student.googleId ? String(data.student.googleId).trim() : '';
-      if (!studentGid && data.progress && data.progress.googleId) {
-        studentGid = String(data.progress.googleId).trim();
-      }
-      if (!studentGid) {
-        const roster = getStoredRoster();
-        const found = roster.find((r) => `${r.grade}-${r.classNum}-${r.number}` === studentKey);
-        if (found?.googleId) {
-          studentGid = String(found.googleId).trim();
-        }
-      }
-
-      const student: StudentInfo = {
-        grade: Number(data.student.grade || params.grade),
-        classNum: Number(data.student.classNum || data.student.classNo || params.classNum),
-        number: Number(data.student.number || params.number),
-        name: data.student.name || cleanName,
-        studentKey: data.student.studentKey || studentKey,
-        googleId: studentGid,
-      };
-
-      // Never attach an old occupant's progress when the roster identity changed.
-      const identityMismatch = Boolean(data.identityMismatch);
-      const loadRes = identityMismatch
-        ? { success: true, found: false }
-        : await loadStudentProgress(student.studentKey);
-
-      let finalProgress: StudentProgress | undefined = loadRes.progress;
-      if (!identityMismatch && !finalProgress && data.progress) {
-        finalProgress = mapFullStudentDetail(data.progress);
-      }
-
-      const localMap = getStoredProgressMap();
-      const localExisting = identityMismatch ? undefined : localMap[student.studentKey];
-      if (!finalProgress && localExisting) {
-        finalProgress = localExisting;
-      }
-
-      const hasExisting = Boolean(
-        (!identityMismatch && loadRes.found) ||
-          (!identityMismatch && data.hasExisting) ||
-          (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1 || finalProgress.step6?.finalPrompt))
-      );
-
-      if (!finalProgress) {
-        finalProgress = createInitialStudentProgress(student);
-      } else {
-        finalProgress.grade = student.grade;
-        finalProgress.classNum = student.classNum;
-        finalProgress.number = student.number;
-        finalProgress.name = student.name;
-        finalProgress.studentKey = student.studentKey;
-      }
-
-      // CRITICAL: Unconditionally prioritize the newly authenticated student's googleId
-      if (student.googleId) {
-        finalProgress.googleId = student.googleId;
-      } else if (studentGid) {
-        finalProgress.googleId = studentGid;
-      }
-
-      // Cache verified progress in local storage with the authenticated student's googleId
-      localMap[student.studentKey] = finalProgress;
-      saveStoredProgressMap(localMap);
-
-      return {
-        success: true,
-        student,
-        hasExisting,
-        progress: finalProgress,
-      };
-    } else if (data && data.success === false) {
-      // Explicit failure from Google Sheets verification
-      return {
-        success: false,
-        message: data?.message || '학생 정보를 확인할 수 없습니다.\n학년, 반, 번호, 이름을 다시 확인해 주세요.',
-      };
-    }
+    const studentKey = createStudentKey(params);
+    const data = await callGasApi({ action: 'verifyStudent', ...params, classNo: params.classNum, name: normalizeKoreanName(params.name) });
+    if (data?.success !== true || !data.student) return { success: false, message: data?.message || '학생 정보를 확인할 수 없습니다.' };
+    if (!data.studentToken) return { success: false, message: 'Google Apps Script를 최신 코드로 배포한 뒤 다시 로그인해 주세요.' };
+    const student: StudentInfo = { ...data.student, studentKey, googleId: data.student.googleId || '' };
+    localStorage.setItem(STUDENT_SESSION_KEY, JSON.stringify({ token: data.studentToken, studentKey }));
+    const progress = data.hasExisting && !data.identityMismatch ? mapFullStudentDetail(data.progress) : createInitialStudentProgress(student);
+    Object.assign(progress, student);
+    saveStoredProgressMap({ [studentKey]: progress });
+    return { success: true, student, hasExisting: Boolean(data.hasExisting && !data.identityMismatch), progress };
   } catch (err: any) {
-    console.warn('GAS verifyStudent unavailable, trying fallback:', err?.message);
+    return { success: false, message: err?.message || '서버에 연결할 수 없습니다. 인터넷 연결을 확인하고 다시 시도해 주세요.' };
   }
-
-  // 2. Standalone fallback (local server / storage)
-  const normalizedInputName = normalizeKoreanName(cleanName);
-  const localMap = getStoredProgressMap();
-  const localExisting = localMap[studentKey];
-
-  try {
-    const res = await fetch('/api/auth/student', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...params, name: cleanName }),
-    });
-
-    if (res.ok) {
-      const data = await res.json();
-      if (data.success && data.student) {
-        let studentGid = data.student.googleId ? String(data.student.googleId).trim() : '';
-        if (!studentGid && data.progress && data.progress.googleId) {
-          studentGid = String(data.progress.googleId).trim();
-        }
-        if (!studentGid) {
-          const roster = getStoredRoster();
-          const found = roster.find((r) => `${r.grade}-${r.classNum}-${r.number}` === studentKey);
-          if (found?.googleId) {
-            studentGid = String(found.googleId).trim();
-          }
-        }
-
-        const student: StudentInfo = {
-          grade: Number(data.student.grade || params.grade),
-          classNum: Number(data.student.classNum || data.student.classNo || params.classNum),
-          number: Number(data.student.number || params.number),
-          name: data.student.name || cleanName,
-          studentKey: data.student.studentKey || studentKey,
-          googleId: studentGid,
-        };
-
-        let finalProgress = data.progress ? mapFullStudentDetail(data.progress) : undefined;
-        if (!finalProgress && localExisting) {
-          finalProgress = localExisting;
-        } else if (localExisting && finalProgress) {
-          const localTime = new Date(localExisting.updatedAt || 0).getTime();
-          const serverTime = new Date(finalProgress.updatedAt || 0).getTime();
-          if (localTime > serverTime) {
-            finalProgress = localExisting;
-          }
-        }
-
-        if (!finalProgress) {
-          finalProgress = createInitialStudentProgress(student);
-        } else {
-          finalProgress.grade = student.grade;
-          finalProgress.classNum = student.classNum;
-          finalProgress.number = student.number;
-          finalProgress.name = student.name;
-          finalProgress.studentKey = student.studentKey;
-        }
-
-        if (student.googleId) {
-          finalProgress.googleId = student.googleId;
-        } else if (studentGid) {
-          finalProgress.googleId = studentGid;
-        }
-
-        localMap[data.student.studentKey] = finalProgress;
-        saveStoredProgressMap(localMap);
-
-        const hasExisting = Boolean(
-          data.hasExisting ||
-          (finalProgress && (finalProgress.step1?.roleModelName || finalProgress.currentStep > 1 || finalProgress.step6?.finalPrompt))
-        );
-
-        return {
-          success: true,
-          student,
-          hasExisting,
-          progress: finalProgress,
-        };
-      }
-    }
-  } catch (e) {
-    // offline / fallback
-  }
-
-  const roster = getStoredRoster();
-  const matchedRoster = roster.find(
-    (r) =>
-      r.grade === params.grade &&
-      r.classNum === params.classNum &&
-      r.number === params.number &&
-      normalizeKoreanName(r.name) === normalizedInputName
-  );
-
-  const matchedLocalProgress = localExisting && normalizeKoreanName(localExisting.name) === normalizedInputName;
-
-  if (!matchedRoster && !matchedLocalProgress) {
-    return {
-      success: false,
-      message: '입력한 학생 정보를 확인할 수 없습니다.\n학년, 반, 번호, 이름을 다시 확인해 주세요.',
-    };
-  }
-
-  const studentGid = matchedRoster?.googleId ? String(matchedRoster.googleId).trim() : (localExisting?.googleId ? String(localExisting.googleId).trim() : '');
-
-  const student: StudentInfo = {
-    grade: params.grade,
-    classNum: params.classNum,
-    number: params.number,
-    name: matchedRoster ? matchedRoster.name : (localExisting ? localExisting.name : cleanName),
-    studentKey,
-    googleId: studentGid,
-  };
-
-  const progress = localExisting
-    ? { ...localExisting, grade: student.grade, classNum: student.classNum, number: student.number, name: student.name, studentKey: student.studentKey, googleId: studentGid || localExisting.googleId }
-    : createInitialStudentProgress(student);
-  if (studentGid) {
-    progress.googleId = studentGid;
-  }
-  const hasExisting = Boolean(progress && (progress.step1?.roleModelName || progress.currentStep > 1 || progress.step6?.finalPrompt));
-
-  localMap[studentKey] = progress;
-  saveStoredProgressMap(localMap);
-
-  return {
-    success: true,
-    student,
-    hasExisting,
-    progress,
-  };
 }
 
 /**
@@ -744,9 +498,10 @@ export async function saveStep1Progress(
     values.push(data.valueCustom.trim());
   }
 
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const payload = {
     action: 'saveProgress',
+    step1: data,
     studentKey,
     grade: Number(student.grade),
     class: Number(student.classNum),
@@ -790,7 +545,7 @@ export async function saveStep2Progress(
   student: StudentInfo,
   data: ChatbotPurposeData
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const targetUser =
     data.targetUser === '기타' && data.targetUserCustom?.trim()
       ? data.targetUserCustom.trim()
@@ -798,6 +553,7 @@ export async function saveStep2Progress(
 
   const payload = {
     action: 'saveProgress',
+    step2: data,
     studentKey,
     grade: Number(student.grade),
     class: Number(student.classNum),
@@ -830,9 +586,10 @@ export async function saveStep3Progress(
   student: StudentInfo,
   data: PersonalityData
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const payload = {
     action: 'saveProgress',
+    step3: data,
     studentKey,
     grade: Number(student.grade),
     class: Number(student.classNum),
@@ -866,7 +623,7 @@ export async function saveStep4Progress(
   student: StudentInfo,
   data: ResponseStyleData
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const lengthLabelMap: Record<string, string> = {
     short: '2~3문장',
     medium: '4~6문장',
@@ -876,6 +633,7 @@ export async function saveStep4Progress(
 
   const payload = {
     action: 'saveProgress',
+    step4: data,
     studentKey,
     grade: Number(student.grade),
     class: Number(student.classNum),
@@ -907,9 +665,10 @@ export async function saveStep5Progress(
   student: StudentInfo,
   data?: SafetyRuleData
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const payload = {
     action: 'saveProgress',
+    step5: data,
     studentKey,
     grade: Number(student.grade),
     class: Number(student.classNum),
@@ -944,13 +703,14 @@ export async function saveStep6Progress(
   student: StudentInfo,
   data: PromptData
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const initialPrompt = (data.initialPrompt || '').trim();
   const revisedPrompt = (data.revisedPrompt || '').trim();
   const finalPrompt = (data.finalPrompt || data.revisedPrompt || data.initialPrompt || '').trim();
 
   const payload = {
     action: 'saveProgress',
+    step6: data,
     studentKey,
     grade: Number(student.grade),
     class: Number(student.classNum),
@@ -992,7 +752,7 @@ export async function updateCurrentStep(
   student: StudentInfo,
   step: number
 ): Promise<{ success: boolean; message?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const payload = {
     action: 'saveProgress',
     studentKey,
@@ -1023,7 +783,7 @@ export async function saveTests(
   student: StudentInfo,
   data: TestData
 ): Promise<{ success: boolean; message?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   
   const formatResult = (res?: string) => {
     if (res === 'good') return '잘 작동함';
@@ -1034,6 +794,7 @@ export async function saveTests(
   const now = new Date().toISOString();
   const payload = {
     action: 'saveTests',
+    step8: data,
     studentKey,
     test1Result: formatResult(data.tests?.test1?.result),
     test2Result: formatResult(data.tests?.test2?.result),
@@ -1056,6 +817,7 @@ export async function saveTests(
     }
   } catch (err: any) {
     console.warn('saveTests to GAS skipped/failed:', err?.message);
+    return { success: false, message: '서버 저장에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.' };
   }
 
   // Update local storage
@@ -1082,7 +844,7 @@ export async function updateRevision(
   promptData: PromptData,
   testData: TestData
 ): Promise<{ success: boolean; message?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const revisedPrompt = (promptData.revisedPrompt || promptData.finalPrompt || promptData.initialPrompt || '').trim();
   const finalPrompt = (promptData.finalPrompt || promptData.revisedPrompt || promptData.initialPrompt || '').trim();
   const chatbotName = (promptData.chatbotName || '').trim();
@@ -1091,6 +853,7 @@ export async function updateRevision(
 
   const payload = {
     action: 'updateRevision',
+    step6: promptData,
     studentKey,
     grade: Number(student.grade),
     class: Number(student.classNum),
@@ -1109,28 +872,11 @@ export async function updateRevision(
   try {
     const res = await callGasApi(payload);
     if (!res || !res.success) {
-      // Fallback: try saveProgress if updateRevision is not explicitly in older GAS
-      const fallbackRes = await saveProgressPayload({
-        action: 'saveProgress',
-        studentKey,
-        grade: Number(student.grade),
-        class: Number(student.classNum),
-        number: Number(student.number),
-        name: (student.name || '').trim(),
-        currentStep: 9,
-        chatbotName,
-        revisedPrompt,
-        finalPrompt,
-      });
-      if (!fallbackRes.success) {
-        return {
-          success: false,
-          message: '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.',
-        };
-      }
+      return { success: false, message: res?.message || '수정 내용을 저장하지 못했습니다. 다시 시도해 주세요.' };
     }
   } catch (err: any) {
     console.warn('updateRevision to GAS skipped/failed:', err?.message);
+    return { success: false, message: '서버 저장에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.' };
   }
 
   // Update local storage
@@ -1165,7 +911,7 @@ export async function submitFinal(
   submission: FinalSubmissionData,
   progress: StudentProgress
 ): Promise<{ success: boolean; message?: string; submittedAt?: string }> {
-  const studentKey = student.studentKey || `${student.grade}-${student.classNum}-${student.number}`;
+  const studentKey = createStudentKey(student);
   const now = new Date().toISOString();
 
   const payload = {
@@ -1230,15 +976,6 @@ export async function submitFinal(
   localMap[studentKey] = existing;
   saveStoredProgressMap(localMap);
 
-  // Attempt server sync
-  try {
-    await fetch('/api/student/save-step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ progress: existing }),
-    });
-  } catch (e) {}
-
   return { success: true, message: '진로 상담 및 최종 제출이 완료되었습니다.', submittedAt: now };
 }
 
@@ -1246,54 +983,26 @@ export async function submitFinal(
  * Save Student Progress (Auto-save)
  */
 export async function saveStudentProgress(progress: StudentProgress): Promise<{ success: boolean; savedAt: string }> {
-  const now = new Date().toISOString();
-  progress.updatedAt = now;
+  // Step components persist their own fields. Navigation saves only the reached step.
+  const res = await updateCurrentStep(progress, progress.currentStep);
+  if (!res.success) throw new Error(res.message || '서버 저장에 실패했습니다.');
+  return { success: true, savedAt: new Date().toISOString() };
+}
 
-  // Determine completion flags
-  progress.isPromptCompleted = Boolean(progress.step6?.finalPrompt && progress.step6.finalPrompt.length > 50);
-  const tests = progress.step8?.tests;
-  progress.isTestCompleted = Boolean(
-    tests && tests.test1?.result && tests.test2?.result && tests.test3?.result && tests.test4?.result && tests.test5?.result && tests.test6?.result
-  );
-  progress.isGemSubmitted = Boolean(progress.step10?.gemUrl && progress.step10.gemUrl.trim());
-
-  const hasAllCounselingDone = Boolean(
-    progress.step10?.gemUrl?.trim() &&
-    progress.step10?.barrierAnswer?.trim() &&
-    progress.step10?.barrierReflection?.trim() &&
-    progress.step10?.decisionAnswer?.trim() &&
-    progress.step10?.decisionReflection?.trim() &&
-    progress.step10?.educationAnswer?.trim() &&
-    progress.step10?.educationReflection?.trim() &&
-    progress.step10?.finalCareerReflection?.trim() &&
-    progress.step10.finalCareerReflection.trim().length >= 30
-  );
-
-  if (hasAllCounselingDone) {
-    progress.isFinalSubmitted = true;
+export async function saveCurrentStudentStep(progress: StudentProgress, step: number) {
+  let result: {success: boolean; message?: string} = { success: true };
+  switch (step) {
+    case 1: result = await saveStep1Progress(progress, progress.step1); break;
+    case 2: result = await saveStep2Progress(progress, progress.step2); break;
+    case 3: result = await saveStep3Progress(progress, progress.step3); break;
+    case 4: result = await saveStep4Progress(progress, progress.step4); break;
+    case 5: result = await saveStep5Progress(progress, progress.step5); break;
+    case 6: result = await saveStep6Progress(progress, progress.step6); break;
+    case 8: result = await saveTests(progress, progress.step8); break;
+    case 9: result = await updateRevision(progress, progress.step6, progress.step8); break;
+    // STEP10 is saved only through its explicit final-submit button.
   }
-
-  // Update local storage
-  const map = getStoredProgressMap();
-  map[progress.studentKey] = progress;
-  saveStoredProgressMap(map);
-
-  // Attempt server sync
-  try {
-    const res = await fetch('/api/student/save-step', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ progress }),
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return { success: true, savedAt: data.savedAt || now };
-    }
-  } catch (e) {
-    // local saved is fine
-  }
-
-  return { success: true, savedAt: now };
+  if (!result.success) throw new Error(result.message || '서버 저장에 실패했습니다.');
 }
 
 /**
@@ -1399,6 +1108,19 @@ export async function logoutAdmin(): Promise<void> {
  * Map raw data from GAS getStudentDetail / loadProgress / getAdminDashboard to rich StudentProgress
  */
 export function mapFullStudentDetail(raw: any): StudentProgress {
+  const result = mapLegacyStudentDetail(raw);
+  const exact = raw?.stepData || raw?.progress?.stepData;
+  if (exact && typeof exact === 'object') {
+    for (const key of ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'] as const) {
+      if (exact[key] && typeof exact[key] === 'object') (result as any)[key] = { ...result[key], ...exact[key] };
+    }
+  }
+  const notes = raw?.tests?.step8 || raw?.step8;
+  if (notes?.tests) result.step8.tests = notes.tests;
+  return result;
+}
+
+function mapLegacyStudentDetail(raw: any): StudentProgress {
   if (!raw) return createInitialStudentProgress({ grade: 1, classNum: 1, number: 1, name: '학생', studentKey: '1-1-1' });
 
   // Handle various potential nested shapes:
@@ -2333,16 +2055,8 @@ export async function fetchRoster(): Promise<RosterItem[]> {
 }
 
 export async function fetchStudentProgress(studentKey: string): Promise<StudentProgress | null> {
-  try {
-    const res = await loadStudentProgress(studentKey);
-    if (res && res.success && res.found && res.progress) {
-      return res.progress;
-    }
-  } catch (e) {
-    console.warn('fetchStudentProgress error:', e);
-  }
-  const map = getStoredProgressMap();
-  return map[studentKey] || null;
+  const res = await loadStudentProgress(studentKey);
+  return res.progress || null;
 }
 
 export async function fetchAdminOverview(): Promise<{
@@ -2360,3 +2074,4 @@ export function getStoredGasUrl(): string {
 export function setStoredGasUrl(url: string) {
   localStorage.setItem(GAS_URL_KEY, url.trim());
 }
+

@@ -554,3 +554,4 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     </div>
   );
 };
+

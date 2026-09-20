@@ -22,6 +22,7 @@ function doPost(e) {
 }
 
 function handleRequest(e) {
+  var lock = null;
   var output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
   
@@ -35,10 +36,19 @@ function handleRequest(e) {
     
     var action = params.action || (e.parameter && e.parameter.action);
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if (action !== 'getRosterOptions' && action !== 'checkAdminConfig') {
+      lock = LockService.getScriptLock();
+      if (!lock.tryLock(20000)) throw new Error('저장 요청이 많습니다. 잠시 후 다시 저장해 주세요.');
+    }
     initSheetsIfNeeded(ss);
+    if (['loadProgress', 'getProgress', 'saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData'].indexOf(action) !== -1) {
+      authorizeStudent_(ss, params);
+    }
+
     
     // Validate admin secret for privileged teacher/admin actions
     if (
+      action === 'checkAdminConfig' ||
       action === 'getAdminDashboard' ||
       action === 'getStudentDetail' ||
       action === 'updateRoster' ||
@@ -56,7 +66,12 @@ function handleRequest(e) {
 
     var result = { success: true };
     
-    if (action === 'verifyStudent') {
+    if (action === 'logoutStudent') {
+      CacheService.getScriptCache().remove('student:' + String(params.studentToken || ''));
+      result = {success:true};
+    } else if (action === 'checkAdminConfig') {
+      result = {success:true};
+    } else if (action === 'verifyStudent') {
       result = verifyStudent(ss, params);
     } else if (action === 'getRosterOptions') {
       result = getRosterOptions(ss);
@@ -90,19 +105,264 @@ function handleRequest(e) {
       result = { success: false, message: '알 수 없는 요청입니다: ' + action };
     }
     
+    if (result.success && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling'].indexOf(action) !== -1) {
+      var body = params.progress || params.submission || params.counseling || params.tests || params;
+      var affected = action === 'saveProgress' ? ['Progress'] : action === 'saveTests' ? ['Tests'] : action === 'updateRevision' ? ['Progress','Tests'] : action === 'submitFinal' ? ['Submissions'] : ['Counseling'];
+      affected.forEach(function(name) {
+        var sheet = ss.getSheetByName(name), selected = sheet && selectStudentRow_(sheet, body.studentKey);
+        if (selected) recordOwner_(sheet, selected.index, body);
+      });
+    }
     output.setContent(JSON.stringify(result));
   } catch (err) {
-    output.setContent(JSON.stringify({ success: false, error: err.toString() }));
+    output.setContent(JSON.stringify({ success: false, message: err.message || err.toString() }));
+  } finally {
+    if (lock && lock.hasLock()) {
+      try { SpreadsheetApp.flush(); } finally { lock.releaseLock(); }
+    }
   }
   
   return output;
 }
 
+
+function studentKey_(value) {
+  var parts = typeof value === 'object' ? [value.grade, value.classNum || value.classNo || value.class, value.number] : String(value || '').split('-');
+  if (parts.length !== 3) throw new Error('학년, 반, 번호를 확인해 주세요.');
+  parts = parts.map(function(v) { return Number(String(v || '').normalize('NFKC').trim()); });
+  if (parts.some(function(v) { return !Number.isInteger(v) || v <= 0; })) throw new Error('학년, 반, 번호를 확인해 주세요.');
+  return parts.join('-');
+}
+
+function objectJson_(value) {
+  try { var parsed = JSON.parse(value || '{}'); return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {}; }
+  catch (err) { return {}; }
+}
+
+// Pick the newest valid row; fill missing cells from older rows of the same identity.
+// Never delete duplicates or rewrite the other rows.
+function selectStudentRow_(sheet, key) {
+  var data = readTable_(sheet);
+  var headers = data[0] || [];
+  var map = getHeaderMap(sheet);
+  var matches = [];
+  for (var i = 1; i < data.length; i++) {
+    var row = data[i];
+    if (isUnownedLegacyTest_(sheet, row, map)) continue;
+    var rowKey;
+    try { rowKey = studentKey_(getValByHeader(row, map, ['studentKey', 'student_key', 'key']) || row[0]); }
+    catch (err) {
+      try { rowKey = studentKey_({ grade: getValByHeader(row, map, ['grade', '학년']), classNum: getValByHeader(row, map, ['class', 'classNum', '반']), number: getValByHeader(row, map, ['number', '번호']) }); }
+      catch (ignored) { continue; }
+    }
+    if (rowKey !== key) continue;
+    var time = new Date(getValByHeader(row, map, ['updatedAt', 'testedAt', 'submittedAt', 'createdAt']) || 0).getTime();
+    matches.push({ row: row, index: i + 1, time: isNaN(time) ? 0 : time });
+  }
+  matches.sort(function(a, b) { return b.time - a.time || b.index - a.index; });
+  if (!matches.length) return null;
+  var selected = matches[0];
+  var merged = selected.row.slice();
+  var explicit = objectJson_(getValByHeader(merged, map, ['writtenFields'])).fields || [];
+  var name = String(getValByHeader(merged, map, ['name', '이름']) || '').normalize('NFC').replace(/\\s+/g, '');
+  var gid = String(getValByHeader(merged, map, ['googleId']) || '').trim().toLowerCase();
+  matches.slice(1).forEach(function(entry) {
+    var otherName = String(getValByHeader(entry.row, map, ['name', '이름']) || '').normalize('NFC').replace(/\\s+/g, '');
+    var otherGid = String(getValByHeader(entry.row, map, ['googleId']) || '').trim().toLowerCase();
+    if ((name && otherName && name !== otherName) || (gid && otherGid && gid !== otherGid)) return;
+    for (var col = 0; col < headers.length; col++) {
+      if (headers[col] === 'stepData') {
+        merged[col] = JSON.stringify(Object.assign({}, objectJson_(entry.row[col]), objectJson_(merged[col])));
+      } else if (explicit.indexOf(headerName_(headers[col])) === -1 && (merged[col] === '' || merged[col] === null || merged[col] === undefined)) merged[col] = entry.row[col];
+      else if (headers[col] === 'currentStep') merged[col] = Math.max(Number(merged[col]) || 1, Number(entry.row[col]) || 1);
+    }
+  });
+  merged[0] = key;
+  return { index: selected.index, row: merged };
+}
+
+function studentRowsForRead_(sheet, key) {
+  var selected = selectStudentRow_(sheet, key);
+  return selected ? [readTable_(sheet)[0], selected.row] : [readTable_(sheet)[0]];
+}
+
+function writeExtraJson_(sheet, rowIndex, header, value) {
+  var patch = {}; patch[header] = JSON.stringify(value);
+  writePatch_(sheet, rowIndex, patch);
+}
+
+function issueStudentToken_(student) {
+  var token = Utilities.getUuid() + Utilities.getUuid();
+  CacheService.getScriptCache().put('student:' + token, JSON.stringify(student), 21600);
+  return token;
+}
+
+function authorizeStudent_(ss, params) {
+  var raw = CacheService.getScriptCache().get('student:' + String(params.studentToken || ''));
+  if (!raw) throw new Error('학생 세션이 만료되었습니다. 다시 로그인해 주세요.');
+  var student = JSON.parse(raw);
+  var payload = params.progress || params.submission || params.counseling || params.tests || params;
+  var key = studentKey_(payload.studentKey || payload);
+  if (key !== student.studentKey) throw new Error('본인의 자료만 조회하거나 저장할 수 있습니다.');
+  // Roster changes invalidate a previous occupant's session without changing the login form.
+  var sheet = ss.getSheetByName('Roster');
+  var data = readTable_(sheet);
+  var map = getHeaderMap(sheet);
+  var valid = data.slice(1).some(function(row) {
+    var rowKey;
+    try { rowKey = studentKey_({grade: getValByHeader(row, map, ['grade', '학년']), classNum: getValByHeader(row, map, ['class', 'classNum', 'classNo', '반']), number: getValByHeader(row, map, ['number', '번호'])}); }
+    catch (err) { return false; }
+    var name = String(getValByHeader(row, map, ['name', '이름']) || '').normalize('NFC').replace(/\\s+/g, '');
+    var gid = String(getValByHeader(row, map, ['googleId', 'google_id', 'google id', 'googleid', '구글아이디', '구글id', '구글 id', '이메일', 'email', 'google', '계정', '아이디']) || row[4] || '').trim();
+    return rowKey === key && name === student.name.normalize('NFC').replace(/\\s+/g, '') && gid === student.googleId;
+  });
+  if (!valid) throw new Error('학생 명단이 변경되었습니다. 다시 로그인해 주세요.');
+  assertStudentOwnsRows_(ss, student);
+  payload.studentKey = key;
+  payload.grade = student.grade; payload.classNum = student.classNum; payload.class = student.classNum;
+  payload.number = student.number; payload.name = student.name; payload.googleId = student.googleId;
+  return student;
+}
+
+// The legacy presentation code consumes a canonical logical table. Only these
+// helpers touch physical cells: columns are resolved by header, never position.
+function schemas_() {
+  return {
+    'Roster': ['grade', 'class', 'number', 'name', 'googleId'],
+    'Progress': ['studentKey', 'grade', 'class', 'number', 'name', 'currentStep', 'roleModelName', 'roleModelJob', 'roleModelReason', 'jobDescription', 'competencies', 'careerHistory', 'strengths', 'values', 'challengeExperience', 'chatbotPurposes', 'targetUser', 'expectedOutcome', 'personality', 'speakingStyle', 'honorificStyle', 'desiredFeeling', 'answerLength', 'answerElements', 'chatbotName', 'initialPrompt', 'revisedPrompt', 'finalPrompt', 'createdAt', 'updatedAt', 'googleId'],
+    'Tests': ['studentKey', 'test1Result', 'test2Result', 'test3Result', 'test4Result', 'test5Result', 'test6Result', 'problemDescription', 'revisionNote', 'testedAt'],
+    'Submissions': ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'revisionSummary', 'submittedAt']
+  ,
+    'Counseling': ['studentKey','grade','class','number','name','roleModelName','roleModelJob','chatbotName','gemUrl','barrierAnswer','barrierReflection','decisionAnswer','decisionReflection','educationAnswer','educationReflection','finalCareerReflection','completedAt']
+  };
+}
+function headerName_(name) {
+  var norm = String(name || '').trim().toLowerCase().replace(/[\\s_.:/-]+/g, '');
+  var aliases = {
+    '학년':'grade', 'classnum':'class', 'classno':'class', '반':'class',
+    'num':'number','studentnumber':'number','번호':'number','이름':'name',
+    'key':'studentkey','googleid':'googleid','email':'googleid','이메일':'googleid',
+    '구글아이디':'googleid','구글id':'googleid','구글계정':'googleid','google':'googleid','계정':'googleid','아이디':'googleid',
+    'rolemodel':'rolemodelname','롤모델이름':'rolemodelname','롤모델':'rolemodelname',
+    'job':'rolemodeljob','롤모델직업':'rolemodeljob','직업':'rolemodeljob','reason':'rolemodelreason',
+    'personalities':'personality','botname':'chatbotname','챗봇이름':'chatbotname','챗봇명':'chatbotname',
+    'gemlink':'gemurl','gem링크':'gemurl','챗봇링크':'gemurl',
+    'samplequestion1':'barrieranswer','sampleanswer1':'barrierreflection',
+    'samplequestion2':'decisionanswer','sampleanswer2':'decisionreflection',
+    'samplequestion3':'educationanswer','sampleanswer3':'educationreflection','reflection':'finalcareerreflection',
+    'test1':'test1result','test2':'test2result','test3':'test3result',
+    'test4':'test4result','test5':'test5result','test6':'test6result'
+  };
+  return aliases[norm] || norm;
+}
+function physicalHeaders_(sheet) {
+  return sheet.getLastColumn() ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
+}
+function logicalHeaders_(sheet) {
+  var names = (schemas_()[sheet.getName()] || []).slice();
+  physicalHeaders_(sheet).forEach(function(header) {
+    if (names.every(function(name) { return headerName_(name) !== headerName_(header); })) names.push(header);
+  });
+  return names;
+}
+function readTable_(sheet) {
+  var data = sheet.getDataRange().getValues();
+  var physical = data[0] || [];
+  var logical = logicalHeaders_(sheet);
+  var columns = logical.map(function(header) { return physical.findIndex(function(h) { return headerName_(h) === headerName_(header); }); });
+  return [logical].concat(data.slice(1).map(function(row) {
+    return columns.map(function(col) { return col < 0 ? undefined : row[col]; });
+  }));
+}
+function writePatch_(sheet, index, patch) {
+  var headers = physicalHeaders_(sheet), originalLength = headers.length;
+  var entries = Object.keys(patch).filter(function(key) { return patch[key] !== undefined; }).map(function(key) {
+    var matches = [];
+    headers.forEach(function(h, i) { if (headerName_(h) === headerName_(key)) matches.push(i + 1); });
+    if (matches.length > 1) throw new Error('중복된 시트 헤더를 확인해 주세요: ' + key);
+    if (!matches.length) { headers.push(key); matches.push(headers.length); }
+    return {col:matches[0],value:patch[key]};
+  });
+  if (headers.length > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
+  if (headers.length > originalLength) sheet.getRange(1, originalLength + 1, 1, headers.length - originalLength).setValues([headers.slice(originalLength)]);
+  index = index > 0 ? index : Math.max(2, sheet.getLastRow() + 1);
+  entries.sort(function(a,b) { return a.col-b.col; });
+  // Batch adjacent known cells, never include unknown columns in a write range.
+  for (var i=0;i<entries.length;) {
+    var start=entries[i].col, values=[entries[i++].value];
+    while(i<entries.length && entries[i].col===start+values.length) values.push(entries[i++].value);
+    sheet.getRange(index,start,1,values.length).setValues([values]);
+  }
+  return index;
+}
+function writeRow_(sheet, index, row) {
+  var headers = logicalHeaders_(sheet);
+  var patch = {};
+  row.forEach(function(value, i) { if (headers[i] && value !== undefined) patch[headers[i]] = value; });
+  if (patch.updatedAt === undefined) patch.updatedAt = new Date().toISOString();
+  index = writePatch_(sheet, index, patch);
+  // Explicit blanks must not be filled from old duplicates on subsequent reads.
+  var table = readTable_(sheet);
+  var existing = objectJson_(table[index - 1][table[0].indexOf('writtenFields')]);
+  var fields = (existing.fields || []).concat(Object.keys(patch).map(headerName_));
+  writePatch_(sheet, index, {writtenFields: JSON.stringify({fields: fields.filter(function(v, i) { return fields.indexOf(v) === i; })})});
+  return index;
+}
+function matchingRows_(sheet, key) {
+  var data = readTable_(sheet);
+  var map = getHeaderMap(sheet);
+  return data.slice(1).map(function(row, i) { return {row:row,index:i+2}; }).filter(function(entry) {
+    try {
+      var rawKey = getValByHeader(entry.row,map,['studentKey']);
+      var rowKey = rawKey ? studentKey_(rawKey) : studentKey_({grade:getValByHeader(entry.row,map,['grade']),classNum:getValByHeader(entry.row,map,['class']),number:getValByHeader(entry.row,map,['number'])});
+      return rowKey === key;
+    } catch (e) { return false; }
+  });
+}
+function normalizeName_(name) { return String(name || '').normalize('NFC').replace(/\\s+/g, ''); }
+// Quarantine by exclusion: never adopt, return, update or delete unidentified Tests.
+function isUnownedLegacyTest_(sheet, row, map) {
+  return sheet.getName() === 'Tests' && ['ownerName','ownerGoogleId','name','googleId'].every(function(field) {
+    return !String(getValByHeader(row,map,[field]) || '').trim();
+  });
+}
+function assertStudentOwnsRows_(ss, student) {
+  var rows = [];
+  ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) return;
+    var map = getHeaderMap(sheet);
+    matchingRows_(sheet, student.studentKey).forEach(function(entry) {
+      if (isUnownedLegacyTest_(sheet, entry.row, map)) return;
+      if (!getValByHeader(entry.row,map,['ownerName','name'])) throw new Error('기존 자료의 학생 신원을 확인할 수 없습니다. 선생님께 확인해 주세요.');
+      ['name','ownerName'].forEach(function(field) { rows.push({name:String(getValByHeader(entry.row,map,[field]) || ''),gid:''}); });
+      ['googleId','ownerGoogleId'].forEach(function(field) { rows.push({name:'',gid:String(getValByHeader(entry.row,map,[field]) || '')}); });
+    });
+  });
+  var identified = false;
+  rows.forEach(function(row) {
+    if (row.name && normalizeName_(row.name) !== normalizeName_(student.name)) throw new Error('이 학번에 다른 학생의 자료가 있습니다. 선생님께 확인해 주세요.');
+    if (row.gid && row.gid.trim().toLowerCase() !== String(student.googleId || '').trim().toLowerCase()) throw new Error('저장된 학생 계정이 일치하지 않습니다. 선생님께 확인해 주세요.');
+    if (row.name) identified = true;
+  });
+  if (rows.length && !identified) throw new Error('기존 자료의 학생 신원을 확인할 수 없습니다. 선생님께 확인해 주세요.');
+}
+function recordOwner_(sheet, index, student) {
+  writePatch_(sheet,index,{ownerName:student.name,ownerGoogleId:student.googleId || ''});
+}
+function latestTable_(sheet) {
+  var data=readTable_(sheet), map=getHeaderMap(sheet), keys={};
+  data.slice(1).forEach(function(row) {
+    try { var key=studentKey_(getValByHeader(row,map,['studentKey']) || {grade:getValByHeader(row,map,['grade']),classNum:getValByHeader(row,map,['class']),number:getValByHeader(row,map,['number'])}); keys[key]=true; } catch(e) {}
+  });
+  return [data[0]].concat(Object.keys(keys).sort().map(function(key){return selectStudentRow_(sheet,key);}).filter(function(selected){return Boolean(selected);}).map(function(selected){return selected.row;}));
+}
+
 function isValidAdminRequest_(data) {
   var expected = PropertiesService.getScriptProperties().getProperty('ADMIN_API_SECRET');
-  // If no ADMIN_API_SECRET is configured in Script Properties yet, allow access during initial setup
+  // Administrative data stays inaccessible until the shared secret is configured.
   if (!expected) {
-    return true;
+    return false;
   }
   return Boolean(data && data.adminSecret && String(data.adminSecret) === String(expected));
 }
@@ -121,11 +381,6 @@ function initSheetsIfNeeded(ss) {
     if (!sheet) {
       sheet = ss.insertSheet(name);
       sheet.appendRow(headers[name]);
-    } else if (name === 'Progress') {
-      var progressHeaderMap = getHeaderMap(sheet);
-      if (progressHeaderMap['googleid'] === undefined) {
-        sheet.getRange(1, sheet.getLastColumn() + 1).setValue('googleId');
-      }
     }
   });
 }
@@ -135,7 +390,7 @@ function getHeaderMap(sheet) {
   var lastRow = sheet.getLastRow();
   var lastCol = sheet.getLastColumn();
   if (lastRow === 0 || lastCol === 0) return {};
-  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  var headers = logicalHeaders_(sheet);
   var map = {};
   for (var c = 0; c < headers.length; c++) {
     var rawHeader = String(headers[c] || '').trim();
@@ -172,14 +427,14 @@ function getValByHeader(row, headerMap, aliases, defaultVal) {
 function verifyStudent(ss, params) {
   var sheet = ss.getSheetByName('Roster');
   if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
-  var data = sheet.getDataRange().getValues();
+  var data = readTable_(sheet);
   if (data.length <= 1) return { success: false, message: '등록된 학생 명단이 없습니다.' };
 
   var headerMap = getHeaderMap(sheet);
   var grade = parseInt(params.grade, 10);
   var classNum = parseInt(params.classNo || params.classNum || params.class, 10);
   var number = parseInt(params.number, 10);
-  var name = String(params.name || '').trim().replace(/\s+/g, '');
+  var name = String(params.name || '').normalize('NFC').trim().replace(/\\s+/g, '');
   
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -187,14 +442,15 @@ function verifyStudent(ss, params) {
     var rClass = parseInt(String(getValByHeader(row, headerMap, ['class', 'classNum', 'classNo', '반']) || row[1]).trim(), 10);
     var rNum = parseInt(String(getValByHeader(row, headerMap, ['number', 'num', '번호']) || row[2]).trim(), 10);
     var rRawName = String(getValByHeader(row, headerMap, ['name', '이름']) || row[3] || '').trim();
-    var rName = rRawName.replace(/\s+/g, '');
+    var rName = rRawName.normalize('NFC').replace(/\\s+/g, '');
     var rGoogleId = String(getValByHeader(row, headerMap, ['googleId', 'google_id', 'google id', 'googleid', '구글아이디', '구글id', '구글 id', '이메일', 'email', 'google', '계정', '아이디']) || (row.length > 4 ? row[4] : '') || '').trim();
     
     if (rGrade === grade && rClass === classNum && rNum === number && rName === name) {
-      var studentKey = grade + '-' + classNum + '-' + number;
+      var studentKey = studentKey_({grade: grade, classNum: classNum, number: number});
+      assertStudentOwnsRows_(ss, {studentKey:studentKey,name:rRawName,googleId:rGoogleId});
       var existingProgress = getProgress(ss, studentKey);
       var progressData = existingProgress.data || {};
-      var savedName = String(progressData.name || '').trim().replace(/\s+/g, '');
+      var savedName = String(progressData.name || '').trim().replace(/\\s+/g, '');
       var savedGoogleId = String(progressData.googleId || '').trim().toLowerCase();
       var rosterGoogleId = String(rGoogleId || '').trim().toLowerCase();
       var identityMismatch = Boolean(
@@ -217,6 +473,7 @@ function verifyStudent(ss, params) {
           name: rRawName || name,
           googleId: rGoogleId
         },
+        studentToken: issueStudentToken_({studentKey: studentKey, grade: grade, classNum: classNum, number: number, name: rRawName || name, googleId: rGoogleId}),
         hasExisting: existingProgress.found && !identityMismatch,
         identityMismatch: identityMismatch,
         progress: progressData
@@ -229,7 +486,7 @@ function verifyStudent(ss, params) {
 function getRosterOptions(ss) {
   var sheet = ss.getSheetByName('Roster');
   if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
-  var data = sheet.getDataRange().getValues();
+  var data = readTable_(sheet);
   var gradesSet = {};
   var classesByGrade = {};
   var numbersByClass = {};
@@ -272,11 +529,11 @@ function getRosterOptions(ss) {
 function getStudentTests(ss, studentKey) {
   var sheet = ss.getSheetByName('Tests');
   if (!sheet) return null;
-  var data = sheet.getDataRange().getValues();
+  var data = studentRowsForRead_(sheet, studentKey_(studentKey));
   if (data.length <= 1) return null;
 
   var headerMap = getHeaderMap(sheet);
-  var targetKey = String(studentKey || '').trim();
+  var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
   var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
@@ -307,6 +564,7 @@ function getStudentTests(ss, studentKey) {
 
     if (isMatch) {
       return {
+        step8: objectJson_(getValByHeader(row, headerMap, ['step8Data'])),
         test1Result: String(getValByHeader(row, headerMap, ['test1Result', 'test1']) || row[1] || ''),
         test2Result: String(getValByHeader(row, headerMap, ['test2Result', 'test2']) || row[2] || ''),
         test3Result: String(getValByHeader(row, headerMap, ['test3Result', 'test3']) || row[3] || ''),
@@ -325,11 +583,11 @@ function getStudentTests(ss, studentKey) {
 function getStudentSubmission(ss, studentKey) {
   var sheet = ss.getSheetByName('Submissions');
   if (!sheet) return null;
-  var data = sheet.getDataRange().getValues();
+  var data = studentRowsForRead_(sheet, studentKey_(studentKey));
   if (data.length <= 1) return null;
 
   var headerMap = getHeaderMap(sheet);
-  var targetKey = String(studentKey || '').trim();
+  var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
   var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
@@ -404,7 +662,7 @@ function getProgress(ss, studentKey) {
 }
 
 function loadProgress(ss, studentKey) {
-  var targetKey = String(studentKey || '').trim();
+  var targetKey = studentKey_(studentKey);
   var parts = targetKey.split('-');
   var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
   var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
@@ -414,7 +672,7 @@ function loadProgress(ss, studentKey) {
   var progressData = null;
 
   if (sheet) {
-    var data = sheet.getDataRange().getValues();
+    var data = studentRowsForRead_(sheet, studentKey_(studentKey));
     if (data.length > 1) {
       var headerMap = getHeaderMap(sheet);
       for (var i = 1; i < data.length; i++) {
@@ -437,6 +695,7 @@ function loadProgress(ss, studentKey) {
 
         if (isMatch) {
           progressData = {
+            stepData: objectJson_(getValByHeader(row, headerMap, ['stepData'])),
             studentKey: targetKey,
             grade: !isNaN(rGrade) ? rGrade : targetGrade,
             class: !isNaN(rClass) ? rClass : targetClass,
@@ -602,7 +861,7 @@ function loadProgress(ss, studentKey) {
   try {
     var rosterSheet = ss.getSheetByName('Roster');
     if (rosterSheet) {
-      var rData = rosterSheet.getDataRange().getValues();
+      var rData = readTable_(rosterSheet);
       if (rData.length > 1) {
         var rHeaderMap = getHeaderMap(rosterSheet);
         for (var rIdx = 1; rIdx < rData.length; rIdx++) {
@@ -632,35 +891,16 @@ function loadProgress(ss, studentKey) {
 function saveProgress(ss, progress) {
   var sheet = ss.getSheetByName('Progress');
   if (!sheet) return { success: false, message: 'Progress 시트를 찾을 수 없습니다.' };
-  var data = sheet.getDataRange().getValues();
-  var studentKey = String(progress.studentKey || (progress.grade + '-' + (progress.class || progress.classNum) + '-' + progress.number)).trim();
-  var parts = studentKey.split('-');
-  var targetGrade = parts.length >= 1 ? parseInt(parts[0], 10) : -1;
-  var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
-  var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
-
-  var rowIndex = -1;
-  var existingRow = null;
-  
-  for (var i = 1; i < data.length; i++) {
-    var rowKey = String(data[i][0] || '').trim();
-    var rGrade = parseInt(String(data[i][1]).trim(), 10);
-    var rClass = parseInt(String(data[i][2]).trim(), 10);
-    var rNum = parseInt(String(data[i][3]).trim(), 10);
-
-    if ((rowKey && rowKey === studentKey) || (targetGrade > 0 && targetClass > 0 && targetNum > 0 && rGrade === targetGrade && rClass === targetClass && rNum === targetNum)) {
-      rowIndex = i + 1;
-      existingRow = data[i];
-      break;
-    }
-  }
-  
+  var studentKey = studentKey_(progress.studentKey || progress);
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+  var existingRow = selected ? selected.row : null;
   var now = new Date().toISOString();
   var grade = progress.grade !== undefined ? progress.grade : (existingRow ? existingRow[1] : '');
   var classNum = progress.class !== undefined ? progress.class : (progress.classNum !== undefined ? progress.classNum : (existingRow ? existingRow[2] : ''));
   var number = progress.number !== undefined ? progress.number : (existingRow ? existingRow[3] : '');
   var name = progress.name || (existingRow ? existingRow[4] : '');
-  var currentStep = progress.currentStep || (existingRow ? existingRow[5] : 1);
+  var currentStep = Math.max(Number(progress.currentStep) || 1, Number(existingRow && existingRow[5]) || 1);
 
   var roleModelName = progress.roleModelName !== undefined ? progress.roleModelName : ((progress.step1 && progress.step1.roleModelName !== undefined) ? progress.step1.roleModelName : (existingRow ? existingRow[6] : ''));
   var roleModelJob = progress.roleModelJob !== undefined ? progress.roleModelJob : ((progress.step1 && progress.step1.roleModelJob !== undefined) ? progress.step1.roleModelJob : (existingRow ? existingRow[7] : ''));
@@ -736,153 +976,78 @@ function saveProgress(ss, progress) {
   ];
   
   if (rowIndex > 0) {
-    sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+    writeRow_(sheet, rowIndex, rowData);
   } else {
-    sheet.appendRow(rowData);
+    rowIndex = writeRow_(sheet, -1, rowData);
   }
   
+  var extra = existingRow ? objectJson_(getValByHeader(existingRow, getHeaderMap(sheet), ['stepData'])) : {};
+  ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'].forEach(function(key) {
+    if (progress[key] !== undefined) extra[key] = progress[key];
+  });
+  if (Object.keys(extra).length) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'stepData', extra);
   return { success: true, message: '진행 상황이 저장되었습니다.', studentKey: studentKey, savedAt: now };
 }
 
 function resetStudentData(ss, params) {
-  var studentKey = String(params.studentKey || '').trim();
-  if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
-
-  var rosterSheet = ss.getSheetByName('Roster');
-  if (!rosterSheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
-
-  var verified = verifyStudent(ss, {
-    grade: params.grade,
-    classNo: params.classNo || params.classNum,
-    number: params.number,
-    name: params.name
+  assertStudentOwnsRows_(ss, params);
+  ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
+    var sheet = ss.getSheetByName(name);
+    if (!sheet) return;
+    matchingRows_(sheet, params.studentKey).filter(function(entry){return !isUnownedLegacyTest_(sheet,entry.row,getHeaderMap(sheet));}).sort(function(a,b){return b.index-a.index;}).forEach(function(entry){sheet.deleteRow(entry.index);});
   });
-  if (!verified.success || !verified.student || verified.student.studentKey !== studentKey) {
-    return { success: false, message: '학생 정보 확인에 실패하여 초기화하지 않았습니다.' };
-  }
-  var expectedGoogleId = String(verified.student.googleId || '').trim().toLowerCase();
-  var suppliedGoogleId = String(params.googleId || '').trim().toLowerCase();
-  if (expectedGoogleId && suppliedGoogleId && expectedGoogleId !== suppliedGoogleId) {
-    return { success: false, message: '구글 아이디가 일치하지 않아 초기화하지 않았습니다.' };
-  }
+  return {success:true,message:'기존 활동 자료를 초기화했습니다.'};
+}
 
-  ['Progress', 'Tests', 'Submissions'].forEach(function(sheetName) {
-    var sheet = ss.getSheetByName(sheetName);
-    if (!sheet || sheet.getLastRow() <= 1) return;
-    var data = sheet.getDataRange().getValues();
-    var headerMap = getHeaderMap(sheet);
-    for (var i = data.length - 1; i >= 1; i--) {
-      var rowKey = String(getValByHeader(data[i], headerMap, ['studentKey', 'student_key', 'key']) || data[i][0] || '').trim();
-      if (rowKey === studentKey) {
-        sheet.deleteRow(i + 1);
-      }
-    }
-  });
-
-  return { success: true, message: '기존 활동 자료를 초기화했습니다.' };
+function advanceProgress_(ss, key, step, now) {
+  var sheet=ss.getSheetByName('Progress'), selected=sheet && selectStudentRow_(sheet,key);
+  if(selected) writePatch_(sheet,selected.index,{currentStep:Math.max(Number(selected.row[5]) || 1,step),updatedAt:now});
+}
+function submittedValue_(payload, selected, column, names) {
+  for(var i=0;i<names.length;i++) if(payload[names[i]] !== undefined) return payload[names[i]];
+  return selected && selected.row[column] !== undefined ? selected.row[column] : '';
 }
 
 function saveTests(ss, params) {
   var sheet = ss.getSheetByName('Tests');
   if (!sheet) return { success: false, message: 'Tests 시트를 찾을 수 없습니다.' };
-  var studentKey = String(params.studentKey || '');
-  if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
-  
-  var data = sheet.getDataRange().getValues();
-  var rowIndex = -1;
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === studentKey) {
-      rowIndex = i + 1;
-      break;
-    }
-  }
-  
+  var studentKey = studentKey_(params.studentKey);
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+  var previous = selected ? selected.row : [];
   var now = params.testedAt || new Date().toISOString();
   var rowData = [
     studentKey,
-    params.test1Result || '',
-    params.test2Result || '',
-    params.test3Result || '',
-    params.test4Result || '',
-    params.test5Result || '',
-    params.test6Result || '',
-    params.problemDescription || '',
-    params.revisionNote || '',
+    params.test1Result !== undefined ? params.test1Result : (previous[1] || ''),
+    params.test2Result !== undefined ? params.test2Result : (previous[2] || ''),
+    params.test3Result !== undefined ? params.test3Result : (previous[3] || ''),
+    params.test4Result !== undefined ? params.test4Result : (previous[4] || ''),
+    params.test5Result !== undefined ? params.test5Result : (previous[5] || ''),
+    params.test6Result !== undefined ? params.test6Result : (previous[6] || ''),
+    params.problemDescription !== undefined ? params.problemDescription : (previous[7] || ''),
+    params.revisionNote !== undefined ? params.revisionNote : (previous[8] || ''),
     now
   ];
   
   if (rowIndex > 0) {
-    sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+    writeRow_(sheet, rowIndex, rowData);
   } else {
-    sheet.appendRow(rowData);
+    rowIndex = writeRow_(sheet, -1, rowData);
   }
   
+  recordOwner_(sheet, rowIndex, params);
+  if (params.step8) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'step8Data', params.step8);
+
   // Update currentStep in Progress sheet to at least 8
-  var progressSheet = ss.getSheetByName('Progress');
-  if (progressSheet) {
-    var pData = progressSheet.getDataRange().getValues();
-    for (var j = 1; j < pData.length; j++) {
-      if (String(pData[j][0]) === studentKey) {
-        var currentStep = Number(pData[j][5] || 1);
-        if (currentStep < 8) {
-          progressSheet.getRange(j + 1, 6).setValue(8);
-        }
-        progressSheet.getRange(j + 1, 30).setValue(now);
-        break;
-      }
-    }
-  }
+  advanceProgress_(ss, studentKey, 8, now);
   
   return { success: true, message: '테스트 결과가 저장되었습니다.', studentKey: studentKey, savedAt: now };
 }
 
 function updateRevision(ss, params) {
-  var studentKey = String(params.studentKey || '');
-  if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
-  
-  var now = new Date().toISOString();
-  
-  // 1. Update Progress sheet with revisedPrompt, finalPrompt, currentStep: 9
-  var progressSheet = ss.getSheetByName('Progress');
-  if (progressSheet) {
-    var pData = progressSheet.getDataRange().getValues();
-    for (var i = 1; i < pData.length; i++) {
-      if (String(pData[i][0]) === studentKey) {
-        var currentStep = Number(pData[i][5] || 1);
-        if (currentStep < 9) {
-          progressSheet.getRange(i + 1, 6).setValue(9);
-        }
-        if (params.revisedPrompt !== undefined) {
-          progressSheet.getRange(i + 1, 27).setValue(params.revisedPrompt);
-        }
-        if (params.finalPrompt !== undefined) {
-          progressSheet.getRange(i + 1, 28).setValue(params.finalPrompt);
-        }
-        progressSheet.getRange(i + 1, 30).setValue(now);
-        break;
-      }
-    }
-  }
-  
-  // 2. Update Tests sheet with revisionNote / problemDescription if provided
-  var testSheet = ss.getSheetByName('Tests');
-  if (testSheet && (params.revisionNote !== undefined || params.problemDescription !== undefined)) {
-    var tData = testSheet.getDataRange().getValues();
-    for (var j = 1; j < tData.length; j++) {
-      if (String(tData[j][0]) === studentKey) {
-        if (params.problemDescription !== undefined) {
-          testSheet.getRange(j + 1, 8).setValue(params.problemDescription);
-        }
-        if (params.revisionNote !== undefined) {
-          testSheet.getRange(j + 1, 9).setValue(params.revisionNote);
-        }
-        testSheet.getRange(j + 1, 10).setValue(now);
-        break;
-      }
-    }
-  }
-  
-  return { success: true, message: '수정 내용이 저장되었습니다.', studentKey: studentKey, savedAt: now };
+  var result = saveProgress(ss, params);
+  if (!result.success) return result;
+  return saveTests(ss, {studentKey: params.studentKey, name:params.name, googleId:params.googleId, problemDescription: params.problemDescription, revisionNote: params.revisionNote});
 }
 
 function submitFinal(ss, submission) {
@@ -896,27 +1061,17 @@ function submitFinal(ss, submission) {
   var headers = ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'revisionSummary', 'submittedAt'];
   if (sheet.getLastRow() === 0) {
     sheet.appendRow(headers);
-  } else if (sheet.getLastColumn() < 19) {
-    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+
   }
   
-  var studentKey = submission.studentKey || (submission.grade + '-' + (submission.class || submission.classNum) + '-' + submission.number);
+  var studentKey = studentKey_(submission.studentKey || submission);
   var now = new Date().toISOString();
   
-  var data = sheet.getDataRange().getValues();
-  var rowIndex = -1;
-  var existingSubmittedAt = '';
-  
-  for (var i = 1; i < data.length; i++) {
-    // Check by studentKey (col 0) or by grade/class/number match
-    if (String(data[i][0]) === String(studentKey)) {
-      rowIndex = i + 1;
-      existingSubmittedAt = String(data[i][18] || '');
-      break;
-    }
-  }
-  
-  var submittedAt = existingSubmittedAt || submission.submittedAt || now;
+  var data = readTable_(sheet);
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+
+  var submittedAt = (selected && selected.row[18]) || submission.submittedAt || now;
   var grade = submission.grade !== undefined ? Number(submission.grade) : '';
   var classNum = submission.class !== undefined ? Number(submission.class) : (submission.classNum !== undefined ? Number(submission.classNum) : '');
   var number = submission.number !== undefined ? Number(submission.number) : '';
@@ -928,40 +1083,30 @@ function submitFinal(ss, submission) {
     classNum,
     number,
     name,
-    submission.roleModelName || '',
-    submission.roleModelJob || '',
-    submission.chatbotName || '',
-    submission.finalPrompt || '',
-    submission.gemUrl || '',
-    submission.barrierAnswer || submission.sampleQuestion1 || '',
-    submission.barrierReflection || submission.sampleAnswer1 || '',
-    submission.decisionAnswer || submission.sampleQuestion2 || '',
-    submission.decisionReflection || submission.sampleAnswer2 || '',
-    submission.educationAnswer || submission.sampleQuestion3 || '',
-    submission.educationReflection || submission.sampleAnswer3 || '',
-    submission.finalCareerReflection || submission.reflection || '',
-    submission.revisionSummary || '',
+    submittedValue_(submission, selected, 5, ['roleModelName']),
+    submittedValue_(submission, selected, 6, ['roleModelJob']),
+    submittedValue_(submission, selected, 7, ['chatbotName']),
+    submittedValue_(submission, selected, 8, ['finalPrompt']),
+    submittedValue_(submission, selected, 9, ['gemUrl']),
+    submittedValue_(submission, selected, 10, ['barrierAnswer','sampleQuestion1']),
+    submittedValue_(submission, selected, 11, ['barrierReflection','sampleAnswer1']),
+    submittedValue_(submission, selected, 12, ['decisionAnswer','sampleQuestion2']),
+    submittedValue_(submission, selected, 13, ['decisionReflection','sampleAnswer2']),
+    submittedValue_(submission, selected, 14, ['educationAnswer','sampleQuestion3']),
+    submittedValue_(submission, selected, 15, ['educationReflection','sampleAnswer3']),
+    submittedValue_(submission, selected, 16, ['finalCareerReflection','reflection']),
+    submittedValue_(submission, selected, 17, ['revisionSummary']),
     submittedAt
   ];
   
   if (rowIndex > 0) {
-    sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+    writeRow_(sheet, rowIndex, rowData);
   } else {
-    sheet.appendRow(rowData);
+    rowIndex = writeRow_(sheet, -1, rowData);
   }
   
   // Update Progress sheet: currentStep = 10
-  var progressSheet = ss.getSheetByName('Progress');
-  if (progressSheet) {
-    var pData = progressSheet.getDataRange().getValues();
-    for (var j = 1; j < pData.length; j++) {
-      if (String(pData[j][0]) === String(studentKey)) {
-        progressSheet.getRange(j + 1, 6).setValue(10);
-        progressSheet.getRange(j + 1, 30).setValue(now);
-        break;
-      }
-    }
-  }
+  advanceProgress_(ss, studentKey, 10, now);
   
   return { success: true, message: '제출이 완료되었습니다.', studentKey: studentKey, submittedAt: submittedAt };
 }
@@ -970,21 +1115,15 @@ function submitCounseling(ss, counseling) {
   var sheet = ss.getSheetByName('Counseling');
   if (!sheet) return { success: false, message: 'Counseling 시트를 찾을 수 없습니다.' };
   
-  var studentKey = counseling.studentKey || (counseling.grade + '-' + (counseling.class || counseling.classNum) + '-' + counseling.number);
+  var studentKey = studentKey_(counseling.studentKey || counseling);
   var now = new Date().toISOString();
   
-  var data = sheet.getDataRange().getValues();
-  var rowIndex = -1;
-  
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(studentKey)) {
-      rowIndex = i + 1;
-      break;
-    }
-  }
-  
+  var data = readTable_(sheet);
+  var selected = selectStudentRow_(sheet, studentKey);
+  var rowIndex = selected ? selected.index : -1;
+
   var grade = counseling.grade !== undefined ? Number(counseling.grade) : '';
-  var classNum = counseling.class !== undefined ? Number(counseling.class) : (counseling.classNum !== undefined ? Number(counseling.classNum) : '');
+  var classNum = counseling.class !== undefined ? Number(counseling.class) : Number(counseling.classNum || '');
   var number = counseling.number !== undefined ? Number(counseling.number) : '';
   var name = String(counseling.name || '').trim();
   var completedAt = counseling.counselingCompletedAt || counseling.completedAt || now;
@@ -995,38 +1134,28 @@ function submitCounseling(ss, counseling) {
     classNum,
     number,
     name,
-    counseling.roleModelName || '',
-    counseling.roleModelJob || '',
-    counseling.chatbotName || '',
-    counseling.gemUrl || '',
-    counseling.barrierAnswer || '',
-    counseling.barrierReflection || '',
-    counseling.decisionAnswer || '',
-    counseling.decisionReflection || '',
-    counseling.educationAnswer || '',
-    counseling.educationReflection || '',
-    counseling.finalCareerReflection || '',
+    submittedValue_(counseling, selected, 5, ['roleModelName']),
+    submittedValue_(counseling, selected, 6, ['roleModelJob']),
+    submittedValue_(counseling, selected, 7, ['chatbotName']),
+    submittedValue_(counseling, selected, 8, ['gemUrl']),
+    submittedValue_(counseling, selected, 9, ['barrierAnswer']),
+    submittedValue_(counseling, selected, 10, ['barrierReflection']),
+    submittedValue_(counseling, selected, 11, ['decisionAnswer']),
+    submittedValue_(counseling, selected, 12, ['decisionReflection']),
+    submittedValue_(counseling, selected, 13, ['educationAnswer']),
+    submittedValue_(counseling, selected, 14, ['educationReflection']),
+    submittedValue_(counseling, selected, 15, ['finalCareerReflection']),
     completedAt
   ];
   
   if (rowIndex > 0) {
-    sheet.getRange(rowIndex, 1, 1, rowData.length).setValues([rowData]);
+    writeRow_(sheet, rowIndex, rowData);
   } else {
-    sheet.appendRow(rowData);
+    rowIndex = writeRow_(sheet, -1, rowData);
   }
   
   // Update currentStep in Progress sheet to 11
-  var progressSheet = ss.getSheetByName('Progress');
-  if (progressSheet) {
-    var pData = progressSheet.getDataRange().getValues();
-    for (var j = 1; j < pData.length; j++) {
-      if (String(pData[j][0]) === String(studentKey)) {
-        progressSheet.getRange(j + 1, 6).setValue(11);
-        progressSheet.getRange(j + 1, 30).setValue(now);
-        break;
-      }
-    }
-  }
+  advanceProgress_(ss, studentKey, 11, now);
   
   return { success: true, message: '진로 상담 활동이 완료되었습니다.', studentKey: studentKey, completedAt: completedAt };
 }
@@ -1034,7 +1163,7 @@ function submitCounseling(ss, counseling) {
 function getAllProgress(ss) {
   var sheet = ss.getSheetByName('Progress');
   if (!sheet) return { success: true, list: [] };
-  var data = sheet.getDataRange().getValues();
+  var data = latestTable_(sheet);
   var list = [];
   for (var i = 1; i < data.length; i++) {
     if (data[i][0]) {
@@ -1076,110 +1205,43 @@ function getAllProgress(ss) {
 }
 
 function updateRoster(ss, rosterItems, mode) {
-  var sheet = ss.getSheetByName('Roster');
-  if (!sheet) {
-    sheet = ss.insertSheet('Roster');
-    sheet.appendRow(['grade', 'class', 'number', 'name', 'googleId']);
-  }
-  
-  if (!Array.isArray(rosterItems)) {
-    rosterItems = [];
-  }
-
-  // mode === 'replace': Overwrites Roster sheet only (Preserving other sheets: Progress, Tests, Submissions)
+  var sheet=ss.getSheetByName('Roster');
+  if (!Array.isArray(rosterItems)) throw new Error('학생 명단 형식을 확인해 주세요.');
+  var items=rosterItems.map(function(item){
+    var key=studentKey_(item), name=String(item.name || '').trim();
+    if (!name) throw new Error('학생 이름이 필요합니다.');
+    var parts=key.split('-');
+    return {key:key,patch:{grade:Number(parts[0]),class:Number(parts[1]),number:Number(parts[2]),name:name,googleId:String(item.googleId || '').trim()}};
+  });
+  var incoming={}; items.forEach(function(item){if(incoming[item.key])throw new Error('명단에 중복 학번이 있습니다.');incoming[item.key]=true;});
   if (mode === 'replace') {
-    sheet.clearContents();
-    sheet.appendRow(['grade', 'class', 'number', 'name', 'googleId']);
-    rosterItems.forEach(function(item) {
-      var g = parseInt(item.grade);
-      var c = parseInt(item.classNum !== undefined ? item.classNum : item.class);
-      var n = parseInt(item.number);
-      var nm = String(item.name || '').trim();
-      var gid = String(item.googleId || '').trim();
-      if (!isNaN(g) && !isNaN(c) && !isNaN(n) && nm) {
-        sheet.appendRow([g, c, n, nm, gid]);
-      }
+    var data=readTable_(sheet), map=getHeaderMap(sheet);
+    data.slice(1).forEach(function(row,i){
+      try {var key=studentKey_({grade:getValByHeader(row,map,['grade']),classNum:getValByHeader(row,map,['class']),number:getValByHeader(row,map,['number'])});}
+      catch(e){return;}
+      if(!incoming[key])writePatch_(sheet,i+2,{grade:'',class:'',number:'',name:'',googleId:''});
     });
-    return { success: true, count: rosterItems.length, mode: 'replace', message: '학생 명단이 Google Sheets에 정상적으로 반영되었습니다.' };
-  } else {
-    // mode === 'append': Add only non-existing students based on grade-class-number
-    var existingData = sheet.getDataRange().getValues();
-    var existingMap = {};
-    for (var i = 1; i < existingData.length; i++) {
-      var eg = parseInt(existingData[i][0]);
-      var ec = parseInt(existingData[i][1]);
-      var en = parseInt(existingData[i][2]);
-      if (!isNaN(eg) && !isNaN(ec) && !isNaN(en)) {
-        existingMap[eg + '-' + ec + '-' + en] = true;
-      }
-    }
-
-    var addedCount = 0;
-    rosterItems.forEach(function(item) {
-      var g = parseInt(item.grade);
-      var c = parseInt(item.classNum !== undefined ? item.classNum : item.class);
-      var n = parseInt(item.number);
-      var nm = String(item.name || '').trim();
-      var gid = String(item.googleId || '').trim();
-      if (!isNaN(g) && !isNaN(c) && !isNaN(n) && nm) {
-        var key = g + '-' + c + '-' + n;
-        if (!existingMap[key]) {
-          sheet.appendRow([g, c, n, nm, gid]);
-          existingMap[key] = true;
-          addedCount++;
-        }
-      }
-    });
-
-    return { success: true, count: addedCount, mode: 'append', message: '학생 명단이 Google Sheets에 정상적으로 반영되었습니다.' };
   }
+  var added=0;
+  items.forEach(function(item){
+    var existing=matchingRows_(sheet,item.key);
+    if(!existing.length){writePatch_(sheet,-1,item.patch);added++;}
+    else if(mode==='replace')existing.forEach(function(entry){writePatch_(sheet,entry.index,item.patch);});
+  });
+  return {success:true,count:mode==='replace'?items.length:added,mode:mode,message:'학생 명단이 반영되었습니다.'};
 }
-
 function deleteRosterStudents(ss, students) {
-  var sheet = ss.getSheetByName('Roster');
-  if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
-  
-  if (!Array.isArray(students) || students.length === 0) {
-    return { success: true, deletedCount: 0, message: '삭제할 학생이 지정되지 않았습니다.' };
-  }
-  
-  var targetKeys = {};
-  students.forEach(function(item) {
-    var g = parseInt(item.grade);
-    var c = parseInt(item.classNum !== undefined ? item.classNum : item.class);
-    var n = parseInt(item.number);
-    if (!isNaN(g) && !isNaN(c) && !isNaN(n)) {
-      targetKeys[g + '-' + c + '-' + n] = true;
-    }
+  var sheet=ss.getSheetByName('Roster'), count=0;
+  (students || []).forEach(function(student){
+    matchingRows_(sheet,studentKey_(student)).sort(function(a,b){return b.index-a.index;}).forEach(function(entry){
+      var known=schemas_().Roster.map(headerName_);
+      var hasExtra=physicalHeaders_(sheet).some(function(h){return known.indexOf(headerName_(h))===-1;});
+      if(hasExtra)writePatch_(sheet,entry.index,{grade:'',class:'',number:'',name:'',googleId:''});
+      else sheet.deleteRow(entry.index);
+      count++;
+    });
   });
-  
-  var data = sheet.getDataRange().getValues();
-  var rowsToDelete = [];
-  
-  // Find all row indexes (1-based) matching grade-class-number
-  for (var i = 1; i < data.length; i++) {
-    var g = parseInt(data[i][0]);
-    var c = parseInt(data[i][1]);
-    var n = parseInt(data[i][2]);
-    if (!isNaN(g) && !isNaN(c) && !isNaN(n)) {
-      var key = g + '-' + c + '-' + n;
-      if (targetKeys[key]) {
-        rowsToDelete.push(i + 1); // 1-based row number in Google Sheets
-      }
-    }
-  }
-  
-  // Delete from bottom to top (highest row index to lowest) to prevent index shifting
-  rowsToDelete.sort(function(a, b) { return b - a; });
-  rowsToDelete.forEach(function(rowIdx) {
-    sheet.deleteRow(rowIdx);
-  });
-  
-  return {
-    success: true,
-    deletedCount: rowsToDelete.length,
-    message: '선택한 학생 ' + rowsToDelete.length + '명이 명단에서 삭제되었습니다.'
-  };
+  return {success:true,deletedCount:count,message:'선택한 학생이 명단에서 삭제되었습니다.'};
 }
 
 function getAdminDashboard(ss) {
@@ -1191,7 +1253,7 @@ function getAdminDashboard(ss) {
   var rosterList = [];
   var rosterKeys = {};
   if (rosterSheet) {
-    var rData = rosterSheet.getDataRange().getValues();
+    var rData = readTable_(rosterSheet);
     for (var i = 1; i < rData.length; i++) {
       var g = parseInt(rData[i][0]);
       var c = parseInt(rData[i][1]);
@@ -1208,7 +1270,7 @@ function getAdminDashboard(ss) {
 
   var progressMap = {};
   if (progressSheet) {
-    var pData = progressSheet.getDataRange().getValues();
+    var pData = latestTable_(progressSheet);
     for (var j = 1; j < pData.length; j++) {
       var pKey = String(pData[j][0] || '');
       if (pKey) {
@@ -1245,7 +1307,7 @@ function getAdminDashboard(ss) {
 
   var testMap = {};
   if (testSheet) {
-    var tData = testSheet.getDataRange().getValues();
+    var tData = latestTable_(testSheet);
     for (var k = 1; k < tData.length; k++) {
       var tKey = String(tData[k][0] || '');
       if (tKey) {
@@ -1266,7 +1328,7 @@ function getAdminDashboard(ss) {
 
   var subMap = {};
   if (subSheet) {
-    var sData = subSheet.getDataRange().getValues();
+    var sData = latestTable_(subSheet);
     if (sData.length > 1) {
       var sHeaderMap = getHeaderMap(subSheet);
       for (var m = 1; m < sData.length; m++) {
@@ -1494,7 +1556,7 @@ function getAdminDashboard(ss) {
 }
 
 function getStudentDetail(ss, studentKey) {
-  studentKey = String(studentKey || '').trim();
+  studentKey = studentKey_(studentKey);
   if (!studentKey) return { success: false, message: 'studentKey가 필요합니다.' };
 
   var parts = studentKey.split('-');
@@ -1513,7 +1575,7 @@ function getStudentDetail(ss, studentKey) {
 
   var rosterSheet = ss.getSheetByName('Roster');
   if (rosterSheet) {
-    var rData = rosterSheet.getDataRange().getValues();
+    var rData = readTable_(rosterSheet);
     for (var i = 1; i < rData.length; i++) {
       if (
         String(rData[i][0]) === studentKey ||
@@ -1541,7 +1603,7 @@ function getStudentDetail(ss, studentKey) {
 
   var testSheet = ss.getSheetByName('Tests');
   if (testSheet) {
-    var tData = testSheet.getDataRange().getValues();
+    var tData = latestTable_(testSheet);
     for (var j = 1; j < tData.length; j++) {
       var rowKey = String(tData[j][0] || '').trim();
       if (rowKey === studentKey || (parsedGrade && rowKey === (grade + '-' + classNum + '-' + number))) {
@@ -1591,6 +1653,7 @@ function getStudentDetail(ss, studentKey) {
   if (!finalPrompt && initialPrompt) finalPrompt = initialPrompt;
 
   var progressData = {
+    stepData: p.stepData || {},
     currentStep: currentStep,
     roleModelName: p.roleModelName || '',
     roleModelJob: p.roleModelJob || '',
@@ -1619,6 +1682,7 @@ function getStudentDetail(ss, studentKey) {
   };
 
   var testsData = {
+    step8: (p.tests && p.tests.step8) || {},
     test1Result: testsObj.test1.result,
     test2Result: testsObj.test2.result,
     test3Result: testsObj.test3.result,
@@ -1730,3 +1794,4 @@ function getStudentDetail(ss, studentKey) {
 
 `;
 }
+

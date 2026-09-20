@@ -1,4 +1,4 @@
-import { generateAdminSessionToken } from '../_lib.js';
+import { generateAdminSessionToken, checkAdminConfiguration } from '../_lib.js';
 
 export default async function handler(req: any, res: any) {
   if (req.method !== 'POST') {
@@ -22,6 +22,11 @@ export default async function handler(req: any, res: any) {
     });
   }
 
+  try {
+    await checkAdminConfiguration();
+  } catch {
+    return res.status(503).json({success:false,message:'관리자 연결 설정을 확인해 주세요. Vercel과 GAS의 ADMIN_API_SECRET 및 GAS 배포 버전이 일치해야 합니다.'});
+  }
   const sessionToken = generateAdminSessionToken();
   const maxAge = 8 * 60 * 60; // 8 hours in seconds
   const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1';
@@ -45,3 +50,4 @@ export default async function handler(req: any, res: any) {
     message: '관리자 로그인이 완료되었습니다.',
   });
 }
+

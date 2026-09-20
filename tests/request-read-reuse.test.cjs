@@ -24,7 +24,7 @@ for(const counseling of [false,true])test(`request reuse reads each sheet once, 
  const old=fixture(counseling,true),fresh=fixture(counseling),oc=counters(old.b),nc=counters(fresh.b);
  for(const p of [creds,{action:'loadProgress'},{action:'getProgress'},{action:'saveProgress',roleModelReason:'changed'}]){
   oc.reset();nc.reset();const before=old.req(p),after=fresh.req(p);assert.deepEqual(after,before);assert.equal(after.success,true);
-  const save=p.action==='saveProgress';assert.equal(oc.total(),(save?7:8)+Number(counseling));assert.equal(nc.total(),(save?7:4)+Number(counseling));
+  const save=p.action==='saveProgress';assert.equal(oc.total(),(save?5:8)+Number(counseling));assert.equal(nc.total(),(save?5:4)+Number(counseling));
   if(save)assert.deepEqual(nc.all(),oc.all());
   else for(const [key,count] of Object.entries(nc.all())){assert.equal(key.endsWith(':full'),true);assert.equal(count,1,key);}
   console.log(`REQUEST_READ_COUNT ${p.action} Counseling=${counseling}: ${oc.total()} -> ${nc.total()}`);

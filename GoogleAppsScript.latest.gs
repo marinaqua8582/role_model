@@ -62,6 +62,7 @@ function handleRequest(e) {
     }
 
     var result = { success: true };
+    var progressWrite = action === 'saveProgress' ? {} : undefined;
     
     if (action === 'logoutStudent') {
       CacheService.getScriptCache().remove('student:' + String(params.studentToken || ''));
@@ -79,7 +80,7 @@ function handleRequest(e) {
     } else if (action === 'getProgress' || action === 'loadProgress') {
       result = loadProgress(ss, params.studentKey, readContext);
     } else if (action === 'saveProgress') {
-      result = saveProgress(ss, params.progress || params);
+      result = saveProgress(ss, params.progress || params, progressWrite);
     } else if (action === 'resetStudentData') {
       result = resetStudentData(ss, params);
     } else if (action === 'saveTests') {
@@ -106,6 +107,10 @@ function handleRequest(e) {
       var body = params.progress || params.submission || params.counseling || params.tests || params;
       var affected = action === 'saveProgress' ? ['Progress'] : action === 'saveTests' ? ['Tests'] : action === 'updateRevision' ? ['Progress','Tests'] : action === 'submitFinal' ? ['Submissions'] : ['Counseling'];
       affected.forEach(function(name) {
+        if (action === 'saveProgress' && progressWrite.index) {
+          recordOwner_(progressWrite.sheet, progressWrite.index, body, progressWrite.physicalHeaders);
+          return;
+        }
         var sheet = ss.getSheetByName(name), selected = sheet && selectStudentRow_(sheet, body.studentKey);
         if (selected) recordOwner_(sheet, selected.index, body);
       });
@@ -184,9 +189,9 @@ function studentRowsForRead_(sheet, key, readContext) {
   return selected ? [table[0], selected.row] : [table[0]];
 }
 
-function writeExtraJson_(sheet, rowIndex, header, value) {
+function writeExtraJson_(sheet, rowIndex, header, value, physical) {
   var patch = {}; patch[header] = JSON.stringify(value);
-  writePatch_(sheet, rowIndex, patch);
+  writePatch_(sheet, rowIndex, patch, physical);
 }
 
 function issueStudentToken_(student) {
@@ -279,8 +284,8 @@ function readTable_(sheet, readContext) {
   }
   return table;
 }
-function writePatch_(sheet, index, patch) {
-  var headers = physicalHeaders_(sheet), originalLength = headers.length;
+function writePatch_(sheet, index, patch, physical) {
+  var headers = physical || physicalHeaders_(sheet), originalLength = headers.length;
   var entries = Object.keys(patch).filter(function(key) { return patch[key] !== undefined; }).map(function(key) {
     var matches = [];
     headers.forEach(function(h, i) { if (headerName_(h) === headerName_(key)) matches.push(i + 1); });
@@ -300,17 +305,21 @@ function writePatch_(sheet, index, patch) {
   }
   return index;
 }
-function writeRow_(sheet, index, row) {
-  var headers = logicalHeaders_(sheet);
+function writeRow_(sheet, index, row, progressWrite) {
+  var headers = progressWrite ? progressWrite.logicalHeaders : logicalHeaders_(sheet);
   var patch = {};
   row.forEach(function(value, i) { if (headers[i] && value !== undefined) patch[headers[i]] = value; });
   if (patch.updatedAt === undefined) patch.updatedAt = new Date().toISOString();
-  index = writePatch_(sheet, index, patch);
-  // Explicit blanks must not be filled from old duplicates on subsequent reads.
-  var table = readTable_(sheet);
-  var existing = objectJson_(table[index - 1][table[0].indexOf('writtenFields')]);
+  index = writePatch_(sheet, index, patch, progressWrite && progressWrite.physicalHeaders);
+  // Use metadata from the exact physical target row, not merged duplicate metadata.
+  var existing;
+  if (progressWrite) existing = progressWrite.writtenFields;
+  else {
+    var table = readTable_(sheet);
+    existing = objectJson_(table[index - 1][table[0].indexOf('writtenFields')]);
+  }
   var fields = (existing.fields || []).concat(Object.keys(patch).map(headerName_));
-  writePatch_(sheet, index, {writtenFields: JSON.stringify({fields: fields.filter(function(v, i) { return fields.indexOf(v) === i; })})});
+  writePatch_(sheet, index, {writtenFields: JSON.stringify({fields: fields.filter(function(v, i) { return fields.indexOf(v) === i; })})}, progressWrite && progressWrite.physicalHeaders);
   return index;
 }
 function matchingRows_(sheet, key, readContext) {
@@ -352,8 +361,8 @@ function assertStudentOwnsRows_(ss, student, readContext) {
   });
   if (rows.length && !identified) throw new Error('기존 자료의 학생 신원을 확인할 수 없습니다. 선생님께 확인해 주세요.');
 }
-function recordOwner_(sheet, index, student) {
-  writePatch_(sheet,index,{ownerName:student.name,ownerGoogleId:student.googleId || ''});
+function recordOwner_(sheet, index, student, physical) {
+  writePatch_(sheet,index,{ownerName:student.name,ownerGoogleId:student.googleId || ''}, physical);
 }
 function latestTable_(sheet) {
   var data=readTable_(sheet), map=getHeaderMap(sheet), keys={};
@@ -902,11 +911,18 @@ function loadProgress(ss, studentKey, readContext) {
   };
 }
 
-function saveProgress(ss, progress) {
+function saveProgress(ss, progress, progressWrite) {
   var sheet = ss.getSheetByName('Progress');
   if (!sheet) return { success: false, message: 'Progress 시트를 찾을 수 없습니다.' };
   var studentKey = studentKey_(progress.studentKey || progress);
-  var selected = selectStudentRow_(sheet, studentKey);
+  var table = progressWrite ? readTable_(sheet) : undefined;
+  var selected = selectStudentRow_(sheet, studentKey, table);
+  if (progressWrite) {
+    progressWrite.sheet = sheet;
+    progressWrite.logicalHeaders = table[0];
+    progressWrite.physicalHeaders = physicalHeaders_(sheet);
+    progressWrite.writtenFields = objectJson_(selected ? table[selected.index - 1][table[0].indexOf('writtenFields')] : '');
+  }
   var rowIndex = selected ? selected.index : -1;
   var existingRow = selected ? selected.row : null;
   var now = new Date().toISOString();
@@ -990,16 +1006,17 @@ function saveProgress(ss, progress) {
   ];
   
   if (rowIndex > 0) {
-    writeRow_(sheet, rowIndex, rowData);
+    writeRow_(sheet, rowIndex, rowData, progressWrite);
   } else {
-    rowIndex = writeRow_(sheet, -1, rowData);
+    rowIndex = writeRow_(sheet, -1, rowData, progressWrite);
   }
   
   var extra = existingRow ? objectJson_(getValByHeader(existingRow, getHeaderMap(sheet), ['stepData'])) : {};
   ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'].forEach(function(key) {
     if (progress[key] !== undefined) extra[key] = progress[key];
   });
-  if (Object.keys(extra).length) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'stepData', extra);
+  if (Object.keys(extra).length) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'stepData', extra, progressWrite && progressWrite.physicalHeaders);
+  if (progressWrite) progressWrite.index = rowIndex;
   return { success: true, message: '진행 상황이 저장되었습니다.', studentKey: studentKey, savedAt: now };
 }
 

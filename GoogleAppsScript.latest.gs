@@ -136,8 +136,8 @@ function objectJson_(value) {
 
 // Pick the newest valid row; fill missing cells from older rows of the same identity.
 // Never delete duplicates or rewrite the other rows.
-function selectStudentRow_(sheet, key) {
-  var data = readTable_(sheet);
+function selectStudentRow_(sheet, key, table) {
+  var data = table || readTable_(sheet);
   var headers = data[0] || [];
   var map = getHeaderMap(sheet);
   var matches = [];
@@ -177,8 +177,9 @@ function selectStudentRow_(sheet, key) {
 }
 
 function studentRowsForRead_(sheet, key) {
-  var selected = selectStudentRow_(sheet, key);
-  return selected ? [readTable_(sheet)[0], selected.row] : [readTable_(sheet)[0]];
+  var table = readTable_(sheet);
+  var selected = selectStudentRow_(sheet, key, table);
+  return selected ? [table[0], selected.row] : [table[0]];
 }
 
 function writeExtraJson_(sheet, rowIndex, header, value) {

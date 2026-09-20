@@ -37,7 +37,7 @@ for(const counseling of [false,true])test(`full-read counts and identical respon
   b.context.studentRowsForRead_=current;c.reset();const after=req(payload),newReads=c.get();
   assert.equal(before.success,true);assert.equal(after.success,true);
   delete before.studentToken;delete after.studentToken;assert.deepEqual(after,before);
-  const save=payload.action==='saveProgress';assert.equal(oldReads,(save?7:11)+Number(counseling));assert.equal(newReads,(save?7:8)+Number(counseling));
+  const save=payload.action==='saveProgress';assert.equal(oldReads,(save?5:11)+Number(counseling));assert.equal(newReads,(save?5:8)+Number(counseling));
   console.log(`READ_COUNT ${payload.action} Counseling=${counseling}: ${oldReads} -> ${newReads}`);
  }
 });

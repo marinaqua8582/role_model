@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { ResponseStyleData, StudentInfo } from '../../types';
 import { AlignLeft, Layers, ArrowRight, ArrowLeft, Check, BookOpen, AlertCircle } from 'lucide-react';
 import { saveStep4Progress } from '../../api/client';
@@ -6,9 +6,9 @@ import { COMPOSITION_OPTIONS, normalizeSingleAnswerElement } from '../../utils/n
 
 interface Step4ResponseStyleProps {
   data: ResponseStyleData;
-  student?: StudentInfo;
+  student?: StudentInfo & { currentStep?: number };
   onChange: (data: ResponseStyleData) => void;
-  onNext: () => void;
+  onNext: (progressSaved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -45,6 +45,7 @@ export const Step4ResponseStyle: React.FC<Step4ResponseStyleProps> = ({
   onPrev,
   isReadOnly = false,
 }) => {
+  const savingRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -91,25 +92,28 @@ export const Step4ResponseStyle: React.FC<Step4ResponseStyleProps> = ({
     validAnswerElements.length <= 4;
 
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (!isValid) return;
     if (isReadOnly || !student) {
-      onNext();
+      await onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await saveStep4Progress(student, { ...data, answerElements: validAnswerElements });
+      const res = await saveStep4Progress(student, { ...data, answerElements: validAnswerElements }, Math.max(student.currentStep || 1, 5));
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

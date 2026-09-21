@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { ChatbotPurposeData, RoleModelData, StudentInfo } from '../../types';
 import { Target, Users, Sparkles, ArrowRight, ArrowLeft, Check, Edit3, RotateCcw, AlertCircle } from 'lucide-react';
 import { buildChatbotPurposeSentence } from '../../utils/promptGenerator';
@@ -8,9 +8,9 @@ import { PURPOSE_OPTIONS, normalizeSinglePurpose } from '../../utils/normalizer'
 interface Step2PurposeProps {
   data: ChatbotPurposeData;
   roleModel: RoleModelData;
-  student?: StudentInfo;
+  student?: StudentInfo & { currentStep?: number };
   onChange: (data: ChatbotPurposeData) => void;
-  onNext: () => void;
+  onNext: (progressSaved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -33,6 +33,7 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
   isReadOnly = false,
 }) => {
   const [isEditingSentence, setIsEditingSentence] = useState(false);
+  const savingRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -102,25 +103,28 @@ export const Step2Purpose: React.FC<Step2PurposeProps> = ({
     (data.targetUser !== '기타' || Boolean(data.targetUserCustom.trim()));
 
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (!isValid) return;
     if (isReadOnly || !student) {
-      onNext();
+      await onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await saveStep2Progress(student, { ...data, chatbotPurposes: validSelectedPurposes });
+      const res = await saveStep2Progress(student, { ...data, chatbotPurposes: validSelectedPurposes }, Math.max(student.currentStep || 1, 3));
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

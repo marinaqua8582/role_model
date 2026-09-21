@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useRef, useState, useMemo, useEffect } from 'react';
 import { RoleModelData, StudentInfo } from '../../types';
 import { saveStep1Progress } from '../../api/client';
 import {
@@ -25,9 +25,9 @@ import {
 
 interface Step1RoleModelProps {
   data: RoleModelData;
-  student?: StudentInfo;
+  student?: StudentInfo & { currentStep?: number };
   onChange: (data: RoleModelData) => void;
-  onNext: () => void;
+  onNext: (progressSaved?: boolean) => void | Promise<void>;
   onPrev?: () => void;
   isReadOnly?: boolean;
 }
@@ -41,6 +41,7 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
   isReadOnly = false,
 }) => {
   const [subStep, setSubStep] = useState<1 | 2 | 3>(1);
+  const savingRef = useRef(false);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -147,13 +148,15 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
   );
 
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (!isSubStep3Valid || isSaving) return;
 
     if (isReadOnly || !student) {
-      onNext();
+      await onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
@@ -163,9 +166,9 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
         competencies: validCompetencies,
         strengths: validStrengths,
         values: validValues,
-      });
+      }, Math.max(student.currentStep || 1, 2));
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
@@ -173,6 +176,7 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
       console.error(err);
       setSaveError('저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -183,7 +187,7 @@ export const Step1RoleModel: React.FC<Step1RoleModelProps> = ({
     } else if (subStep === 2 && isSubStep2Valid) {
       setSubStep(3);
     } else if (subStep === 3 && isSubStep3Valid) {
-      handleSaveAndNext();
+      return handleSaveAndNext();
     }
   };
 

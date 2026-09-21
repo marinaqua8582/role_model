@@ -260,7 +260,7 @@ export default function App() {
     setCurrentStudent(payload);
   };
 
-  const navigateStep = async (step: number, advance = false) => {
+  const navigateStep = async (step: number, advance = false, progressSaved = false) => {
     if (!currentStudent || navigatingRef.current || isStudentSaving()) return;
     if (!advance && !isStudentCompleted && !isPreviewStudentMode && step > maxAllowedStep) return;
     if (step === viewStep) return;
@@ -273,7 +273,9 @@ export default function App() {
     try {
       if (!advance) await saveCurrentStudentStep(currentStudent, viewStep);
       const updated = { ...currentStudent, currentStep: Math.max(currentStudent.currentStep, step) };
-      await saveStudentProgress(updated);
+      // Only STEP 1–7 Next can have saved both answers and the destination already.
+      const alreadySaved = advance && progressSaved && viewStep >= 1 && viewStep <= 7 && step === viewStep + 1;
+      if (!alreadySaved) await saveStudentProgress(updated);
       if (session !== sessionRef.current) return;
       if (viewStep !== 10) dirtyRef.current = false;
       setCurrentStudent(updated);
@@ -285,7 +287,7 @@ export default function App() {
     } finally { navigatingRef.current = false; }
   };
   const handleSelectStep = (step: number) => { void navigateStep(step); };
-  const handleNextStep = (step: number) => { void navigateStep(step, true); };
+  const handleNextStep = (step: number, progressSaved = false) => navigateStep(step, true, progressSaved);
   const handlePrevStep = (step: number) => { void navigateStep(step); };
 
   const handleFinalSubmit = async () => {
@@ -588,6 +590,7 @@ export default function App() {
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
                 googleId: currentStudent.googleId,
+                currentStep: currentStudent.currentStep,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step1) =>
@@ -596,7 +599,7 @@ export default function App() {
                   step1,
                 })
               }
-              onNext={() => handleNextStep(2)}
+              onNext={(progressSaved) => handleNextStep(2, progressSaved)}
             />
           )}
 
@@ -612,6 +615,7 @@ export default function App() {
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
                 googleId: currentStudent.googleId,
+                currentStep: currentStudent.currentStep,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step2) =>
@@ -620,7 +624,7 @@ export default function App() {
                   step2,
                 })
               }
-              onNext={() => handleNextStep(3)}
+              onNext={(progressSaved) => handleNextStep(3, progressSaved)}
               onPrev={() => handlePrevStep(1)}
             />
           )}
@@ -636,6 +640,7 @@ export default function App() {
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
                 googleId: currentStudent.googleId,
+                currentStep: currentStudent.currentStep,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step3) =>
@@ -644,7 +649,7 @@ export default function App() {
                   step3,
                 })
               }
-              onNext={() => handleNextStep(4)}
+              onNext={(progressSaved) => handleNextStep(4, progressSaved)}
               onPrev={() => handlePrevStep(2)}
             />
           )}
@@ -660,6 +665,7 @@ export default function App() {
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
                 googleId: currentStudent.googleId,
+                currentStep: currentStudent.currentStep,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step4) =>
@@ -668,7 +674,7 @@ export default function App() {
                   step4,
                 })
               }
-              onNext={() => handleNextStep(5)}
+              onNext={(progressSaved) => handleNextStep(5, progressSaved)}
               onPrev={() => handlePrevStep(3)}
             />
           )}
@@ -685,6 +691,7 @@ export default function App() {
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
                 googleId: currentStudent.googleId,
+                currentStep: currentStudent.currentStep,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step5) =>
@@ -693,7 +700,7 @@ export default function App() {
                   step5,
                 })
               }
-              onNext={() => handleNextStep(6)}
+              onNext={(progressSaved) => handleNextStep(6, progressSaved)}
               onPrev={() => handlePrevStep(4)}
             />
           )}
@@ -713,6 +720,7 @@ export default function App() {
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
                 googleId: currentStudent.googleId,
+                currentStep: currentStudent.currentStep,
               }}
               isReadOnly={isPreviewStudentMode}
               onChange={(step6) =>
@@ -722,7 +730,7 @@ export default function App() {
                   isPromptCompleted: true,
                 })
               }
-              onNext={() => handleNextStep(7)}
+              onNext={(progressSaved) => handleNextStep(7, progressSaved)}
               onPrev={() => handlePrevStep(5)}
               onJumpToStep={(step) => handleSelectStep(step)}
             />
@@ -739,9 +747,10 @@ export default function App() {
                 name: currentStudent.name,
                 studentKey: currentStudent.studentKey,
                 googleId: currentStudent.googleId,
+                currentStep: currentStudent.currentStep,
               }}
               isReadOnly={isPreviewStudentMode}
-              onNext={() => handleNextStep(8)}
+              onNext={(progressSaved) => handleNextStep(8, progressSaved)}
               onPrev={() => handlePrevStep(6)}
             />
           )}

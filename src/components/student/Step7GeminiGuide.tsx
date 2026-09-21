@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { PromptData, StudentInfo } from '../../types';
 import {
   Sparkles,
@@ -18,8 +18,8 @@ import { updateCurrentStep } from '../../api/client';
 
 interface Step7GeminiGuideProps {
   promptData: PromptData;
-  student?: StudentInfo;
-  onNext: () => void;
+  student?: StudentInfo & { currentStep?: number };
+  onNext: (progressSaved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -71,6 +71,7 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
 }) => {
   const [copiedPrompt, setCopiedPrompt] = useState(false);
   const [copiedGoogleId, setCopiedGoogleId] = useState(false);
+  const savingRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -91,24 +92,27 @@ export const Step7GeminiGuide: React.FC<Step7GeminiGuideProps> = ({
   };
 
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (isReadOnly || !student) {
-      onNext();
+      await onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await updateCurrentStep(student, 7);
+      const res = await updateCurrentStep(student, Math.max(student.currentStep || 1, 8));
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

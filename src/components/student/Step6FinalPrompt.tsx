@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { PromptData, RoleModelData, ChatbotPurposeData, PersonalityData, ResponseStyleData, StudentInfo } from '../../types';
 import { Sparkles, FileText, CheckCircle2, Copy, Check, Edit2, Bot, ArrowRight, ArrowLeft, AlertCircle } from 'lucide-react';
 import { generateStructuredPrompt } from '../../utils/promptGenerator';
@@ -10,9 +10,9 @@ interface Step6FinalPromptProps {
   purpose: ChatbotPurposeData;
   personality: PersonalityData;
   responseStyle: ResponseStyleData;
-  student?: StudentInfo;
+  student?: StudentInfo & { currentStep?: number };
   onChange: (data: PromptData) => void;
-  onNext: () => void;
+  onNext: (progressSaved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   onJumpToStep: (step: number) => void;
   isReadOnly?: boolean;
@@ -31,6 +31,7 @@ export const Step6FinalPrompt: React.FC<Step6FinalPromptProps> = ({
   onJumpToStep,
   isReadOnly = false,
 }) => {
+  const savingRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -79,25 +80,28 @@ export const Step6FinalPrompt: React.FC<Step6FinalPromptProps> = ({
   const isValid = isAllChecked && hasName;
 
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (!isValid) return;
     if (isReadOnly || !student) {
-      onNext();
+      await onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await saveStep6Progress(student, data);
+      const res = await saveStep6Progress(student, data, Math.max(student.currentStep || 1, 7));
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

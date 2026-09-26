@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { SafetyRuleData, RoleModelData, StudentInfo } from '../../types';
 import {
   ShieldCheck,
@@ -19,9 +19,9 @@ import { saveStep5Progress } from '../../api/client';
 interface Step5SafetyRulesProps {
   data: SafetyRuleData;
   roleModel: RoleModelData;
-  student?: StudentInfo;
+  student?: StudentInfo & { currentStep?: number };
   onChange: (data: SafetyRuleData) => void;
-  onNext: () => void;
+  onNext: (progressSaved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -50,6 +50,7 @@ export const Step5SafetyRules: React.FC<Step5SafetyRulesProps> = ({
   onPrev,
   isReadOnly = false,
 }) => {
+  const savingRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -88,25 +89,28 @@ export const Step5SafetyRules: React.FC<Step5SafetyRulesProps> = ({
   const isAllCompleted = totalChecked === totalRequired;
 
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (!isAllCompleted) return;
     if (isReadOnly || !student) {
-      onNext();
+      await onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await saveStep5Progress(student, data);
+      const res = await saveStep5Progress(student, data, Math.max(student.currentStep || 1, 6));
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

@@ -480,7 +480,8 @@ export async function saveProgressPayload(
  */
 export async function saveStep1Progress(
   student: StudentInfo,
-  data: RoleModelData
+  data: RoleModelData,
+  currentStep = 1
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
   // Clean and combine custom values with array selections
   const competencies = [...(data.competencies || [])];
@@ -508,7 +509,7 @@ export async function saveStep1Progress(
     classNum: Number(student.classNum),
     number: Number(student.number),
     name: (student.name || '').trim(),
-    currentStep: 1,
+    currentStep,
     roleModelName: (data.roleModelName || '').trim(),
     roleModelJob: (data.roleModelJob || '').trim(),
     roleModelReason: (data.roleModelReason || '').trim(),
@@ -524,7 +525,7 @@ export async function saveStep1Progress(
   if (res.success) {
     const localMap = getStoredProgressMap();
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
-    existing.currentStep = Math.max(existing.currentStep, 1);
+    existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step1 = {
       ...data,
       competencies,
@@ -543,7 +544,8 @@ export async function saveStep1Progress(
  */
 export async function saveStep2Progress(
   student: StudentInfo,
-  data: ChatbotPurposeData
+  data: ChatbotPurposeData,
+  currentStep = 2
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
   const studentKey = createStudentKey(student);
   const targetUser =
@@ -560,7 +562,7 @@ export async function saveStep2Progress(
     classNum: Number(student.classNum),
     number: Number(student.number),
     name: (student.name || '').trim(),
-    currentStep: 2,
+    currentStep,
     chatbotPurposes: data.chatbotPurposes || [],
     targetUser,
     expectedOutcome: (data.expectedOutcome || '').trim(),
@@ -570,7 +572,7 @@ export async function saveStep2Progress(
   if (res.success) {
     const localMap = getStoredProgressMap();
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
-    existing.currentStep = Math.max(existing.currentStep, 2);
+    existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step2 = { ...data };
     existing.updatedAt = new Date().toISOString();
     localMap[studentKey] = existing;
@@ -584,7 +586,8 @@ export async function saveStep2Progress(
  */
 export async function saveStep3Progress(
   student: StudentInfo,
-  data: PersonalityData
+  data: PersonalityData,
+  currentStep = 3
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
   const studentKey = createStudentKey(student);
   const payload = {
@@ -596,7 +599,7 @@ export async function saveStep3Progress(
     classNum: Number(student.classNum),
     number: Number(student.number),
     name: (student.name || '').trim(),
-    currentStep: 3,
+    currentStep,
     personality: data.personalities || [],
     speakingStyle: (data.speakingStyle || '').trim(),
     honorificStyle: data.honorificStyle || '친근한 존댓말',
@@ -607,7 +610,7 @@ export async function saveStep3Progress(
   if (res.success) {
     const localMap = getStoredProgressMap();
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
-    existing.currentStep = Math.max(existing.currentStep, 3);
+    existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step3 = { ...data };
     existing.updatedAt = new Date().toISOString();
     localMap[studentKey] = existing;
@@ -621,7 +624,8 @@ export async function saveStep3Progress(
  */
 export async function saveStep4Progress(
   student: StudentInfo,
-  data: ResponseStyleData
+  data: ResponseStyleData,
+  currentStep = 4
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
   const studentKey = createStudentKey(student);
   const lengthLabelMap: Record<string, string> = {
@@ -640,7 +644,7 @@ export async function saveStep4Progress(
     classNum: Number(student.classNum),
     number: Number(student.number),
     name: (student.name || '').trim(),
-    currentStep: 4,
+    currentStep,
     answerLength: answerLengthStr,
     answerElements: data.answerElements || [],
   };
@@ -649,7 +653,7 @@ export async function saveStep4Progress(
   if (res.success) {
     const localMap = getStoredProgressMap();
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
-    existing.currentStep = Math.max(existing.currentStep, 4);
+    existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step4 = { ...data };
     existing.updatedAt = new Date().toISOString();
     localMap[studentKey] = existing;
@@ -663,7 +667,8 @@ export async function saveStep4Progress(
  */
 export async function saveStep5Progress(
   student: StudentInfo,
-  data?: SafetyRuleData
+  data?: SafetyRuleData,
+  currentStep = 5
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
   const studentKey = createStudentKey(student);
   const payload = {
@@ -675,14 +680,14 @@ export async function saveStep5Progress(
     classNum: Number(student.classNum),
     number: Number(student.number),
     name: (student.name || '').trim(),
-    currentStep: 5,
+    currentStep,
   };
 
   const res = await saveProgressPayload(payload);
   if (res.success) {
     const localMap = getStoredProgressMap();
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
-    existing.currentStep = Math.max(existing.currentStep, 5);
+    existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step5 = {
       ...(data || existing.step5),
       agreedToRules: true,
@@ -701,7 +706,8 @@ export async function saveStep5Progress(
  */
 export async function saveStep6Progress(
   student: StudentInfo,
-  data: PromptData
+  data: PromptData,
+  currentStep = 6
 ): Promise<{ success: boolean; message?: string; studentKey?: string }> {
   const studentKey = createStudentKey(student);
   const initialPrompt = (data.initialPrompt || '').trim();
@@ -717,7 +723,7 @@ export async function saveStep6Progress(
     classNum: Number(student.classNum),
     number: Number(student.number),
     name: (student.name || '').trim(),
-    currentStep: 6,
+    currentStep,
     chatbotName: (data.chatbotName || '').trim(),
     initialPrompt,
     revisedPrompt,
@@ -728,7 +734,7 @@ export async function saveStep6Progress(
   if (res.success) {
     const localMap = getStoredProgressMap();
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
-    existing.currentStep = Math.max(existing.currentStep, 6);
+    existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step6 = {
       ...data,
       chatbotName: data.chatbotName,

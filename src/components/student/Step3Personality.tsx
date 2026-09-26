@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { PersonalityData, StudentInfo } from '../../types';
 import { Smile, MessageSquare, HeartHandshake, ArrowRight, ArrowLeft, Check, Info, AlertCircle } from 'lucide-react';
 import { buildPersonalityRulesSummary } from '../../utils/promptGenerator';
@@ -7,9 +7,9 @@ import { PERSONALITY_OPTIONS, normalizeSinglePersonality } from '../../utils/nor
 
 interface Step3PersonalityProps {
   data: PersonalityData;
-  student?: StudentInfo;
+  student?: StudentInfo & { currentStep?: number };
   onChange: (data: PersonalityData) => void;
-  onNext: () => void;
+  onNext: (progressSaved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -37,6 +37,7 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
   onPrev,
   isReadOnly = false,
 }) => {
+  const savingRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -91,25 +92,28 @@ export const Step3Personality: React.FC<Step3PersonalityProps> = ({
     Boolean(data.honorificStyle);
 
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (!isValid) return;
     if (isReadOnly || !student) {
-      onNext();
+      await onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await saveStep3Progress(student, { ...data, personalities: validPersonalities });
+      const res = await saveStep3Progress(student, { ...data, personalities: validPersonalities }, Math.max(student.currentStep || 1, 4));
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };

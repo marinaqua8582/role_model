@@ -6,3 +6,4 @@ require('./legacy-tests.test.cjs');
 require('./read-reuse.test.cjs');
 require('./request-read-reuse.test.cjs');
 require('./save-read-reuse.test.cjs');
+require('./step-navigation.test.cjs');

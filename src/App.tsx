@@ -278,7 +278,7 @@ export default function App() {
       if (!alreadySaved) await saveStudentProgress(updated);
       if (session !== sessionRef.current) return;
       if (viewStep !== 10) dirtyRef.current = false;
-      setCurrentStudent(updated);
+      setCurrentStudent({ ...updated, updatedAt: new Date().toISOString() });
       setViewStep(step);
       setSaveStatus('saved');
       window.scrollTo({ top: 0, behavior: 'smooth' });

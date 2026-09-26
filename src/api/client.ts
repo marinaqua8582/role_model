@@ -1126,6 +1126,19 @@ export function mapFullStudentDetail(raw: any): StudentProgress {
   return result;
 }
 
+// Ignore missing/invalid dates and compare instants rather than source priority.
+function latestTimestamp(...candidates: unknown[]): string {
+  let latest: number | undefined;
+  for (const candidate of candidates) {
+    if (typeof candidate !== 'string' || !candidate.trim()) continue;
+    const timestamp = Date.parse(candidate);
+    if (Number.isFinite(timestamp) && (latest === undefined || timestamp > latest)) {
+      latest = timestamp;
+    }
+  }
+  return latest === undefined ? new Date().toISOString() : new Date(latest).toISOString();
+}
+
 function mapLegacyStudentDetail(raw: any): StudentProgress {
   if (!raw) return createInitialStudentProgress({ grade: 1, classNum: 1, number: 1, name: '학생', studentKey: '1-1-1' });
 
@@ -1751,7 +1764,7 @@ function mapLegacyStudentDetail(raw: any): StudentProgress {
       submittedAt,
     },
     createdAt: progressObj.createdAt || raw.createdAt || submittedAt || new Date().toISOString(),
-    updatedAt: submittedAt || progressObj.updatedAt || testedAt || raw.updatedAt || new Date().toISOString(),
+    updatedAt: latestTimestamp(progressObj.updatedAt, raw.updatedAt, testedAt, submittedAt),
     isPromptCompleted,
     isTestCompleted,
     isGemSubmitted: Boolean(gemUrl),

@@ -7,3 +7,4 @@ require('./read-reuse.test.cjs');
 require('./request-read-reuse.test.cjs');
 require('./save-read-reuse.test.cjs');
 require('./step-navigation.test.cjs');
+require('./last-saved-time.test.cjs');

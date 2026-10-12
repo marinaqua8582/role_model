@@ -19,3 +19,4 @@ require('./staging-diagnostics.test.cjs');
 require('./concurrency-hotpath.test.cjs');
 require('./proxy-transport.test.cjs');
 require('./roster-options-regression.test.cjs');
+require('./unchanged-patch.test.cjs');

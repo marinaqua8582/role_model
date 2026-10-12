@@ -20,7 +20,8 @@
   },
   "git": {
     "deploymentEnabled": {
-      "handoff-20261012-evening": false
+      "handoff-20261012-evening": false,
+      "integration-20261012-concurrency": false
     }
   }
 }

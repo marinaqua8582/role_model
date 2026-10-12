@@ -551,13 +551,23 @@ function readTable_(sheet, readContext) {
 }
 function writePatch_(sheet, index, patch, physical) {
   var headers = physical || physicalHeaders_(sheet), originalLength = headers.length;
-  var entries = Object.keys(patch).filter(function(key) { return patch[key] !== undefined; }).map(function(key) {
+  // Only reuse a row already read in this request. Never fetch extra data to skip a write.
+  // The caller's global lock still covers row selection, writes, flush and receipt completion.
+  var cached = requestReadContext_ && requestReadContext_.tables[sheetName_(sheet)];
+  var original = index > 0 && cached && cached[index - 1];
+  var entries = Object.keys(patch).filter(function(key) {
+    if (patch[key] === undefined) return false;
+    var logicalColumn = cached ? cached[0].findIndex(function(h) { return headerName_(h) === headerName_(key); }) : -1;
+    var physicalMatches = headers.filter(function(h) { return headerName_(h) === headerName_(key); }).length;
+    return physicalMatches !== 1 || !original || logicalColumn < 0 || original[logicalColumn] !== patch[key];
+  }).map(function(key) {
     var matches = [];
     headers.forEach(function(h, i) { if (headerName_(h) === headerName_(key)) matches.push(i + 1); });
     if (matches.length > 1) throw new Error('중복된 시트 헤더를 확인해 주세요: ' + key);
     if (!matches.length) { headers.push(key); matches.push(headers.length); }
     return {col:matches[0],value:patch[key]};
   });
+  if (!entries.length && index > 0) return index;
   // Existing physical headers already fit. Ask capacity only when adding a column.
   if (headers.length > originalLength && headers.length > sheetMetadata_(sheet, 'getMaxColumns')) timeSheetMutation_(function() { sheet.insertColumnsAfter(sheetMetadata_(sheet, 'getMaxColumns'), headers.length - sheetMetadata_(sheet, 'getMaxColumns')); });
   if (headers.length > originalLength) timeSheetMutation_(function() { sheet.getRange(1, originalLength + 1, 1, headers.length - originalLength).setValues([headers.slice(originalLength)]); });

@@ -109,6 +109,10 @@ export function extractAdminToken(req: any): string | undefined {
  * Call Google Apps Script securely from server with ADMIN_API_SECRET
  */
 export async function callServerGas(payload: Record<string, any>): Promise<any> {
+  if (process.env.TRANSACTIONAL_SYNTHETIC) {
+    const { syntheticDispatch } = await import('../transactional/runtime.mjs');
+    return syntheticDispatch(payload, { admin: true });
+  }
   const targetUrl = process.env.GAS_URL;
 
   if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('https://')) {

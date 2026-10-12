@@ -12,3 +12,6 @@ coverage/
 .vercel/
 auth.json
 handoff/readiness-*.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm

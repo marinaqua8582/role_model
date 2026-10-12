@@ -3,6 +3,10 @@ const STUDENT_ACTIONS = new Set(['getRosterOptions','verifyStudent','loadProgres
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({success:false,message:'Method Not Allowed'});
+  if (process.env.TRANSACTIONAL_SYNTHETIC) {
+    const { syntheticHttp } = await import('../transactional/runtime.mjs');
+    return syntheticHttp(req, res);
+  }
   const payload = req.body || {};
   if (!STUDENT_ACTIONS.has(payload.action) || payload.adminSecret) return res.status(403).json({success:false,message:'허용되지 않은 요청입니다.'});
   const target = process.env.GAS_URL;

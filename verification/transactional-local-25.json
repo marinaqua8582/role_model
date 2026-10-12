@@ -1,0 +1,105 @@
+{
+  "environment": "local disk SQLite + real HTTP, NOT staging/PostgreSQL",
+  "users": 25,
+  "phases": {
+    "login": {
+      "meanMs": 126.30750399999961,
+      "p50Ms": 126.20910000000003,
+      "p95Ms": 127.82249999999476,
+      "maxMs": 134.45219999999972
+    },
+    "progressNew": {
+      "meanMs": 60.13648800000053,
+      "p50Ms": 60.28469999999652,
+      "p95Ms": 61.68089999999938,
+      "maxMs": 61.68800000000192
+    },
+    "progressUpdate": {
+      "meanMs": 61.878595999999376,
+      "p50Ms": 61.446100000001024,
+      "p95Ms": 63.753499999998894,
+      "maxMs": 63.83309999999619
+    },
+    "testsNew": {
+      "meanMs": 45.417284000000215,
+      "p50Ms": 45.89919999999984,
+      "p95Ms": 46.57590000000346,
+      "maxMs": 46.59979999999632
+    },
+    "testsUpdate": {
+      "meanMs": 60.09397599999968,
+      "p50Ms": 59.902099999999336,
+      "p95Ms": 61.15699999999924,
+      "maxMs": 61.24749999999767
+    },
+    "finalNew": {
+      "meanMs": 39.21298800000048,
+      "p50Ms": 33.198199999998906,
+      "p95Ms": 48.04780000000028,
+      "maxMs": 48.05890000000363
+    },
+    "finalUpdate": {
+      "meanMs": 59.00593999999924,
+      "p50Ms": 58.78889999999956,
+      "p95Ms": 60.794999999998254,
+      "maxMs": 61.00460000000021
+    },
+    "relogin": {
+      "meanMs": 74.92140400000062,
+      "p50Ms": 74.79940000000352,
+      "p95Ms": 75.93409999999858,
+      "maxMs": 75.95120000000315
+    }
+  },
+  "failures": 0,
+  "timeouts": 0,
+  "duplicateRows": 0,
+  "wrongStudentUpdates": 0,
+  "privacyLeaks": 0,
+  "latencyTargetMetLocally": true,
+  "transactionMetrics": {
+    "poolWaitMs": {
+      "meanMs": 0,
+      "p50Ms": 0,
+      "p95Ms": 0,
+      "maxMs": 0
+    },
+    "lockWaitMs": {
+      "meanMs": 0.01750733333300256,
+      "p50Ms": 0.014900000001944136,
+      "p95Ms": 0.026600000004691537,
+      "maxMs": 0.07069999999657739
+    },
+    "lockHeldMs": {
+      "meanMs": 0.9238613333336252,
+      "p50Ms": 0.8546000000060303,
+      "p95Ms": 1.2949999999982538,
+      "maxMs": 5.215700000000652
+    },
+    "dbReadMs": {
+      "meanMs": 0.06591600000028848,
+      "p50Ms": 0.055700000004435424,
+      "p95Ms": 0.11499999999796273,
+      "maxMs": 0.17149999999674037
+    },
+    "dbWriteMs": {
+      "meanMs": 0.06410866666633713,
+      "p50Ms": 0.05550000000221189,
+      "p95Ms": 0.09790000000066357,
+      "maxMs": 0.1805000000022119
+    },
+    "commitMs": {
+      "meanMs": 0.7296199999998498,
+      "p50Ms": 0.6705000000001746,
+      "p95Ms": 1.0025000000023283,
+      "maxMs": 4.83969999999681
+    },
+    "totalMs": {
+      "meanMs": 1.1163986666667431,
+      "p50Ms": 1.0244999999995343,
+      "p95Ms": 1.5639999999984866,
+      "maxMs": 5.472099999999045
+    }
+  },
+  "responseLossTest": "One completed write response intentionally discarded; receipt read only. Network fault/UI end-to-end remains unverified."
+}

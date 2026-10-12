@@ -12,7 +12,9 @@
     "test": "node tests/run.cjs",
     "test:performance": "node tests/performance-load.cjs",
     "build:sandbox": "node tests/build-sandbox.cjs",
-    "test:staging": "node tests/staging-load.cjs"
+    "test:staging": "node tests/staging-load.cjs",
+    "test:transactional": "node --test tests/transactional.test.cjs tests/transactional-client.test.cjs tests/transactional-recovery.test.cjs tests/transactional-runtime.test.cjs",
+    "setup:synthetic": "node transactional/setup.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
@@ -23,6 +25,7 @@
     "express": "^4.21.2",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
+    "pg": "^8.23.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "xlsx": "^0.18.5"

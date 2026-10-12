@@ -1,5 +1,10 @@
 // Deployment preflight: reads configuration only, never student records.
 const fs=require('node:fs');
+if(process.env.TRANSACTIONAL_SYNTHETIC) {
+  if(process.env.TRANSACTIONAL_SYNTHETIC!=='synthetic-only-25'||process.env.VERCEL_ENV!=='preview'||!process.env.TRANSACTIONAL_DATABASE_URL||!process.env.TRANSACTIONAL_SESSION_SECRET||process.env.TRANSACTIONAL_SESSION_SECRET.length<32)throw Error('Synthetic transactional preview configuration mismatch');
+  if(process.env.STAGING_PERF_MODE)throw Error('Legacy GAS staging must be disabled for transactional preview');
+  console.log('Synthetic transactional preview configured; GAS not contacted; database runtime verification required');process.exit(0);
+}
 const mode=process.env.VERCEL_ENV;
 const synthetic=process.env.STAGING_PERF_MODE==='synthetic-25';
 if(mode!=='production'&&!synthetic){console.log('GAS connection preflight: local/non-synthetic preview skipped');process.exit(0);}

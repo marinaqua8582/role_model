@@ -21,3 +21,7 @@ require('./proxy-transport.test.cjs');
 require('./roster-options-regression.test.cjs');
 require('./unchanged-patch.test.cjs');
 require('./lock-function-timing.test.cjs');
+require('./transactional.test.cjs');
+require('./transactional-client.test.cjs');
+require('./transactional-recovery.test.cjs');
+require('./transactional-runtime.test.cjs');

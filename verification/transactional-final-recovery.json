@@ -1,0 +1,11 @@
+{
+  "source": "actual synthetic PostgreSQL",
+  "target": "separate local SQLite durable file",
+  "students": 25,
+  "receipts": 163,
+  "exactStudentDocumentsAndVersions": true,
+  "exactReceipts": true,
+  "encryptedPrivateBackup": true,
+  "sourceModified": false,
+  "postgresToPostgresRestore": false
+}

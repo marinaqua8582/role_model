@@ -1,4 +1,7 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),{pathToFileURL}=require('node:url'),{execFileSync}=require('node:child_process');
+test('PostgreSQL always verifies TLS with official Supabase CA and rejects unsafe URL overrides',async()=>{
+ const {postgresOptions}=await import('../transactional/store.mjs');const url='postgresql://synthetic:unused@aws-0-ap-northeast-2.pooler.supabase.com:6543/postgres';const opts=postgresOptions(url);assert.equal(opts.ssl.rejectUnauthorized,true);assert.match(opts.ssl.ca,/BEGIN CERTIFICATE/);assert.equal(new URL(postgresOptions(url+'?sslmode=verify-full').connectionString).searchParams.has('sslmode'),false);for(const query of ['sslmode=disable','sslmode=no-verify','sslmode=require','ssl=false','sslrootcert=other'])assert.throws(()=>postgresOptions(url+'?'+query));
+});
 test('deployed synthetic runtime fails closed in production and never fetches GAS',async()=>{
   const {openDatabase,initialize}=await import('../transactional/store.mjs');const dir=fs.mkdtempSync(path.join(require('node:os').tmpdir(),'role-runtime-')),file=path.join(dir,'runtime.sqlite'),db=await openDatabase({file});await initialize(db);await db.close();
   const url=pathToFileURL(path.resolve(__dirname,'../transactional/runtime.mjs')).href;

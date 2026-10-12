@@ -1,0 +1,12 @@
+{
+  "environment": "real Vercel Preview + Seoul PostgreSQL",
+  "realClientCode": true,
+  "browser": false,
+  "responseDiscardedAfterServerCommit": true,
+  "writeRequestsDuringLoss": 1,
+  "automaticWriteResends": 0,
+  "receiptConfirmed": true,
+  "uncertainBlocksNewWrites": true,
+  "staleVersionRejected": true,
+  "newestAnswerPreserved": true
+}

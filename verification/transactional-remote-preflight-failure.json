@@ -1,0 +1,8 @@
+{
+  "environment": "remote synthetic transactional preview",
+  "phases": {},
+  "failures": 1,
+  "timeouts": 0,
+  "completed": false,
+  "errorKind": "Error"
+}

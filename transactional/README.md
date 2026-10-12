@@ -71,3 +71,21 @@ node transactional/run-staging.mjs
 ## 아직 통과하지 않은 항목
 
 실제 PostgreSQL 실행, 외부 네트워크/서비스 cold start, Vercel 여러 인스턴스, 브라우저 실제 클릭 전체 경로, 실제 원격 응답 유실·DB 접속 단절·서버 강제 종료 중 COMMIT, 외부 staging 25명 목표 성능은 미검증이다. 로컬 SQLite의 빠른 결과를 운영 성능 개선 폭으로 환산하지 않는다. npm audit의 기존 xlsx high 1건(수정 버전 없음)은 별도 남은 문제다. 운영 배포는 보류한다.
+
+## 2026-10-13 합성 이관·복구 구현 보완
+
+위 계획 작성 이후 `migration.mjs`와 `migration-cli.mjs`를 구현했다. 실제 Sheets를 읽는 연결은 포함하지 않는다. 생성한 기존 시트 형식 합성 자료만 허용하며, 정확한 합성 25명 신원·studentKey·Google ID와 일치해야 한다. 원본 표의 미지 열·행 순서·동일한 중복 행을 암호화 보관하고, 내용이 다른 중복은 자동 합치지 않고 차단한다.
+
+25명 이관은 하나의 DB 트랜잭션으로 처리한다. 이미 사용한 대상에는 덮어쓰지 않으며, 같은 이관 요청은 멱등하게 확인한다. 전환 후 새 답안·버전·receipt를 포함한 복구 계획을 만들고 미사용 합성 DB에만 복원한다. 백업과 복원도 모든 학생 행을 일정 순서로 잠그는 유지보수 트랜잭션으로 바꿨다. 운영 전환 시 쓰기 중지와 별도 승인은 여전히 필요하며, 기존 Sheets에 되쓰는 운영 이관기는 실행하지 않는다.
+
+```text
+node transactional/migration-cli.mjs prepare-synthetic <Git 바깥 비공개 폴더>
+TRANSACTIONAL_MIGRATION_CONFIRM=SYNTHETIC_PRIVATE_MIGRATION_ONLY
+node transactional/migration-cli.mjs apply <같은 비공개 폴더>
+node transactional/migration-cli.mjs prepare-rollback <같은 비공개 폴더>
+node transactional/migration-cli.mjs restore-unused <같은 비공개 폴더>
+```
+
+apply 이후 명령은 합성 환경 플래그·서명 설정·DB 연결이 필요하다. restore-unused에는 별도의 초기화된 미사용 합성 DB를 지정한다. AES-256-GCM 백업과 키는 Git 밖에 분리 보관하며 어떤 값도 로그에 출력하지 않는다. 키 유실 시 복구할 수 없으므로 비공개 안전 보관이 필요하다.
+
+새 서울 Free 합성 프로젝트의 실제 DB 인증·25명 초기화·Preview 외부25명 시험을 완료했다. 최신 결과와 미검증 범위는 verification/트랜잭션_외부25명_검증결과.md를 따른다. TLS는 공식 Dashboard의 CA 인증서로 검증하며 인증서 검증을 비활성화하지 않는다. `supabase-ca.crt`는 비밀값이 아닌 공개 CA다. 출처: Dashboard Database Settings의 Download certificate → `https://supabase-downloads.s3-ap-southeast-1.amazonaws.com/prod/ssl/prod-ca-2021.crt`. PostgreSQL 드라이버는 hostname/체인을 검증하고 이를 끄는 URL 옵션을 거절한다.

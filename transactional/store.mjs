@@ -1,5 +1,6 @@
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
+import {readFileSync} from 'node:fs';
 
 export const fixture = Array.from({length:25}, (_,i)=>({studentKey:`3-1-${i+1}`,grade:3,classNum:1,number:i+1,name:`합성학생${i+1}`,googleId:`synthetic${i+1}@example.invalid`}));
 const writes = new Set(['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling']);
@@ -15,11 +16,21 @@ export function assertSyntheticEnvironment(env=process.env) {
 }
 
 // SQLite is a local durable reference implementation, never a serverless storage path.
+export function postgresOptions(url) {
+  const parsed=new URL(url);
+  if(!['postgresql:','postgres:'].includes(parsed.protocol))throw Error('PostgreSQL required');
+  if(parsed.searchParams.has('sslmode')&&parsed.searchParams.get('sslmode')!=='verify-full')throw Error('Verified TLS required');
+  if(['ssl','sslcert','sslkey','sslrootcert'].some(k=>parsed.searchParams.has(k)))throw Error('Use verified server TLS configuration');
+  parsed.searchParams.delete('sslmode');
+  const ssl={rejectUnauthorized:true};
+  if(parsed.hostname.endsWith('.pooler.supabase.com')||parsed.hostname.endsWith('.supabase.co'))ssl.ca=readFileSync(new URL('./supabase-ca.crt',import.meta.url),'utf8');
+  return {connectionString:parsed.toString(),ssl,max:10,connectionTimeoutMillis:5000,statement_timeout:8000};
+}
 export async function openDatabase({file,url}) {
   if(url) {
     if(!url.startsWith('postgresql://')&&!url.startsWith('postgres://')) throw new Error('PostgreSQL required');
     const {default:pg}=await import('pg');
-    const pool=new pg.Pool({connectionString:url,max:10,connectionTimeoutMillis:5000,statement_timeout:8000});
+    const pool=new pg.Pool(postgresOptions(url));
     pool.on('error',()=>console.warn(JSON.stringify({stage:'synthetic-db-idle-error'})));
     const wrap=c=>({query:async(sql,args=[])=>{let i=0;return (await c.query(sql.replace(/\bsynthetic_(meta|students|receipts|sessions)\b/g,'role_model_synthetic.synthetic_$1').replace(/\?/g,()=>`$${++i}`),args)).rows;}});
     return {kind:'postgres',query:wrap(pool).query,close:()=>pool.end(),transaction:async(key,fn)=>{

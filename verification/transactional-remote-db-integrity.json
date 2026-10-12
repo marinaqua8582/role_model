@@ -1,0 +1,11 @@
+{
+  "environment": "Seoul synthetic PostgreSQL",
+  "students": 25,
+  "duplicateStudentRows": 0,
+  "duplicateReceiptKeys": 0,
+  "foreignStudentRows": 0,
+  "wrongDocumentOwners": 0,
+  "finalSubmittedStudents": 25,
+  "receipts": 163,
+  "cancelledReceipts": 1
+}

@@ -17,5 +17,10 @@
     "api/staging-performance.ts": {
       "maxDuration": 90
     }
+  },
+  "git": {
+    "deploymentEnabled": {
+      "handoff-20261012-evening": false
+    }
   }
 }

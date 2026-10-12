@@ -1,7 +1,3 @@
-/**
- * Returns complete Google Apps Script code ready to be pasted into
- * Google Sheets > Extensions > Apps Script and deployed as a Web App.
- */
 export function getGoogleAppsScriptCode(): string {
   return `/**
  * 나의 롤모델 챗봇 만들기 - Google Apps Script 백엔드
@@ -21,8 +17,15 @@ function doPost(e) {
   return handleRequest(e);
 }
 
+var requestSheetCache_;
+var requestReadContext_;
+var requestPerformance_;
 function handleRequest(e) {
+  requestSheetCache_ = undefined;
+  requestReadContext_ = undefined;
+  requestPerformance_={startedAt:Date.now(),lockWaitMs:0,lockHeldMs:0,sheetReadMs:0,sheetReadCalls:0,sheetWriteMs:0,flushMs:0,lockTimeoutCount:0};
   var lock = null;
+  var receiptId, receiptStudentKey, result, lockStart, acquiredAt, receiptExpiry;
   var output = ContentService.createTextOutput();
   output.setMimeType(ContentService.MimeType.JSON);
   
@@ -35,21 +38,42 @@ function handleRequest(e) {
     }
     
     var action = params.action || (e.parameter && e.parameter.action);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    if (action !== 'getRosterOptions' && action !== 'checkAdminConfig') {
-      lock = LockService.getScriptLock();
-      if (!lock.tryLock(20000)) throw new Error('저장 요청이 많습니다. 잠시 후 다시 저장해 주세요.');
+    if (['verifyStudent','loadProgress','getProgress','saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','getSaveStatus'].indexOf(action)!==-1) requestSheetCache_={values:{}};
+    if(params.requestId && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1) {
+      var fingerprintInput=JSON.parse(JSON.stringify(params)); delete fingerprintInput.studentToken; delete fingerprintInput.measurePerformance; delete fingerprintInput.performanceRunId; delete fingerprintInput.performanceSubject; delete fingerprintInput.performanceTraceId;
+      var fingerprint=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(fingerprintInput)).map(function(b) { return ('0'+(b & 255).toString(16)).slice(-2); }).join('');
     }
-    initSheetsIfNeeded(ss);
-    // Local to this read-only request; never used by writes or administrator actions.
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    if(params.performanceRunId) { validatePerformanceRun_(ss,params); var validatedPerformanceRun=true; }
+    if(['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1 && !params.requestId) throw new Error('저장 요청 ID가 없습니다. 앱을 새로고침한 뒤 저장해 주세요.');
+    if (['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','updateRoster','deleteRosterStudents','getSaveStatus'].indexOf(action) !== -1) {
+      lock = LockService.getScriptLock();
+      lockStart=Date.now();
+      var studentWrite=['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','getSaveStatus'].indexOf(action)!==-1;
+      // A measured 25-student queue exceeded 45s; retain one lock and leave transport margin.
+      if (!lock.tryLock(studentWrite ? 60000 : 15000)) { requestPerformance_.lockWaitMs=Date.now()-lockStart; requestPerformance_.lockTimeoutCount=1; throw new Error('저장 요청이 많습니다. 잠시 후 저장 결과를 확인해 주세요.'); }
+      acquiredAt=Date.now();
+      requestPerformance_.lockWaitMs=acquiredAt-lockStart;
+      if(params.performanceRunId) validatePerformanceRun_(ss,params);
+    }
+    if (['Roster','Progress','Tests','Submissions'].some(function(name) { return !requestSheet_(ss,name); })) initSheetsIfNeeded(ss);
+    // Contexts live for one request and are invalidated after each write.
     var readContext = ['verifyStudent','loadProgress','getProgress'].indexOf(action) !== -1 ? {tables:{},headerMaps:{},emptySheets:{}} : undefined;
-    if (['loadProgress', 'getProgress', 'saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData'].indexOf(action) !== -1) {
+    var bodyForKey = params.progress || params.submission || params.counseling || params.tests || params;
+    var scopedKey;
+    try { scopedKey = studentKey_(bodyForKey.studentKey || bodyForKey); } catch (ignored) {}
+    requestReadContext_ = readContext || {tables:{},headerMaps:{},emptySheets:{}};
+    requestReadContext_.studentKey = scopedKey;
+    if (scopedKey && ['verifyStudent','loadProgress','getProgress'].indexOf(action)!==-1) prepareStudentReads_(ss, requestReadContext_);
+    if (['loadProgress', 'getProgress', 'saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData','getSaveStatus'].indexOf(action) !== -1) {
       authorizeStudent_(ss, params, readContext);
     }
 
     
     // Validate admin secret for privileged teacher/admin actions
     if (
+      action === 'getPerformanceSnapshot' || action === 'finishPerformanceRun' || action === 'getPerformanceTrace' ||
+      action === 'getPerformanceFixture' ||
       action === 'checkAdminConfig' ||
       action === 'getAdminDashboard' ||
       action === 'getStudentDetail' ||
@@ -66,10 +90,63 @@ function handleRequest(e) {
       }
     }
 
-    var result = { success: true };
+    result = { success: true };
+    if(action==='getSaveStatus') {
+      receiptExpiry=Number(params.requestIssuedAt)+660000;
+      if(!Number.isFinite(receiptExpiry)) throw new Error('잘못된 저장 요청 시간입니다.');
+      var statusReceipt=receiptRead_(params.requestId);
+      if(statusReceipt && statusReceipt.studentKey!==scopedKey) throw new Error('저장 요청을 확인할 권한이 없습니다.');
+      if(!statusReceipt) { statusReceipt={studentKey:scopedKey,state:'cancelled',expiresAt:receiptExpiry}; receiptWrite_(params.requestId,statusReceipt); }
+      result={success:true,state:statusReceipt.state,savedAt:statusReceipt.savedAt};
+      output.setContent(JSON.stringify(result)); return output;
+    }
+    if(lock && params.requestId && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1) {
+      receiptExpiry=validateSaveTime_(params.requestIssuedAt);
+      receiptId=params.requestId; receiptStudentKey=scopedKey;
+      
+      var prior=receiptRead_(receiptId);
+      if(prior) {
+        if(prior.studentKey!==scopedKey || prior.fingerprint && prior.fingerprint!==fingerprint) throw new Error('저장 요청 ID가 충돌했습니다.');
+        result=prior.state==='completed'?{success:true,savedAt:prior.savedAt,replayed:true}:{success:false,message:'저장 결과를 확인할 수 없습니다. 잠시 후 다시 확인해 주세요.'};
+        receiptId=undefined; output.setContent(JSON.stringify(result)); return output;
+      }
+      receiptWrite_(receiptId,{studentKey:scopedKey,state:'pending',fingerprint:fingerprint,expiresAt:receiptExpiry});
+    }
     var progressWrite = action === 'saveProgress' ? {} : undefined;
     
-    if (action === 'logoutStudent') {
+    if(action==='getPerformanceFixture') {
+      var props=PropertiesService.getScriptProperties();
+      if(props.getProperty('PERF_TEST_MODE')!=='synthetic-25' || props.getProperty('PERF_TEST_SPREADSHEET_ID')!==ss.getId()) throw new Error('테스트 전용 스프레드시트가 아닙니다.');
+      var roster=readTable_(requestSheet_(ss,'Roster')), map=getHeaderMap(requestSheet_(ss,'Roster'));
+      if(roster.length!==26) throw new Error('합성 학생 25명만 있어야 합니다.');
+      roster.slice(1).forEach(function(row,i) {
+        if(Number(getValByHeader(row,map,['grade']))!==3 || Number(getValByHeader(row,map,['class']))!==99 || Number(getValByHeader(row,map,['number']))!==i+1 || getValByHeader(row,map,['name'])!=='Synthetic Student '+(i+1) || getValByHeader(row,map,['googleId'])!=='synthetic'+(i+1)+'@example.invalid') throw new Error('실제 학생 또는 잘못된 fixture가 있습니다.');
+      });
+      var duplicates=0, foreignRows=0, rowCounts={};
+      ['Progress','Tests','Submissions'].forEach(function(name) {
+        var table=readTable_(requestSheet_(ss,name)), header=getHeaderMap(requestSheet_(ss,name)), seen={};
+        rowCounts[name]=Math.max(0,table.length-1);
+        table.slice(1).forEach(function(row) { var key=getValByHeader(row,header,['studentKey']); if(!key) return; if(!/^3-99-([1-9]|1[0-9]|2[0-5])$/.test(String(key))) foreignRows++; if(seen[key]) duplicates++; seen[key]=true; });
+      });
+      result={success:true,marker:'synthetic-25',spreadsheetId:ss.getId(),duplicates:duplicates,foreignRows:foreignRows,rowCounts:rowCounts};
+      if(params.createPerformanceRun) {
+        if(duplicates || foreignRows) throw new Error('시험 fixture에 중복 또는 외부 자료가 있습니다.');
+        var run=params.createPerformanceRun;
+        if(!/^[-a-zA-Z0-9]{16,80}$/.test(run.runId) || !(run.exp>Date.now() && run.exp<=Date.now()+600000)) throw new Error('잘못된 시험 세션입니다.');
+        var sessionLock=LockService.getScriptLock(); if(!sessionLock.tryLock(15000)) throw new Error('시험 세션 잠금 실패');
+        try { var existing=objectJson_(props.getProperty('PERF_ACTIVE_RUN')); if(existing.exp>Date.now()) throw new Error('이미 시험이 진행 중입니다.'); props.setProperty('PERF_ACTIVE_RUN',JSON.stringify(run)); result.runId=run.runId;result.protocol='staging-session-v2';params.performanceRunId=run.runId;validatedPerformanceRun=true; } finally {sessionLock.releaseLock();}
+      }
+     } else if(action==='getPerformanceTrace') {
+      if(!validatedPerformanceRun || !/^[a-f0-9-]{36}$/i.test(params.traceId || ''))throw new Error('잘못된 시험 진단 조회입니다.');
+      var trace=objectJson_(CacheService.getScriptCache().get('perf-trace:'+params.traceId));
+      result={success:true,found:trace.runId===params.performanceRunId};
+      if(result.found)result.trace=trace.summary;
+     } else if(action==='getPerformanceSnapshot') {
+      result=performanceSnapshot_(ss);
+    } else if(action==='finishPerformanceRun') {
+      var endLock=LockService.getScriptLock();if(!endLock.tryLock(15000))throw new Error('시험 종료 잠금 실패');
+      try { validatePerformanceRun_(ss,params); PropertiesService.getScriptProperties().deleteProperty('PERF_ACTIVE_RUN'); result={success:true,ended:true}; } finally {endLock.releaseLock();}
+    } else if (action === 'logoutStudent') {
       CacheService.getScriptCache().remove('student:' + String(params.studentToken || ''));
       result = {success:true};
     } else if (action === 'checkAdminConfig') {
@@ -110,28 +187,140 @@ function handleRequest(e) {
     
     if (result.success && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling'].indexOf(action) !== -1) {
       var body = params.progress || params.submission || params.counseling || params.tests || params;
-      var affected = action === 'saveProgress' ? ['Progress'] : action === 'saveTests' ? ['Tests'] : action === 'updateRevision' ? ['Progress','Tests'] : action === 'submitFinal' ? ['Submissions'] : ['Counseling'];
+      var affected = action === 'saveProgress' ? ['Progress'] : action === 'saveTests' ? [] : action === 'updateRevision' ? [] : action === 'submitFinal' ? [] : ['Counseling'];
       affected.forEach(function(name) {
         if (action === 'saveProgress' && progressWrite.index) {
-          recordOwner_(progressWrite.sheet, progressWrite.index, body, progressWrite.physicalHeaders);
+          if (!progressWrite.ownerRecorded) recordOwner_(progressWrite.sheet, progressWrite.index, body, progressWrite.physicalHeaders);
           return;
         }
-        var sheet = ss.getSheetByName(name), selected = sheet && selectStudentRow_(sheet, body.studentKey);
+        var sheet = requestSheet_(ss,name), selected = sheet && selectStudentRow_(sheet, body.studentKey);
         if (selected) recordOwner_(sheet, selected.index, body);
       });
     }
+    if (result.success && ['updateRoster','deleteRosterStudents'].indexOf(action) !== -1) CacheService.getScriptCache().remove('roster-options-v2');
+    if(lock) { var flushStart=Date.now(); try { SpreadsheetApp.flush(); } finally { requestPerformance_.flushMs+=Date.now()-flushStart; } }
+    if(receiptId) receiptWrite_(receiptId,{studentKey:receiptStudentKey,fingerprint:fingerprint,expiresAt:receiptExpiry,state:result.success ? 'completed' : 'unknown',savedAt:result.savedAt || result.submittedAt || result.completedAt});
     output.setContent(JSON.stringify(result));
   } catch (err) {
-    output.setContent(JSON.stringify({ success: false, message: err.message || err.toString() }));
+    result={success:false,message:err.message || err.toString()};
+    output.setContent(JSON.stringify(result));
   } finally {
+    requestSheetCache_ = undefined;
+    requestReadContext_ = undefined;
     if (lock && lock.hasLock()) {
-      try { SpreadsheetApp.flush(); } finally { lock.releaseLock(); }
+      requestPerformance_.lockHeldMs=Date.now()-acquiredAt;
+      lock.releaseLock();
     }
+    if(params && params.measurePerformance===true && result) {
+      result.performance={lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs,lockTimeoutCount:requestPerformance_.lockTimeoutCount,totalMs:Date.now()-requestPerformance_.startedAt};
+      output.setContent(JSON.stringify(result));
+    }
+    // The trace survives a lost HTTP response. Never log tokens, keys, answers or URLs.
+    if(validatedPerformanceRun && params && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(params.performanceTraceId || '') && typeof Logger!=='undefined') {
+      var traceSummary={event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs};
+      try { CacheService.getScriptCache().put('perf-trace:'+params.performanceTraceId,JSON.stringify({runId:params.performanceRunId,summary:traceSummary}),600); } catch(ignored) {}
+      try { Logger.log(JSON.stringify({event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs})); } catch(ignored) {}
+    }
+    requestPerformance_=undefined;
   }
   
   return output;
 }
 
+
+
+// Optional Advanced Sheets service: two batched calls for headers/identifiers.
+// Detailed rows still use SpreadsheetApp to preserve Date values and legacy formats.
+function prepareStudentReads_(ss, context) {
+  if (PropertiesService.getScriptProperties().getProperty('LOGIN_BATCH_READS')!=='enabled') return;
+  if (typeof Sheets === 'undefined' || !Sheets.Spreadsheets || !Sheets.Spreadsheets.Values) return;
+  var names = ['Roster','Progress','Tests','Submissions'];
+  var sheets = names.map(function(n) { return requestSheet_(ss,n); }).filter(function(s) { return s && s.getLastColumn(); });
+  function col(n) { var s=''; while(n) { n--; s=String.fromCharCode(65+n%26)+s; n=Math.floor(n/26); } return s; }
+  function prefix(s) { return "'"+s.getName().replace(/'/g,"''")+"'!"; }
+  var ranges=sheets.map(function(s) { return prefix(s)+'A1:'+col(s.getLastColumn())+'1'; });
+  if (!ranges.length) return;
+  var headers=timeSheetRead_(function() { return Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:ranges,valueRenderOption:'UNFORMATTED_VALUE'}); }).valueRanges || [];
+  context.physical={}; context.identifiers={};
+  var requests=[], descriptors=[];
+  sheets.forEach(function(s,i) {
+    var h=(headers[i].values || [[]])[0]; context.physical[s.getName()]=h;
+    // Healthy canonical tables need only studentKey. Legacy fallback remains narrow.
+    var fields=s.getName()==='Roster'?['grade','class','number']:['studentKey'];
+    context.identifiers[s.getName()]={};
+    fields.forEach(function(f) {
+      var c=h.findIndex(function(v) { return headerName_(v)===headerName_(f); })+1;
+      if(c && s.getLastRow()>1) { requests.push(prefix(s)+col(c)+'2:'+col(c)+s.getLastRow()); descriptors.push({name:s.getName(),field:f,count:s.getLastRow()-1}); }
+    });
+  });
+  if(requests.length) {
+    var values=timeSheetRead_(function() { return Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:requests,valueRenderOption:'UNFORMATTED_VALUE'}); }).valueRanges || [];
+    descriptors.forEach(function(d,i) { var rows=values[i].values || []; context.identifiers[d.name][d.field]=Array.from({length:d.count},function(_,j) { return [rows[j] && rows[j][0] || '']; }); });
+  }
+}
+
+// Durable receipts use ScriptProperties, never CacheService as a mutex.
+// No automatic eviction: deleting a receipt could permit a late replay.
+// Reject expired requests even after their receipts are purged.
+function validateSaveTime_(issuedAt) {
+  var time=Number(issuedAt), now=Date.now();
+  if(!Number.isFinite(time) || time<now-600000 || time>now+120000) throw new Error('저장 요청 시간이 유효하지 않습니다. 기기의 시간을 확인해 주세요.');
+  return time+660000;
+}
+// Run manually or via a TESTED time trigger; this touches only expired operational receipts.
+function purgeExpiredSaveReceipts() {
+  var lock=LockService.getScriptLock(); if(!lock.tryLock(15000)) return {success:false,lockTimeout:true};
+  try {
+    var properties=PropertiesService.getScriptProperties(), entries=properties.getProperties(), now=Date.now(), deleted=0, skippedPending=0, protectedUnknownState=0, invalidExpiresAt=0, malformed=0, deferredExpired=0;
+    Object.keys(entries).filter(function(k) { return k.indexOf('save-receipt:')===0; }).forEach(function(k) {
+      var item; try { item=JSON.parse(entries[k]); } catch(e) {malformed++;return;}
+      if(!item || typeof item!=='object' || Array.isArray(item)) {protectedUnknownState++;return;}
+      if(item.state==='pending' || item.state==='unknown') {skippedPending++;return;}
+      if(item.state!=='completed' && item.state!=='cancelled') {protectedUnknownState++;return;}
+      if(typeof item.expiresAt!=='number' || !Number.isFinite(item.expiresAt)) {invalidExpiresAt++;return;}
+      if(item.expiresAt<now) {
+        if(deleted>=50 || Date.now()-now>=2000) {deferredExpired++;return;}
+        properties.deleteProperty(k);deleted++;
+      }
+    });
+    var remaining=Object.keys(entries).filter(function(k) {return k.indexOf('save-receipt:')===0;}).length-deleted;
+    var summary={success:true,at:new Date().toISOString(),deleted:deleted,remaining:remaining,protectedPending:skippedPending,protectedUnknownState:protectedUnknownState,invalidExpiresAt:invalidExpiresAt,malformed:malformed,deferredExpired:deferredExpired,statusRecorded:true};
+    try { properties.setProperty('SAVE_RECEIPT_CLEANUP_LAST',JSON.stringify(summary)); } catch(e) {summary.statusRecorded=false;summary.warning='Properties 공간 부족: 관리자 점검이 필요합니다.';}
+    return logCleanupSummary_(summary);
+  } finally { lock.releaseLock(); }
+}
+function cleanupTriggers_() {return ScriptApp.getProjectTriggers().filter(function(t) {return t.getHandlerFunction()==='purgeExpiredSaveReceipts';});}
+function installSaveReceiptCleanupTrigger() {
+  var lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw new Error('트리거 관리 잠금 실패');
+  try {
+    var props=PropertiesService.getScriptProperties(), triggers=cleanupTriggers_(), registered=props.getProperty('SAVE_RECEIPT_CLEANUP_TRIGGER');
+    if(registered && !triggers.some(function(t) {return t.getUniqueId()===registered;})) throw new Error('등록된 트리거가 현재 계정에 보이지 않습니다. 설치한 관리자 계정에서 확인하세요.');
+    var created=false, trigger=triggers.filter(function(t) {return t.getUniqueId()===registered;})[0];
+    if(!trigger) {trigger=ScriptApp.newTrigger('purgeExpiredSaveReceipts').timeBased().everyMinutes(5).create();created=true;}
+    try {props.setProperty('SAVE_RECEIPT_CLEANUP_TRIGGER',trigger.getUniqueId());} catch(e) {if(created) ScriptApp.deleteTrigger(trigger);throw new Error('Properties 공간 부족으로 트리거 등록 실패. 관리자 정리 상태를 확인하세요.');}
+    triggers.filter(function(t) {return t.getUniqueId()!==trigger.getUniqueId();}).forEach(function(t) {ScriptApp.deleteTrigger(t);});
+    return logCleanupSummary_({success:true,installed:true,intervalMinutes:5,created:created});
+  } finally {lock.releaseLock();}
+}
+function removeSaveReceiptCleanupTrigger() {
+  var lock=LockService.getScriptLock();if(!lock.tryLock(15000))throw new Error('트리거 관리 잠금 실패');
+  try {
+    var props=PropertiesService.getScriptProperties(), triggers=cleanupTriggers_();
+    var registered=props.getProperty('SAVE_RECEIPT_CLEANUP_TRIGGER'); if(registered && !triggers.some(function(t) {return t.getUniqueId()===registered;})) throw new Error('설치한 관리자 계정에서 삭제하세요.');
+    triggers.forEach(function(t) {ScriptApp.deleteTrigger(t);});props.deleteProperty('SAVE_RECEIPT_CLEANUP_TRIGGER');
+    return logCleanupSummary_({success:true,removed:triggers.length});
+  } finally {lock.releaseLock();}
+}
+function getSaveReceiptCleanupStatus() {
+  var props=PropertiesService.getScriptProperties(), triggers=cleanupTriggers_(), visible=triggers.length, uid=props.getProperty('SAVE_RECEIPT_CLEANUP_TRIGGER'), registered=Boolean(uid), managedVisible=triggers.some(function(t) {return t.getUniqueId()===uid;}), entries=props.getProperties();
+  return logCleanupSummary_({visibleTriggers:visible,registered:registered,installed:managedVisible?true:registered?null:false,unmanagedVisibleTriggers:visible-(managedVisible?1:0),intervalMinutes:managedVisible?5:null,receiptCount:Object.keys(entries).filter(function(k) {return k.indexOf('save-receipt:')===0;}).length,last:cleanupLastResult_(props.getProperty('SAVE_RECEIPT_CLEANUP_LAST')),notice:registered&&!managedVisible?'설치 관리자 계정에서 확인 필요':''});
+}
+function receiptKey_(id) {
+  if(!/^[a-zA-Z0-9_-]{16,100}$/.test(String(id || ''))) throw new Error('잘못된 저장 요청 ID입니다.');
+  return 'save-receipt:'+id;
+}
+function receiptRead_(id) { var text=PropertiesService.getScriptProperties().getProperty(receiptKey_(id)); return text ? JSON.parse(text) : null; }
+function receiptWrite_(id,value) { try {PropertiesService.getScriptProperties().setProperty(receiptKey_(id),JSON.stringify(value));} catch(e) {throw new Error('저장 중복방지 기록을 보관할 수 없습니다. 관리자에게 receipt 정리 상태와 Script Properties 저장 공간 확인을 요청하세요. 저장 결과는 확인 전까지 불명확합니다.');} }
 
 function studentKey_(value) {
   var parts = typeof value === 'object' ? [value.grade, value.classNum || value.classNo || value.class, value.number] : String(value || '').split('-');
@@ -263,29 +452,101 @@ function headerName_(name) {
   };
   return aliases[norm] || norm;
 }
+function timeSheetRead_(reader) {
+  var at=Date.now();
+  try { return reader(); }
+  finally { if(requestPerformance_) { requestPerformance_.sheetReadMs+=Date.now()-at; requestPerformance_.sheetReadCalls++; } }
+}
+function readSheetValues_(range) { return timeSheetRead_(function() { return range.getValues(); }); }
+// Student-request-only metadata snapshots. Never shared across requests; writes invalidate sizes.
+function sheetName_(sheet) {
+  var context=requestReadContext_;
+  if(!context || !context.studentKey)return sheet.getName();
+  var entries=context.sheetNames || (context.sheetNames=[]);
+  for(var i=0;i<entries.length;i++)if(entries[i].sheet===sheet)return entries[i].name;
+  var name=sheet.getName();entries.push({sheet:sheet,name:name});return name;
+}
+function sheetMetadata_(sheet, method) {
+  var context=requestReadContext_;
+  if(!context || !context.studentKey)return sheet[method]();
+  var all=context.metadata || (context.metadata={}), name=sheetName_(sheet), values=all[name] || (all[name]={});
+  if(!Object.prototype.hasOwnProperty.call(values,method))values[method]=sheet[method]();
+  return values[method];
+}
 function physicalHeaders_(sheet) {
-  return sheet.getLastColumn() ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
+  var context=requestReadContext_, name=sheetName_(sheet);
+  if(context && context.physical && context.physical[name]) return context.physical[name].slice();
+  var width=sheetMetadata_(sheet, 'getLastColumn');
+  var headers=width ? readSheetValues_(sheet.getRange(1, 1, 1, width))[0] : [];
+  if(context) { context.physical=context.physical || {}; context.physical[name]=headers.slice(); }
+  return headers;
 }
 function logicalHeaders_(sheet, physical) {
-  var names = (schemas_()[sheet.getName()] || []).slice();
+  var names = (schemas_()[sheetName_(sheet)] || []).slice();
   (physical || physicalHeaders_(sheet)).forEach(function(header) {
     if (names.every(function(name) { return headerName_(name) !== headerName_(header); })) names.push(header);
   });
   return names;
 }
+// Batch only adjacent identifier columns, never read answer/name columns between them.
+function readIdentityColumns_(sheet,physical,fields,count) {
+  var columns = fields.map(function(field) { return {field:field,col:physical.findIndex(function(h) { return headerName_(h) === headerName_(field); })+1}; }).filter(function(entry) { return entry.col > 0; }).sort(function(a,b) { return a.col-b.col; });
+  var result = {};
+  for (var i=0;i<columns.length;) {
+    var group=[columns[i++]], start=group[0].col;
+    while(i<columns.length && columns[i].col===start+group.length) group.push(columns[i++]);
+    var values = count ? readSheetValues_(sheet.getRange(2,start,count,group.length)) : [];
+    group.forEach(function(entry,index) { result[entry.field] = values.map(function(row) { return [row[index]]; }); });
+  }
+  return result;
+}
 function readTable_(sheet, readContext) {
-  var name = sheet.getName();
+  readContext = readContext || requestReadContext_;
+  var name = sheetName_(sheet);
   if (readContext && readContext.tables[name]) return readContext.tables[name];
-  var data = sheet.getDataRange().getValues();
+  var data;
+  var key = readContext && readContext.studentKey;
+  if (key) {
+    var physicalColumns = readContext.physical && readContext.physical[name] || physicalHeaders_(sheet);
+    var count = Math.max(0,sheetMetadata_(sheet, 'getLastRow') - 1);
+    var rosterFields=['grade','class','number','name','googleId'];
+    var compactRoster=name==='Roster' && physicalColumns.length===5 && rosterFields.every(function(f) { return physicalColumns.filter(function(h) { return headerName_(h)===headerName_(f); }).length===1; });
+    var identityNames = name === 'Roster' ? (compactRoster ? rosterFields : ['grade','class','number']) : ['studentKey'];
+    var identifiers = readContext.identifiers && readContext.identifiers[name] || readIdentityColumns_(sheet,physicalColumns,identityNames,count);
+    if (name !== 'Roster' && (!identifiers.studentKey || identifiers.studentKey.some(function(row) {
+      try { studentKey_(row[0]); return false; } catch (ignored) { return true; }
+    }))) {
+      var fallback = readIdentityColumns_(sheet,physicalColumns,['grade','class','number'],count);
+      Object.keys(fallback).forEach(function(field) { identifiers[field] = fallback[field]; });
+    }
+    data = [physicalColumns];
+    for (var index = 0; index < count; index++) {
+      var rowKey;
+      try {
+        var rawKey = identifiers.studentKey && identifiers.studentKey[index][0];
+        rowKey = studentKey_(rawKey || {grade:identifiers.grade && identifiers.grade[index][0],class:identifiers.class && identifiers.class[index][0],number:identifiers.number && identifiers.number[index][0]});
+      } catch (ignored) {}
+      var ownRow=[];
+      if(rowKey===key) {
+        // Roster's five required fields may be read together; names/IDs remain server-only.
+        if(name==='Roster' && physicalColumns.every(function(h) { return rosterFields.some(function(f) { return headerName_(f)===headerName_(h); }); }) && identifiers.name && identifiers.googleId) {
+          ownRow=physicalColumns.map(function(h) { var f=rosterFields.find(function(f) { return headerName_(f)===headerName_(h); }); return identifiers[f][index][0]; });
+        } else ownRow=readSheetValues_(sheet.getRange(index+2,1,1,physicalColumns.length))[0];
+      }
+      data.push(ownRow);
+    }
+  } else {
+    data = readSheetValues_(sheet.getDataRange());
+  }
   var physical = data[0] || [];
-  var logical = logicalHeaders_(sheet, readContext ? physical : undefined);
+  var logical = logicalHeaders_(sheet, physical);
   var columns = logical.map(function(header) { return physical.findIndex(function(h) { return headerName_(h) === headerName_(header); }); });
   var table = [logical].concat(data.slice(1).map(function(row) {
     return columns.map(function(col) { return col < 0 ? undefined : row[col]; });
   }));
   if (readContext) {
     readContext.tables[name] = table;
-    readContext.emptySheets[name] = sheet.getLastRow() === 0 || sheet.getLastColumn() === 0;
+    readContext.emptySheets[name] = sheetMetadata_(sheet, 'getLastRow') === 0 || sheetMetadata_(sheet, 'getLastColumn') === 0;
   }
   return table;
 }
@@ -298,15 +559,24 @@ function writePatch_(sheet, index, patch, physical) {
     if (!matches.length) { headers.push(key); matches.push(headers.length); }
     return {col:matches[0],value:patch[key]};
   });
-  if (headers.length > sheet.getMaxColumns()) sheet.insertColumnsAfter(sheet.getMaxColumns(), headers.length - sheet.getMaxColumns());
-  if (headers.length > originalLength) sheet.getRange(1, originalLength + 1, 1, headers.length - originalLength).setValues([headers.slice(originalLength)]);
-  index = index > 0 ? index : Math.max(2, sheet.getLastRow() + 1);
+  // Existing physical headers already fit. Ask capacity only when adding a column.
+  if (headers.length > originalLength && headers.length > sheetMetadata_(sheet, 'getMaxColumns')) timeSheetMutation_(function() { sheet.insertColumnsAfter(sheetMetadata_(sheet, 'getMaxColumns'), headers.length - sheetMetadata_(sheet, 'getMaxColumns')); });
+  if (headers.length > originalLength) timeSheetMutation_(function() { sheet.getRange(1, originalLength + 1, 1, headers.length - originalLength).setValues([headers.slice(originalLength)]); });
+  index = index > 0 ? index : Math.max(2, sheetMetadata_(sheet, 'getLastRow') + 1);
   entries.sort(function(a,b) { return a.col-b.col; });
   // Batch adjacent known cells, never include unknown columns in a write range.
   for (var i=0;i<entries.length;) {
     var start=entries[i].col, values=[entries[i++].value];
     while(i<entries.length && entries[i].col===start+values.length) values.push(entries[i++].value);
-    sheet.getRange(index,start,1,values.length).setValues([values]);
+    timeSheetMutation_(function() { sheet.getRange(index,start,1,values.length).setValues([values]); });
+  }
+  if (requestReadContext_) {
+    if(requestReadContext_.metadata) delete requestReadContext_.metadata[sheetName_(sheet)];
+    delete requestReadContext_.tables[sheetName_(sheet)];
+    delete requestReadContext_.headerMaps[sheetName_(sheet)];
+    delete requestReadContext_.emptySheets[sheetName_(sheet)];
+    if(requestReadContext_.physical) delete requestReadContext_.physical[sheetName_(sheet)];
+    if(requestReadContext_.identifiers) delete requestReadContext_.identifiers[sheetName_(sheet)];
   }
   return index;
 }
@@ -341,14 +611,14 @@ function matchingRows_(sheet, key, readContext) {
 function normalizeName_(name) { return String(name || '').normalize('NFC').replace(/\\s+/g, ''); }
 // Quarantine by exclusion: never adopt, return, update or delete unidentified Tests.
 function isUnownedLegacyTest_(sheet, row, map) {
-  return sheet.getName() === 'Tests' && ['ownerName','ownerGoogleId','name','googleId'].every(function(field) {
+  return sheetName_(sheet) === 'Tests' && ['ownerName','ownerGoogleId','name','googleId'].every(function(field) {
     return !String(getValByHeader(row,map,[field]) || '').trim();
   });
 }
 function assertStudentOwnsRows_(ss, student, readContext) {
   var rows = [];
   ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
-    var sheet = ss.getSheetByName(name);
+    var sheet = requestSheet_(ss,name);
     if (!sheet) return;
     var map = getHeaderMap(sheet, readContext);
     matchingRows_(sheet, student.studentKey, readContext).forEach(function(entry) {
@@ -374,7 +644,7 @@ function latestTable_(sheet) {
   data.slice(1).forEach(function(row) {
     try { var key=studentKey_(getValByHeader(row,map,['studentKey']) || {grade:getValByHeader(row,map,['grade']),classNum:getValByHeader(row,map,['class']),number:getValByHeader(row,map,['number'])}); keys[key]=true; } catch(e) {}
   });
-  return [data[0]].concat(Object.keys(keys).sort().map(function(key){return selectStudentRow_(sheet,key);}).filter(function(selected){return Boolean(selected);}).map(function(selected){return selected.row;}));
+  return [data[0]].concat(Object.keys(keys).sort().map(function(key){return selectStudentRow_(sheet,key,data);}).filter(function(selected){return Boolean(selected);}).map(function(selected){return selected.row;}));
 }
 
 function isValidAdminRequest_(data) {
@@ -396,17 +666,18 @@ function initSheetsIfNeeded(ss) {
   };
   
   sheetNames.forEach(function(name) {
-    var sheet = ss.getSheetByName(name);
+    var sheet = requestSheet_(ss,name);
     if (!sheet) {
       sheet = ss.insertSheet(name);
-      sheet.appendRow(headers[name]);
+      timeSheetMutation_(function() {sheet.appendRow(headers[name]);});
     }
   });
 }
 
 function getHeaderMap(sheet, readContext) {
+  readContext = readContext || requestReadContext_;
   if (!sheet) return {};
-  var name = sheet.getName();
+  var name = sheetName_(sheet);
   if (readContext && readContext.headerMaps[name]) return readContext.headerMaps[name];
   var headers;
   if (readContext) {
@@ -512,13 +783,25 @@ function verifyStudent(ss, params, readContext) {
 }
 
 function getRosterOptions(ss) {
-  var sheet = ss.getSheetByName('Roster');
+  var cache = CacheService.getScriptCache();
+  var cached = cache.get('roster-options-v2');
+  if (cached) return JSON.parse(cached);
+  var sheet = requestSheet_(ss,'Roster');
   if (!sheet) return { success: false, message: 'Roster 시트를 찾을 수 없습니다.' };
-  var data = readTable_(sheet);
+  var physical = physicalHeaders_(sheet);
+  var logical = logicalHeaders_(sheet,physical);
+  var data = [logical], count = Math.max(0,sheet.getLastRow()-1);
+  var identifiers = readIdentityColumns_(sheet,physical,['grade','class','number'],count);
+  for (var i=0;i<count;i++) {
+    var row = [];
+    ['grade','class','number'].forEach(function(field) { row[logical.indexOf(field)] = identifiers[field] ? identifiers[field][i][0] : ''; });
+    data.push(row);
+  }
   var gradesSet = {};
   var classesByGrade = {};
   var numbersByClass = {};
-  var headerMap = getHeaderMap(sheet);
+  var headerMap = {};
+  logical.forEach(function(header,index) { headerMap[header] = index; headerMap[String(header).toLowerCase().replace(/[\\s_.:/-]+/g,'')] = index; });
   
   for (var i = 1; i < data.length; i++) {
     var row = data[i];
@@ -544,7 +827,7 @@ function getRosterOptions(ss) {
     numbersByClass[k].sort(function(a, b) { return a - b; });
   });
 
-  return {
+  var result = {
     success: true,
     data: {
       grades: grades,
@@ -552,10 +835,12 @@ function getRosterOptions(ss) {
       numbersByClass: numbersByClass
     }
   };
+  cache.put('roster-options-v2',JSON.stringify(result),45);
+  return result;
 }
 
 function getStudentTests(ss, studentKey, readContext) {
-  var sheet = ss.getSheetByName('Tests');
+  var sheet = requestSheet_(ss,'Tests');
   if (!sheet) return null;
   var data = studentRowsForRead_(sheet, studentKey_(studentKey), readContext);
   if (data.length <= 1) return null;
@@ -609,7 +894,7 @@ function getStudentTests(ss, studentKey, readContext) {
 }
 
 function getStudentSubmission(ss, studentKey, readContext) {
-  var sheet = ss.getSheetByName('Submissions');
+  var sheet = requestSheet_(ss,'Submissions');
   if (!sheet) return null;
   var data = studentRowsForRead_(sheet, studentKey_(studentKey), readContext);
   if (data.length <= 1) return null;
@@ -696,7 +981,7 @@ function loadProgress(ss, studentKey, readContext) {
   var targetClass = parts.length >= 2 ? parseInt(parts[1], 10) : -1;
   var targetNum = parts.length >= 3 ? parseInt(parts[2], 10) : -1;
 
-  var sheet = ss.getSheetByName('Progress');
+  var sheet = requestSheet_(ss,'Progress');
   var progressData = null;
 
   if (sheet) {
@@ -887,7 +1172,7 @@ function loadProgress(ss, studentKey, readContext) {
 
   // Lookup and retain googleId from Roster sheet
   try {
-    var rosterSheet = ss.getSheetByName('Roster');
+    var rosterSheet = requestSheet_(ss,'Roster');
     if (rosterSheet) {
       var rData = readTable_(rosterSheet, readContext);
       if (rData.length > 1) {
@@ -917,7 +1202,7 @@ function loadProgress(ss, studentKey, readContext) {
 }
 
 function saveProgress(ss, progress, progressWrite) {
-  var sheet = ss.getSheetByName('Progress');
+  var sheet = requestSheet_(ss,'Progress');
   if (!sheet) return { success: false, message: 'Progress 시트를 찾을 수 없습니다.' };
   var studentKey = studentKey_(progress.studentKey || progress);
   var table = progressWrite ? readTable_(sheet) : undefined;
@@ -1010,33 +1295,36 @@ function saveProgress(ss, progress, progressWrite) {
     googleId
   ];
   
-  if (rowIndex > 0) {
-    writeRow_(sheet, rowIndex, rowData, progressWrite);
-  } else {
-    rowIndex = writeRow_(sheet, -1, rowData, progressWrite);
-  }
-  
-  var extra = existingRow ? objectJson_(getValByHeader(existingRow, getHeaderMap(sheet), ['stepData'])) : {};
-  ['step1', 'step2', 'step3', 'step4', 'step5', 'step6'].forEach(function(key) {
-    if (progress[key] !== undefined) extra[key] = progress[key];
-  });
-  if (Object.keys(extra).length) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'stepData', extra, progressWrite && progressWrite.physicalHeaders);
-  if (progressWrite) progressWrite.index = rowIndex;
+  var logical = table ? table[0] : logicalHeaders_(sheet);
+  var physical = progressWrite ? progressWrite.physicalHeaders : physicalHeaders_(sheet);
+  var original = selected ? (table || readTable_(sheet))[selected.index-1] : [];
+  var patch = {};
+  rowData.forEach(function(value,i) { if (!selected || value !== original[i]) patch[logical[i]] = value; });
+  var fields = objectJson_(getValByHeader(original,getHeaderMap(sheet),['writtenFields'])).fields || [];
+  fields = fields.concat(rowData.map(function(value,i) { return headerName_(logical[i]); }));
+  patch.writtenFields = JSON.stringify({fields:fields.filter(function(value,i) { return fields.indexOf(value) === i; })});
+  var extra = existingRow ? objectJson_(getValByHeader(existingRow,getHeaderMap(sheet),['stepData'])) : {};
+  ['step1','step2','step3','step4','step5','step6'].forEach(function(key) { if (progress[key] !== undefined) extra[key] = progress[key]; });
+  if (Object.keys(extra).length) patch.stepData = JSON.stringify(extra);
+  patch.ownerName = progress.name || '';
+  patch.ownerGoogleId = progress.googleId || '';
+  rowIndex = writePatch_(sheet,rowIndex,patch,physical);
+  if (progressWrite) { progressWrite.index = rowIndex; progressWrite.ownerRecorded = true; }
   return { success: true, message: '진행 상황이 저장되었습니다.', studentKey: studentKey, savedAt: now };
 }
 
 function resetStudentData(ss, params) {
   assertStudentOwnsRows_(ss, params);
   ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
-    var sheet = ss.getSheetByName(name);
+    var sheet = requestSheet_(ss,name);
     if (!sheet) return;
-    matchingRows_(sheet, params.studentKey).filter(function(entry){return !isUnownedLegacyTest_(sheet,entry.row,getHeaderMap(sheet));}).sort(function(a,b){return b.index-a.index;}).forEach(function(entry){sheet.deleteRow(entry.index);});
+    matchingRows_(sheet, params.studentKey).filter(function(entry){return !isUnownedLegacyTest_(sheet,entry.row,getHeaderMap(sheet));}).sort(function(a,b){return b.index-a.index;}).forEach(function(entry){timeSheetMutation_(function() {sheet.deleteRow(entry.index);});});
   });
   return {success:true,message:'기존 활동 자료를 초기화했습니다.'};
 }
 
 function advanceProgress_(ss, key, step, now) {
-  var sheet=ss.getSheetByName('Progress'), selected=sheet && selectStudentRow_(sheet,key);
+  var sheet=requestSheet_(ss,'Progress'), selected=sheet && selectStudentRow_(sheet,key);
   if(selected) writePatch_(sheet,selected.index,{currentStep:Math.max(Number(selected.row[5]) || 1,step),updatedAt:now});
 }
 function submittedValue_(payload, selected, column, names) {
@@ -1044,8 +1332,21 @@ function submittedValue_(payload, selected, column, names) {
   return selected && selected.row[column] !== undefined ? selected.row[column] : '';
 }
 
+function writeStudentRecord_(sheet,selected,rowData,student,extra) {
+  var table=readTable_(sheet), logical=table[0], original=selected ? table[selected.index-1] : [];
+  var patch={};
+  rowData.forEach(function(value,i) { if(logical[i] && value !== undefined && (!selected || value !== original[i])) patch[logical[i]]=value; });
+  if (logical.indexOf('updatedAt') === -1) patch.updatedAt=new Date().toISOString();
+  var fields=(objectJson_(getValByHeader(original,getHeaderMap(sheet),['writtenFields'])).fields || []).concat(rowData.map(function(value,i) { return headerName_(logical[i]); }));
+  if (patch.updatedAt !== undefined) fields.push('updatedat');
+  patch.writtenFields=JSON.stringify({fields:fields.filter(function(value,i) { return value && fields.indexOf(value)===i; })});
+  patch.ownerName=student.name || '';
+  patch.ownerGoogleId=student.googleId || '';
+  Object.keys(extra || {}).forEach(function(key) { patch[key]=extra[key]; });
+  return writePatch_(sheet,selected ? selected.index : -1,patch);
+}
 function saveTests(ss, params) {
-  var sheet = ss.getSheetByName('Tests');
+  var sheet = requestSheet_(ss,'Tests');
   if (!sheet) return { success: false, message: 'Tests 시트를 찾을 수 없습니다.' };
   var studentKey = studentKey_(params.studentKey);
   var selected = selectStudentRow_(sheet, studentKey);
@@ -1065,17 +1366,10 @@ function saveTests(ss, params) {
     now
   ];
   
-  if (rowIndex > 0) {
-    writeRow_(sheet, rowIndex, rowData);
-  } else {
-    rowIndex = writeRow_(sheet, -1, rowData);
-  }
-  
-  recordOwner_(sheet, rowIndex, params);
-  if (params.step8) writeExtraJson_(sheet, rowIndex > 0 ? rowIndex : sheet.getLastRow(), 'step8Data', params.step8);
+  rowIndex=writeStudentRecord_(sheet,selected,rowData,params,params.step8 ? {step8Data:JSON.stringify(params.step8)} : {});
 
   // Update currentStep in Progress sheet to at least 8
-  advanceProgress_(ss, studentKey, 8, now);
+  advanceProgress_(ss, studentKey, Math.max(8,Number(params.currentStep)||8), now);
   
   return { success: true, message: '테스트 결과가 저장되었습니다.', studentKey: studentKey, savedAt: now };
 }
@@ -1083,20 +1377,20 @@ function saveTests(ss, params) {
 function updateRevision(ss, params) {
   var result = saveProgress(ss, params);
   if (!result.success) return result;
-  return saveTests(ss, {studentKey: params.studentKey, name:params.name, googleId:params.googleId, problemDescription: params.problemDescription, revisionNote: params.revisionNote});
+  return saveTests(ss, {studentKey: params.studentKey, name:params.name, googleId:params.googleId, problemDescription: params.problemDescription, revisionNote: params.revisionNote, currentStep: params.currentStep});
 }
 
 function submitFinal(ss, submission) {
-  var sheet = ss.getSheetByName('Submissions');
+  var sheet = requestSheet_(ss,'Submissions');
   if (!sheet) {
-    initSheetsIfNeeded(ss);
-    sheet = ss.getSheetByName('Submissions');
+    if (['Roster','Progress','Tests','Submissions'].some(function(name) { return !requestSheet_(ss,name); })) initSheetsIfNeeded(ss);
+    sheet = requestSheet_(ss,'Submissions');
   }
   if (!sheet) return { success: false, message: 'Submissions 시트를 찾을 수 없습니다.' };
   
   var headers = ['studentKey', 'grade', 'class', 'number', 'name', 'roleModelName', 'roleModelJob', 'chatbotName', 'finalPrompt', 'gemUrl', 'barrierAnswer', 'barrierReflection', 'decisionAnswer', 'decisionReflection', 'educationAnswer', 'educationReflection', 'finalCareerReflection', 'revisionSummary', 'submittedAt'];
-  if (sheet.getLastRow() === 0) {
-    sheet.appendRow(headers);
+  if (sheetMetadata_(sheet, 'getLastRow') === 0) {
+    timeSheetMutation_(function() {sheet.appendRow(headers);});
 
   }
   
@@ -1135,20 +1429,16 @@ function submitFinal(ss, submission) {
     submittedAt
   ];
   
-  if (rowIndex > 0) {
-    writeRow_(sheet, rowIndex, rowData);
-  } else {
-    rowIndex = writeRow_(sheet, -1, rowData);
-  }
-  
+  rowIndex=writeStudentRecord_(sheet,selected,rowData,submission,{});
+
   // Update Progress sheet: currentStep = 10
   advanceProgress_(ss, studentKey, 10, now);
   
-  return { success: true, message: '제출이 완료되었습니다.', studentKey: studentKey, submittedAt: submittedAt };
+  return { success: true, message: '제출이 완료되었습니다.', studentKey: studentKey, submittedAt: submittedAt, savedAt: now };
 }
 
 function submitCounseling(ss, counseling) {
-  var sheet = ss.getSheetByName('Counseling');
+  var sheet = requestSheet_(ss,'Counseling');
   if (!sheet) return { success: false, message: 'Counseling 시트를 찾을 수 없습니다.' };
   
   var studentKey = studentKey_(counseling.studentKey || counseling);
@@ -1197,7 +1487,7 @@ function submitCounseling(ss, counseling) {
 }
 
 function getAllProgress(ss) {
-  var sheet = ss.getSheetByName('Progress');
+  var sheet = requestSheet_(ss,'Progress');
   if (!sheet) return { success: true, list: [] };
   var data = latestTable_(sheet);
   var list = [];
@@ -1241,7 +1531,7 @@ function getAllProgress(ss) {
 }
 
 function updateRoster(ss, rosterItems, mode) {
-  var sheet=ss.getSheetByName('Roster');
+  var sheet=requestSheet_(ss,'Roster');
   if (!Array.isArray(rosterItems)) throw new Error('학생 명단 형식을 확인해 주세요.');
   var items=rosterItems.map(function(item){
     var key=studentKey_(item), name=String(item.name || '').trim();
@@ -1267,13 +1557,13 @@ function updateRoster(ss, rosterItems, mode) {
   return {success:true,count:mode==='replace'?items.length:added,mode:mode,message:'학생 명단이 반영되었습니다.'};
 }
 function deleteRosterStudents(ss, students) {
-  var sheet=ss.getSheetByName('Roster'), count=0;
+  var sheet=requestSheet_(ss,'Roster'), count=0;
   (students || []).forEach(function(student){
     matchingRows_(sheet,studentKey_(student)).sort(function(a,b){return b.index-a.index;}).forEach(function(entry){
       var known=schemas_().Roster.map(headerName_);
       var hasExtra=physicalHeaders_(sheet).some(function(h){return known.indexOf(headerName_(h))===-1;});
       if(hasExtra)writePatch_(sheet,entry.index,{grade:'',class:'',number:'',name:'',googleId:''});
-      else sheet.deleteRow(entry.index);
+      else timeSheetMutation_(function() {sheet.deleteRow(entry.index);});
       count++;
     });
   });
@@ -1281,10 +1571,10 @@ function deleteRosterStudents(ss, students) {
 }
 
 function getAdminDashboard(ss) {
-  var rosterSheet = ss.getSheetByName('Roster');
-  var progressSheet = ss.getSheetByName('Progress');
-  var testSheet = ss.getSheetByName('Tests');
-  var subSheet = ss.getSheetByName('Submissions');
+  var rosterSheet = requestSheet_(ss,'Roster');
+  var progressSheet = requestSheet_(ss,'Progress');
+  var testSheet = requestSheet_(ss,'Tests');
+  var subSheet = requestSheet_(ss,'Submissions');
   
   var rosterList = [];
   var rosterKeys = {};
@@ -1477,53 +1767,11 @@ function getAdminDashboard(ss) {
     var updatedAt = (s && s.submittedAt) || (p && p.updatedAt) || (t && t.testedAt) || '';
 
     var studentItem = {
-      studentKey: key,
-      grade: r.grade,
-      class: r.classNum,
-      classNum: r.classNum,
-      number: r.number,
-      name: r.name,
-      googleId: r.googleId || '',
-      roleModelName: roleModelName,
-      roleModelJob: roleModelJob,
-      roleModelReason: (p && p.roleModelReason) || '',
-      jobDescription: (p && p.jobDescription) || '',
-      competencies: (p && p.competencies) || '',
-      careerHistory: (p && p.careerHistory) || '',
-      strengths: (p && p.strengths) || '',
-      values: (p && p.values) || '',
-      challengeExperience: (p && p.challengeExperience) || '',
-      chatbotPurposes: (p && p.chatbotPurposes) || '',
-      targetUser: (p && p.targetUser) || '',
-      expectedOutcome: (p && p.expectedOutcome) || '',
-      personality: (p && p.personality) || '',
-      speakingStyle: (p && p.speakingStyle) || '',
-      honorificStyle: (p && p.honorificStyle) || '',
-      desiredFeeling: (p && p.desiredFeeling) || '',
-      answerLength: (p && p.answerLength) || '',
-      answerElements: (p && p.answerElements) || '',
-      chatbotName: chatbotName,
-      initialPrompt: (p && p.initialPrompt) || '',
-      revisedPrompt: (p && p.revisedPrompt) || '',
-      finalPrompt: (s && s.finalPrompt) || (p && p.finalPrompt) || (p && p.revisedPrompt) || (p && p.initialPrompt) || '',
-      currentStep: currentStep,
-      updatedAt: updatedAt,
-      promptCompleted: promptCompleted,
-      testCompleted: testCompleted,
-      gemUrl: gemUrl,
-      submitted: submitted,
-      problemDescription: (t && t.problemDescription) || '',
-      revisionNote: (t && t.revisionNote) || (s && s.revisionSummary) || '',
-      testedAt: (t && t.testedAt) || '',
-      sampleQuestion1: (s && s.sampleQuestion1) || '',
-      sampleAnswer1: (s && s.sampleAnswer1) || '',
-      sampleQuestion2: (s && s.sampleQuestion2) || '',
-      sampleAnswer2: (s && s.sampleAnswer2) || '',
-      sampleQuestion3: (s && s.sampleQuestion3) || '',
-      sampleAnswer3: (s && s.sampleAnswer3) || '',
-      revisionSummary: (s && s.revisionSummary) || (t && t.revisionNote) || '',
-      reflection: (s && s.reflection) || '',
-      submittedAt: (s && s.submittedAt) || ''
+      studentKey:key,grade:r.grade,class:r.classNum,classNum:r.classNum,number:r.number,
+      name:r.name,googleId:r.googleId || '',roleModelName:roleModelName,roleModelJob:roleModelJob,
+      chatbotName:chatbotName,currentStep:currentStep,updatedAt:updatedAt,
+      promptCompleted:promptCompleted,testCompleted:testCompleted,gemUrl:gemUrl,
+      submitted:submitted,submittedAt:(s && s.submittedAt)||''
     };
     studentList.push(studentItem);
 
@@ -1609,7 +1857,7 @@ function getStudentDetail(ss, studentKey) {
   var name = String(p.name || '').trim();
   var studentGoogleId = String(p.googleId || '').trim();
 
-  var rosterSheet = ss.getSheetByName('Roster');
+  var rosterSheet = requestSheet_(ss,'Roster');
   if (rosterSheet) {
     var rData = readTable_(rosterSheet);
     for (var i = 1; i < rData.length; i++) {
@@ -1637,7 +1885,7 @@ function getStudentDetail(ss, studentKey) {
   var revisionNote = '';
   var testedAt = '';
 
-  var testSheet = ss.getSheetByName('Tests');
+  var testSheet = requestSheet_(ss,'Tests');
   if (testSheet) {
     var tData = latestTable_(testSheet);
     for (var j = 1; j < tData.length; j++) {
@@ -1828,6 +2076,59 @@ function getStudentDetail(ss, studentKey) {
   };
 }
 
-`;
+// Editor-only setup for an EMPTY, explicitly marked, dedicated test spreadsheet.
+function initializeEmptyPerformanceFixture() {
+  var ss=SpreadsheetApp.getActiveSpreadsheet(), properties=PropertiesService.getScriptProperties();
+  if(properties.getProperty('PERF_TEST_MODE')!=='synthetic-25' || properties.getProperty('PERF_TEST_SPREADSHEET_ID')!==ss.getId()) throw new Error('테스트 전용 설정이 필요합니다.');
+  var lock=LockService.getScriptLock(); if(!lock.tryLock(15000)) throw new Error('테스트 초기화 잠금을 얻지 못했습니다.');
+  try {
+    if(ss.getSheets().some(function(sheet) { return sheet.getLastRow()>0; })) throw new Error('완전히 빈 테스트 스프레드시트만 초기화할 수 있습니다.');
+    initSheetsIfNeeded(ss);
+    var students=Array.from({length:25},function(_,i) { return {grade:3,classNum:99,number:i+1,name:'Synthetic Student '+(i+1),googleId:'synthetic'+(i+1)+'@example.invalid'}; });
+    updateRoster(ss,students,'append'); SpreadsheetApp.flush();
+  } finally { lock.releaseLock(); }
 }
 
+function timeSheetMutation_(callback) {var at=Date.now();try{return callback();}finally{if(requestPerformance_)requestPerformance_.sheetWriteMs+=Date.now()-at;}}
+function validatePerformanceRun_(ss,params) {
+  var props=PropertiesService.getScriptProperties(), run=objectJson_(props.getProperty('PERF_ACTIVE_RUN'));
+  if(props.getProperty('PERF_TEST_MODE')!=='synthetic-25'||props.getProperty('PERF_TEST_SPREADSHEET_ID')!==ss.getId()||run.runId!==params.performanceRunId||!(run.exp>Date.now()))throw new Error('시험 세션이 종료되었거나 유효하지 않습니다.');
+  if(['getPerformanceSnapshot','finishPerformanceRun','getPerformanceTrace'].indexOf(params.action)!==-1) {if(params.performanceSubject!=='run')throw new Error('시험 범위 불일치');return;}
+  var subject=params.performanceSubject;
+  if(!/^3-99-([1-9]|1[0-9]|2[0-5])$/.test(subject))throw new Error('합성 학생만 시험할 수 있습니다.');
+  var key=params.action==='verifyStudent'?studentKey_(params):studentKey_(params.studentKey);
+  if(key!==subject)throw new Error('시험 학생 범위 불일치');
+}
+function performanceSnapshot_(ss) {
+  var sheets={}, foreignRows=0;
+  ['Progress','Tests','Submissions'].forEach(function(name) {
+    var s=requestSheet_(ss,name), h=physicalHeaders_(s), ids=readIdentityColumns_(s,h,['studentKey'],Math.max(0,s.getLastRow()-1)).studentKey || [], seen={}, duplicates=0;
+    ids.forEach(function(row) {var key=String(row[0]);if(!/^3-99-([1-9]|1[0-9]|2[0-5])$/.test(key))foreignRows++;if(seen[key])duplicates++;seen[key]=true;});
+    sheets[name]={rows:ids.length,duplicates:duplicates};
+  });
+  return {success:true,sheets:sheets,foreignRows:foreignRows};
+}
+
+function logCleanupSummary_(summary) { if(typeof Logger!=='undefined')Logger.log(JSON.stringify(summary));return summary; }
+function cleanupLastResult_(text) {
+  var raw=objectJson_(text), result={};
+  ['deleted','remaining','protectedPending','protectedUnknownState','invalidExpiresAt','malformed','deferredExpired'].forEach(function(k) {if(Number.isInteger(raw[k]) && raw[k]>=0)result[k]=raw[k];});
+  if(typeof raw.success==='boolean')result.success=raw.success;
+  if(typeof raw.statusRecorded==='boolean')result.statusRecorded=raw.statusRecorded;
+  if(typeof raw.at==='string' && /^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$/.test(raw.at))result.at=raw.at;
+  return result;
+}
+
+// Existing sheet handles are immutable for a student request; absent sheets are never cached.
+function requestSheet_(ss, name) {
+  var cache=requestSheetCache_;
+  if(!cache)return ss.getSheetByName(name);
+  if(cache.spreadsheet && cache.spreadsheet!==ss)return ss.getSheetByName(name);
+  cache.spreadsheet=ss;
+  if(cache.values[name])return cache.values[name];
+  var sheet=ss.getSheetByName(name);
+  if(sheet)cache.values[name]=sheet;
+  return sheet;
+}
+`;
+}

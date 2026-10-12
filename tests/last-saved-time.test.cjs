@@ -32,6 +32,7 @@ for(let step=1;step<=7;step++) test(`STEP${step}: Header time changes only after
   await act(async()=>{pending=nextButton(tree).props.onClick();});
   assert.equal(header(c,tree).currentStudent.updatedAt,before);
   assert.equal(bar(c,tree).currentStep,step);
+  await new Promise(resolve=>setTimeout(resolve,5));
   const responseStart=Date.now();
   await act(async()=>{release();await pending;});
   const after=header(c,tree).currentStudent;
@@ -56,8 +57,9 @@ test('navigation metadata failure does not update time; successful retry does',a
   c.state.failure='server';
   await act(async()=>{await tree.root.findByType(component(c,2)).props.onNext();});
   assert.equal(header(c,tree).currentStudent.updatedAt,before);assert.equal(bar(c,tree).currentStep,2);
-  c.state.failure=null;const start=Date.now();
+  c.state.failure=null; await act(async()=>{ await c.api.confirmPendingSave(); });const start=Date.now();
   await act(async()=>{await tree.root.findByType(component(c,2)).props.onNext();});
   assert.ok(Date.parse(header(c,tree).currentStudent.updatedAt)>=start);assert.equal(bar(c,tree).currentStep,3);
   await act(async()=>tree.unmount());
 });
+

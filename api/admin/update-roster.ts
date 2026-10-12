@@ -1,6 +1,7 @@
 import { extractAdminToken, verifyAdminSessionToken, callServerGas } from '../_lib.js';
 
 export default async function handler(req: any, res: any) {
+  res.setHeader('Cache-Control','no-store');
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method Not Allowed' });
   }
@@ -36,11 +37,12 @@ export default async function handler(req: any, res: any) {
       message: gasData?.message || 'Google Apps Script 학생 명단 수정에 실패했습니다.',
     });
   } catch (err: any) {
-    console.error('Admin update-roster error:', err);
+    // Error details are deliberately not logged.
     return res.status(500).json({
       success: false,
       message: '학생 명단 저장 실패: ' + (err?.message || 'Server error'),
     });
   }
 }
+
 

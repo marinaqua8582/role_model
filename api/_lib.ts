@@ -109,7 +109,7 @@ export function extractAdminToken(req: any): string | undefined {
  * Call Google Apps Script securely from server with ADMIN_API_SECRET
  */
 export async function callServerGas(payload: Record<string, any>): Promise<any> {
-  const targetUrl = process.env.GAS_URL || process.env.VITE_GAS_URL;
+  const targetUrl = process.env.GAS_URL;
 
   if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('https://')) {
     throw new Error('GAS_URL 환경변수가 설정되지 않았습니다.');
@@ -128,13 +128,14 @@ export async function callServerGas(payload: Record<string, any>): Promise<any> 
     },
     body: JSON.stringify(bodyPayload),
     redirect: 'follow',
+    signal: AbortSignal.timeout(8000),
   });
 
   const text = await response.text();
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`Google Apps Script non-JSON response: ${text.slice(0, 200)}`);
+    throw new Error('Google Apps Script 응답을 확인하지 못했습니다.');
   }
 }
 
@@ -145,3 +146,4 @@ export async function checkAdminConfiguration(): Promise<void> {
   const result = await callServerGas({action:'checkAdminConfig'});
   if (result?.success !== true) throw new Error('GAS와 Vercel의 ADMIN_API_SECRET 설정 또는 GAS 배포 버전을 확인해 주세요.');
 }
+

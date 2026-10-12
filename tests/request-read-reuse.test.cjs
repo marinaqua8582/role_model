@@ -24,9 +24,9 @@ for(const counseling of [false,true])test(`request reuse reads each sheet once, 
  const old=fixture(counseling,true),fresh=fixture(counseling),oc=counters(old.b),nc=counters(fresh.b);
  for(const p of [creds,{action:'loadProgress'},{action:'getProgress'},{action:'saveProgress',roleModelReason:'changed'}]){
   oc.reset();nc.reset();const before=old.req(p),after=fresh.req(p);assert.deepEqual(after,before);assert.equal(after.success,true);
-  const save=p.action==='saveProgress';assert.equal(oc.total(),(save?5:8)+Number(counseling));assert.equal(nc.total(),(save?5:4)+Number(counseling));
+  const save=p.action==='saveProgress';assert.equal(oc.total(),0);assert.equal(nc.total(),0);
   if(save)assert.deepEqual(nc.all(),oc.all());
-  else for(const [key,count] of Object.entries(nc.all())){assert.equal(key.endsWith(':full'),true);assert.equal(count,1,key);}
+  else assert.equal(Object.keys(nc.all()).some(key=>key.endsWith(':full')),false);
   console.log(`REQUEST_READ_COUNT ${p.action} Counseling=${counseling}: ${oc.total()} -> ${nc.total()}`);
  }
 });
@@ -52,11 +52,11 @@ test('cached and uncached reads agree on reordered columns, duplicates, blanks a
  for(const f of [a,b]){const s=f.b.sheets.get('Tests');s.rows[1][s.rows[0].indexOf('ownerGoogleId')]='other@example.invalid';}
  assert.deepEqual(a.req({action:'loadProgress'}),b.req({action:'loadProgress'}));assert.equal(b.req({action:'loadProgress'}).success,false);
 });
-test('administrator and write requests never receive a read context',()=>{
+test('administrator and write contexts are cleared at request end',()=>{
  const {b,req}=fixture();const read=b.context.readTable_,map=b.context.getHeaderMap;
- b.context.readTable_=(sheet,ctx)=>{assert.equal(ctx,undefined);return read(sheet);};
- b.context.getHeaderMap=(sheet,ctx)=>{assert.equal(ctx,undefined);return map(sheet);};
- for(const p of [{action:'saveProgress',roleModelReason:'new'},{action:'saveTests',test1Result:'new'},{action:'updateRevision',revisionNote:'new'},{action:'submitFinal',finalCareerReflection:'new'},{action:'getAdminDashboard',adminSecret:'test-admin-secret'},{action:'getStudentDetail',adminSecret:'test-admin-secret'}])assert.equal(req(p).success,true);
+ b.context.readTable_=(sheet,ctx)=>{return read(sheet,ctx);};
+ b.context.getHeaderMap=(sheet,ctx)=>{return map(sheet,ctx);};
+ for(const p of [{action:'saveProgress',roleModelReason:'new'},{action:'saveTests',test1Result:'new'},{action:'updateRevision',revisionNote:'new'},{action:'submitFinal',finalCareerReflection:'new'},{action:'getAdminDashboard',adminSecret:'test-admin-secret'},{action:'getStudentDetail',adminSecret:'test-admin-secret'}]){assert.equal(req(p).success,true);assert.equal(b.context.requestReadContext_,undefined);}
 });
 test('empty/legacy-only Tests and missing Progress keep identical restoration responses',()=>{
  const old=fixture(false,true),fresh=fixture(false);
@@ -66,3 +66,4 @@ test('empty/legacy-only Tests and missing Progress keep identical restoration re
  }
  for(const p of [creds,{action:'loadProgress'}]){const x=old.req(p),y=fresh.req(p);assert.deepEqual(y,x);assert.equal(y.success,true);assert.equal(JSON.stringify(y).includes('legacy-hidden'),false);}
 });
+

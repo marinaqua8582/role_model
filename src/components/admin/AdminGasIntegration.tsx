@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { getGoogleAppsScriptCode } from '../../utils/gasScriptTemplate';
-import { getEffectiveGasUrl, getStoredGasUrl, setStoredGasUrl } from '../../api/client';
 import { Copy, Check, X, Code2, FileSpreadsheet } from 'lucide-react';
 
 interface AdminGasIntegrationProps {
@@ -9,8 +8,6 @@ interface AdminGasIntegrationProps {
 
 export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClose }) => {
   const [copied, setCopied] = useState(false);
-  const [gasUrl, setGasUrl] = useState(getStoredGasUrl() || getEffectiveGasUrl());
-  const [isSaved, setIsSaved] = useState(false);
 
   const scriptCode = getGoogleAppsScriptCode();
 
@@ -18,13 +15,6 @@ export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClos
     navigator.clipboard.writeText(scriptCode);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleSaveUrl = (e: React.FormEvent) => {
-    e.preventDefault();
-    setStoredGasUrl(gasUrl);
-    setIsSaved(true);
-    setTimeout(() => setIsSaved(false), 2000);
   };
 
   return (
@@ -71,7 +61,7 @@ export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClos
                 상단 우측 <strong>[배포] → [새 배포]</strong> 클릭 후, 유형을 <strong>[웹 앱]</strong>으로 선택하고 액세스 권한을 <strong>[모든 사용자(Anyone)]</strong>로 설정하여 배포합니다.
               </li>
               <li>
-                <strong>관리자 보안 강화 (선택)</strong>: Apps Script의 [프로젝트 설정] → [스크립트 속성]에 <code>ADMIN_API_SECRET</code>을 등록하면 Vercel 서버 인증을 거친 관리자만 전체 학생 명단과 상세 데이터를 조회할 수 있습니다.
+                <strong>관리자 보안 설정 (필수)</strong>: Apps Script의 [프로젝트 설정] → [스크립트 속성]에 <code>ADMIN_API_SECRET</code>을 등록하면 Vercel 서버 인증을 거친 관리자만 전체 학생 명단과 상세 데이터를 조회할 수 있습니다.
               </li>
             </ol>
           </div>
@@ -99,32 +89,7 @@ export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClos
           </div>
 
           {/* Optional Web App URL Config */}
-          <form onSubmit={handleSaveUrl} className="p-5 bg-[#F1F4EF] border border-[#DCE2D7] rounded-2xl space-y-3">
-            <div>
-              <label className="block text-xs font-bold text-[#2C362B] mb-1.5">
-                배포된 Google Apps Script 웹 앱 URL 등록 (선택)
-              </label>
-              <input
-                type="url"
-                value={gasUrl}
-                onChange={(e) => setGasUrl(e.target.value)}
-                placeholder="https://script.google.com/macros/s/.../exec"
-                className="w-full px-3.5 py-2.5 bg-white border border-[#DCE2D7] rounded-xl text-xs font-medium text-[#2C362B] focus:border-[#4B6344] outline-none"
-              />
-            </div>
-
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] text-[#5D6B58]">
-                등록 시 학생의 저장 및 제출 데이터가 구글 시트와 자동 실시간 동기화됩니다.
-              </span>
-              <button
-                type="submit"
-                className="px-4 py-2 bg-[#4B6344] hover:bg-[#3D5237] text-white rounded-xl font-bold text-xs shadow-xs cursor-pointer"
-              >
-                {isSaved ? '저장 완료!' : 'URL 설정 저장'}
-              </button>
-            </div>
-          </form>
+          <div className="p-5 bg-[#F1F4EF] rounded-2xl">배포 URL은 Vercel 서버 환경변수 GAS_URL에 설정해 주세요. 브라우저에 URL을 등록할 필요가 없습니다.</div>
         </div>
 
         {/* Footer */}
@@ -141,4 +106,5 @@ export const AdminGasIntegration: React.FC<AdminGasIntegrationProps> = ({ onClos
     </div>
   );
 };
+
 

@@ -9,6 +9,11 @@ import {
   fetchRoster,
   clearStudentSession,
   isStudentSaving,
+  hasUncertainSave,
+  isSaveOutcomeUnknown,
+  confirmPendingSave,
+  isApiPending,
+  getLastServerSaveTime,
   saveCurrentStudentStep,
   fetchStudentProgress,
   saveStudentProgress,
@@ -22,24 +27,24 @@ import { RefreshCw, AlertCircle } from 'lucide-react';
 import { Header } from './components/common/Header';
 import { StepProgressBar } from './components/common/StepProgressBar';
 import { StudentAuth } from './components/student/StudentAuth';
-import { Step1RoleModel } from './components/student/Step1RoleModel';
-import { Step2Purpose } from './components/student/Step2Purpose';
-import { Step3Personality } from './components/student/Step3Personality';
-import { Step4ResponseStyle } from './components/student/Step4ResponseStyle';
-import { Step5SafetyRules } from './components/student/Step5SafetyRules';
-import { Step6FinalPrompt } from './components/student/Step6FinalPrompt';
-import { Step7GeminiGuide } from './components/student/Step7GeminiGuide';
-import { Step8ChatbotTest } from './components/student/Step8ChatbotTest';
-import { Step9PromptRevision } from './components/student/Step9PromptRevision';
-import { Step10Submission } from './components/student/Step10Submission';
+const Step1RoleModel = React.lazy(() => import('./components/student/Step1RoleModel').then(module => ({default:module.Step1RoleModel})));
+const Step2Purpose = React.lazy(() => import('./components/student/Step2Purpose').then(module => ({default:module.Step2Purpose})));
+const Step3Personality = React.lazy(() => import('./components/student/Step3Personality').then(module => ({default:module.Step3Personality})));
+const Step4ResponseStyle = React.lazy(() => import('./components/student/Step4ResponseStyle').then(module => ({default:module.Step4ResponseStyle})));
+const Step5SafetyRules = React.lazy(() => import('./components/student/Step5SafetyRules').then(module => ({default:module.Step5SafetyRules})));
+const Step6FinalPrompt = React.lazy(() => import('./components/student/Step6FinalPrompt').then(module => ({default:module.Step6FinalPrompt})));
+const Step7GeminiGuide = React.lazy(() => import('./components/student/Step7GeminiGuide').then(module => ({default:module.Step7GeminiGuide})));
+const Step8ChatbotTest = React.lazy(() => import('./components/student/Step8ChatbotTest').then(module => ({default:module.Step8ChatbotTest})));
+const Step9PromptRevision = React.lazy(() => import('./components/student/Step9PromptRevision').then(module => ({default:module.Step9PromptRevision})));
+const Step10Submission = React.lazy(() => import('./components/student/Step10Submission').then(module => ({default:module.Step10Submission})));
 
-import { AdminLogin } from './components/admin/AdminLogin';
-import { AdminDashboard } from './components/admin/AdminDashboard';
-import { AdminStudentList } from './components/admin/AdminStudentList';
-import { AdminStudentDetailModal } from './components/admin/AdminStudentDetailModal';
-import { AdminRosterManager } from './components/admin/AdminRosterManager';
-import { AdminPrintView } from './components/admin/AdminPrintView';
-import { AdminGasIntegration } from './components/admin/AdminGasIntegration';
+const AdminLogin = React.lazy(() => import('./components/admin/AdminLogin').then(module => ({default:module.AdminLogin})));
+const AdminDashboard = React.lazy(() => import('./components/admin/AdminDashboard').then(module => ({default:module.AdminDashboard})));
+const AdminStudentList = React.lazy(() => import('./components/admin/AdminStudentList').then(module => ({default:module.AdminStudentList})));
+const AdminStudentDetailModal = React.lazy(() => import('./components/admin/AdminStudentDetailModal').then(module => ({default:module.AdminStudentDetailModal})));
+const AdminRosterManager = React.lazy(() => import('./components/admin/AdminRosterManager').then(module => ({default:module.AdminRosterManager})));
+const AdminPrintView = React.lazy(() => import('./components/admin/AdminPrintView').then(module => ({default:module.AdminPrintView})));
+const AdminGasIntegration = React.lazy(() => import('./components/admin/AdminGasIntegration').then(module => ({default:module.AdminGasIntegration})));
 
 export default function App() {
   // App views
@@ -87,12 +92,28 @@ export default function App() {
     : Math.max(1, currentStudent?.currentStep || 1);
 
   const sessionRef = useRef(0);
+  const detailRequestRef = useRef(0);
   const navigatingRef = useRef(false);
   const dirtyRef = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [serverDelayed, setServerDelayed] = useState(false);
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => {
+      if (isApiPending()) {
+        if (!timer) timer = setTimeout(() => setServerDelayed(true), 8000);
+      } else {
+        clearTimeout(timer); timer = undefined; setServerDelayed(false);
+      }
+    };
+    window.addEventListener('api-request-state', update);
+    update();
+    return () => { clearTimeout(timer); window.removeEventListener('api-request-state', update); };
+  }, []);
   useEffect(() => {
     const update = () => setIsSaving(isStudentSaving());
     window.addEventListener('student-save-state', update);
+    update();
     const beforeUnload = (event: BeforeUnloadEvent) => {
       if (currentStudent && !isPreviewStudentMode && (dirtyRef.current || isStudentSaving())) { event.preventDefault(); event.returnValue = ''; }
     };
@@ -164,6 +185,7 @@ export default function App() {
     setCurrentStudent(null);
     setRoster([]);
     setAllStudentsProgress([]);
+    detailRequestRef.current++;
     setSelectedStudentDetail(null);
     clearStudentSession();
     sessionRef.current++;
@@ -191,7 +213,7 @@ export default function App() {
         setRoster(overview.roster);
       }
     } catch (e: any) {
-      console.error('Failed to load admin overview', e);
+      console.warn('서버 요청을 확인하지 못했습니다.');
       setAdminError(e?.message || '학생 데이터를 불러오지 못했습니다. 다시 시도해 주세요.');
     } finally {
       setAdminLoading(false);
@@ -271,14 +293,16 @@ export default function App() {
     navigatingRef.current = true;
     setSaveStatus('saving');
     try {
-      if (!advance) await saveCurrentStudentStep(currentStudent, viewStep);
       const updated = { ...currentStudent, currentStep: Math.max(currentStudent.currentStep, step) };
-      // Only STEP 1–7 Next can have saved both answers and the destination already.
-      const alreadySaved = advance && progressSaved && viewStep >= 1 && viewStep <= 7 && step === viewStep + 1;
-      if (!alreadySaved) await saveStudentProgress(updated);
+      // Next saves answers and the destination together through STEP 9.
+      const alreadySaved = advance && progressSaved && viewStep >= 1 && viewStep <= 9 && step === viewStep + 1;
+      if (!alreadySaved) {
+        if (!advance && [1,2,3,4,5,6,8,9].includes(viewStep)) await saveCurrentStudentStep(updated,viewStep);
+        else await saveStudentProgress(updated);
+      }
       if (session !== sessionRef.current) return;
       if (viewStep !== 10) dirtyRef.current = false;
-      setCurrentStudent({ ...updated, updatedAt: new Date().toISOString() });
+      setCurrentStudent({ ...updated, updatedAt: getLastServerSaveTime() || updated.updatedAt });
       setViewStep(step);
       setSaveStatus('saved');
       window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -293,7 +317,7 @@ export default function App() {
   const handleFinalSubmit = async () => {
     if (!currentStudent) return;
     if (isPreviewStudentMode) return;
-    const now = new Date().toISOString();
+    const now = getLastServerSaveTime() || currentStudent.updatedAt;
     const updated: StudentProgress = {
       ...currentStudent,
       isFinalSubmitted: true,
@@ -311,15 +335,16 @@ export default function App() {
 
   // Open detail modal with full student detail
   const handleSelectStudentDetail = async (student: StudentProgress) => {
+    const request = ++detailRequestRef.current;
     setSelectedStudentDetail(student); // Open immediately with initial data
     try {
       setLoadingStudentKey(student.studentKey);
       const detail = await fetchStudentDetail(student.studentKey);
-      if (detail) {
+      if (detail && request === detailRequestRef.current) {
         setSelectedStudentDetail(detail);
       }
     } catch (err) {
-      console.warn('Could not fetch full detail for modal, keeping existing info', err);
+      console.warn('서버 요청을 확인하지 못했습니다.');
     } finally {
       setLoadingStudentKey(null);
     }
@@ -372,7 +397,8 @@ export default function App() {
       const detail = await fetchStudentDetail(student.studentKey);
       setStudentsToPrint([detail || student]);
     } catch {
-      setStudentsToPrint([student]);
+      setAdminError('인쇄할 상세 자료를 불러오지 못했습니다. 다시 시도해 주세요.');
+      return;
     }
     setPrintTitle(`${student.grade}학년 ${student.classNum}반 ${student.number}번 ${student.name} - 롤모델 챗봇 결과`);
   };
@@ -386,13 +412,14 @@ export default function App() {
             const d = await fetchStudentDetail(s.studentKey);
             return d || s;
           } catch {
-            return s;
+            throw new Error('인쇄할 상세 자료를 불러오지 못했습니다. 다시 시도해 주세요.');
           }
         })
       );
       setStudentsToPrint(detailedStudents);
     } catch {
-      setStudentsToPrint(students);
+      setAdminError('인쇄할 상세 자료를 불러오지 못했습니다. 다시 시도해 주세요.');
+      return;
     }
     setPrintTitle(title || '롤모델 챗봇 만들기 - 최종 결과');
   };
@@ -400,16 +427,20 @@ export default function App() {
   // 1. PRINT VIEW MODE
   if (studentsToPrint) {
     return (
+      <React.Suspense fallback={<div role="status">인쇄 화면을 불러오는 중입니다.</div>}>
       <AdminPrintView
         studentsToPrint={studentsToPrint}
         title={printTitle}
         onBack={() => setStudentsToPrint(null)}
       />
+      </React.Suspense>
     );
   }
 
   return (
+    <React.Suspense fallback={<div role="status">화면을 불러오는 중입니다.</div>}>
     <div className="min-h-screen bg-[#F7F8F4] text-[#2C362B] font-sans flex flex-col antialiased">
+      {serverDelayed && <div role="status" className="p-3 text-center bg-amber-50">서버 응답이 지연되고 있습니다.</div>}
       {/* Global Application Header */}
       <Header
         currentStudent={currentStudent}
@@ -538,7 +569,7 @@ export default function App() {
           {selectedStudentDetail && (
             <AdminStudentDetailModal
               student={selectedStudentDetail}
-              onClose={() => setSelectedStudentDetail(null)}
+              onClose={() => { detailRequestRef.current++; setSelectedStudentDetail(null); }}
               onPreviewStudentMode={handlePreviewStudent}
               onPrintStudent={handlePrintStudent}
             />
@@ -568,7 +599,8 @@ export default function App() {
       ) : (
         /* STUDENT 10-STEP WORKFLOW SCREEN */
         <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-          {saveStatus === 'error' && <p role="alert" className="text-rose-700">서버 저장 또는 불러오기에 실패했습니다. 연결을 확인하고 다시 시도해 주세요.</p>}
+          {isSaveOutcomeUnknown() && <div role="alert" className="text-rose-700">저장 결과를 확인할 수 없습니다. 잠시 후 다시 확인해 주세요. <button onClick={async () => { const status=await confirmPendingSave().catch(() => null); if(status?.state==='completed') { const fresh=await fetchStudentProgress(currentStudent.studentKey); if(fresh) { setCurrentStudent(fresh); setSaveStatus('saved'); } } else setSaveStatus('error'); }}>저장 결과 확인</button></div>}
+          {saveStatus === 'error' && !hasUncertainSave() && <p role="alert" className="text-rose-700">서버 저장 또는 불러오기에 실패했습니다. 연결을 확인하고 다시 시도해 주세요.</p>}
           <fieldset disabled={isSaving || saveStatus === 'saving'} className="contents">
           {/* Step Progress Bar */}
           <StepProgressBar
@@ -775,7 +807,7 @@ export default function App() {
                   isTestCompleted: true,
                 })
               }
-              onNext={() => handleNextStep(9)}
+              onNext={(saved) => handleNextStep(9, saved)}
               onPrev={() => handlePrevStep(7)}
             />
           )}
@@ -806,7 +838,7 @@ export default function App() {
                   step8,
                 })
               }
-              onNext={() => handleNextStep(10)}
+              onNext={(saved) => handleNextStep(10, saved)}
               onPrev={() => handlePrevStep(8)}
             />
           )}
@@ -844,6 +876,6 @@ export default function App() {
         중학교 3학년 진로 수업 AI 도우미 | 나의 롤모델 챗봇 만들기 (Gemini Gems 프롬프트 설계 도구)
       </footer>
     </div>
+    </React.Suspense>
   );
 }
-

@@ -1,6 +1,7 @@
 import { extractAdminToken, verifyAdminSessionToken, callServerGas } from '../_lib.js';
 
 export default async function handler(req: any, res: any) {
+  res.setHeader('Cache-Control','no-store');
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, message: 'Method Not Allowed' });
   }
@@ -25,11 +26,12 @@ export default async function handler(req: any, res: any) {
       message: gasData?.message || 'Google Apps Script에서 대시보드 데이터를 가져오지 못했습니다.',
     });
   } catch (err: any) {
-    console.error('Admin dashboard fetch error:', err);
+    // Error details are deliberately not logged.
     return res.status(500).json({
       success: false,
       message: '관리자 대시보드 조회 실패: ' + (err?.message || 'Server error'),
     });
   }
 }
+
 

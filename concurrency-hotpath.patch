@@ -1,0 +1,374 @@
+--- a/GoogleAppsScript.latest.gs
++++ b/GoogleAppsScript.latest.gs
+@@ -20,7 +20,7 @@
+ var requestPerformance_;
+ function handleRequest(e) {
+   requestReadContext_ = undefined;
+-  requestPerformance_={startedAt:Date.now(),lockWaitMs:0,lockHeldMs:0,sheetWriteMs:0,flushMs:0,lockTimeoutCount:0};
++  requestPerformance_={startedAt:Date.now(),lockWaitMs:0,lockHeldMs:0,sheetReadMs:0,sheetReadCalls:0,sheetWriteMs:0,flushMs:0,lockTimeoutCount:0};
+   var lock = null;
+   var receiptId, receiptStudentKey, result, lockStart, acquiredAt, receiptExpiry;
+   var output = ContentService.createTextOutput();
+@@ -36,11 +36,11 @@
+     
+     var action = params.action || (e.parameter && e.parameter.action);
+     if(params.requestId && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1) {
+-      var fingerprintInput=JSON.parse(JSON.stringify(params)); delete fingerprintInput.studentToken; delete fingerprintInput.measurePerformance; delete fingerprintInput.performanceRunId; delete fingerprintInput.performanceSubject;
++      var fingerprintInput=JSON.parse(JSON.stringify(params)); delete fingerprintInput.studentToken; delete fingerprintInput.measurePerformance; delete fingerprintInput.performanceRunId; delete fingerprintInput.performanceSubject; delete fingerprintInput.performanceTraceId;
+       var fingerprint=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(fingerprintInput)).map(function(b) { return ('0'+(b & 255).toString(16)).slice(-2); }).join('');
+     }
+     var ss = SpreadsheetApp.getActiveSpreadsheet();
+-    if(params.performanceRunId) validatePerformanceRun_(ss,params);
++    if(params.performanceRunId) { validatePerformanceRun_(ss,params); var validatedPerformanceRun=true; }
+     if(['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1 && !params.requestId) throw new Error('저장 요청 ID가 없습니다. 앱을 새로고침한 뒤 저장해 주세요.');
+     if (['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','updateRoster','deleteRosterStudents','getSaveStatus'].indexOf(action) !== -1) {
+       lock = LockService.getScriptLock();
+@@ -200,8 +200,12 @@
+       lock.releaseLock();
+     }
+     if(params && params.measurePerformance===true && result) {
+-      result.performance={lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs,lockTimeoutCount:requestPerformance_.lockTimeoutCount,totalMs:Date.now()-requestPerformance_.startedAt};
++      result.performance={lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs,lockTimeoutCount:requestPerformance_.lockTimeoutCount,totalMs:Date.now()-requestPerformance_.startedAt};
+       output.setContent(JSON.stringify(result));
++    }
++    // The trace survives a lost HTTP response. Never log tokens, keys, answers or URLs.
++    if(validatedPerformanceRun && params && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(params.performanceTraceId || '') && typeof Logger!=='undefined') {
++      try { Logger.log(JSON.stringify({event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs})); } catch(ignored) {}
+     }
+     requestPerformance_=undefined;
+   }
+@@ -222,7 +226,7 @@
+   function prefix(s) { return "'"+s.getName().replace(/'/g,"''")+"'!"; }
+   var ranges=sheets.map(function(s) { return prefix(s)+'A1:'+col(s.getLastColumn())+'1'; });
+   if (!ranges.length) return;
+-  var headers=Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:ranges,valueRenderOption:'UNFORMATTED_VALUE'}).valueRanges || [];
++  var headers=timeSheetRead_(function() { return Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:ranges,valueRenderOption:'UNFORMATTED_VALUE'}); }).valueRanges || [];
+   context.physical={}; context.identifiers={};
+   var requests=[], descriptors=[];
+   sheets.forEach(function(s,i) {
+@@ -236,7 +240,7 @@
+     });
+   });
+   if(requests.length) {
+-    var values=Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:requests,valueRenderOption:'UNFORMATTED_VALUE'}).valueRanges || [];
++    var values=timeSheetRead_(function() { return Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:requests,valueRenderOption:'UNFORMATTED_VALUE'}); }).valueRanges || [];
+     descriptors.forEach(function(d,i) { var rows=values[i].values || []; context.identifiers[d.name][d.field]=Array.from({length:d.count},function(_,j) { return [rows[j] && rows[j][0] || '']; }); });
+   }
+ }
+@@ -434,8 +438,19 @@
+   };
+   return aliases[norm] || norm;
+ }
++function timeSheetRead_(reader) {
++  var at=Date.now();
++  try { return reader(); }
++  finally { if(requestPerformance_) { requestPerformance_.sheetReadMs+=Date.now()-at; requestPerformance_.sheetReadCalls++; } }
++}
++function readSheetValues_(range) { return timeSheetRead_(function() { return range.getValues(); }); }
+ function physicalHeaders_(sheet) {
+-  return sheet.getLastColumn() ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
++  var context=requestReadContext_, name=sheet.getName();
++  if(context && context.physical && context.physical[name]) return context.physical[name].slice();
++  var width=sheet.getLastColumn();
++  var headers=width ? readSheetValues_(sheet.getRange(1, 1, 1, width))[0] : [];
++  if(context) { context.physical=context.physical || {}; context.physical[name]=headers.slice(); }
++  return headers;
+ }
+ function logicalHeaders_(sheet, physical) {
+   var names = (schemas_()[sheet.getName()] || []).slice();
+@@ -451,7 +466,7 @@
+   for (var i=0;i<columns.length;) {
+     var group=[columns[i++]], start=group[0].col;
+     while(i<columns.length && columns[i].col===start+group.length) group.push(columns[i++]);
+-    var values = count ? sheet.getRange(2,start,count,group.length).getValues() : [];
++    var values = count ? readSheetValues_(sheet.getRange(2,start,count,group.length)) : [];
+     group.forEach(function(entry,index) { result[entry.field] = values.map(function(row) { return [row[index]]; }); });
+   }
+   return result;
+@@ -487,12 +502,12 @@
+         // Roster's five required fields may be read together; names/IDs remain server-only.
+         if(name==='Roster' && physicalColumns.every(function(h) { return rosterFields.some(function(f) { return headerName_(f)===headerName_(h); }); }) && identifiers.name && identifiers.googleId) {
+           ownRow=physicalColumns.map(function(h) { var f=rosterFields.find(function(f) { return headerName_(f)===headerName_(h); }); return identifiers[f][index][0]; });
+-        } else ownRow=sheet.getRange(index+2,1,1,physicalColumns.length).getValues()[0];
++        } else ownRow=readSheetValues_(sheet.getRange(index+2,1,1,physicalColumns.length))[0];
+       }
+       data.push(ownRow);
+     }
+   } else {
+-    data = sheet.getDataRange().getValues();
++    data = readSheetValues_(sheet.getDataRange());
+   }
+   var physical = data[0] || [];
+   var logical = logicalHeaders_(sheet, physical);
+--- a/src/utils/gasScriptTemplate.ts
++++ b/src/utils/gasScriptTemplate.ts
+@@ -22,7 +22,7 @@
+ var requestPerformance_;
+ function handleRequest(e) {
+   requestReadContext_ = undefined;
+-  requestPerformance_={startedAt:Date.now(),lockWaitMs:0,lockHeldMs:0,sheetWriteMs:0,flushMs:0,lockTimeoutCount:0};
++  requestPerformance_={startedAt:Date.now(),lockWaitMs:0,lockHeldMs:0,sheetReadMs:0,sheetReadCalls:0,sheetWriteMs:0,flushMs:0,lockTimeoutCount:0};
+   var lock = null;
+   var receiptId, receiptStudentKey, result, lockStart, acquiredAt, receiptExpiry;
+   var output = ContentService.createTextOutput();
+@@ -38,11 +38,11 @@
+     
+     var action = params.action || (e.parameter && e.parameter.action);
+     if(params.requestId && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1) {
+-      var fingerprintInput=JSON.parse(JSON.stringify(params)); delete fingerprintInput.studentToken; delete fingerprintInput.measurePerformance; delete fingerprintInput.performanceRunId; delete fingerprintInput.performanceSubject;
++      var fingerprintInput=JSON.parse(JSON.stringify(params)); delete fingerprintInput.studentToken; delete fingerprintInput.measurePerformance; delete fingerprintInput.performanceRunId; delete fingerprintInput.performanceSubject; delete fingerprintInput.performanceTraceId;
+       var fingerprint=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(fingerprintInput)).map(function(b) { return ('0'+(b & 255).toString(16)).slice(-2); }).join('');
+     }
+     var ss = SpreadsheetApp.getActiveSpreadsheet();
+-    if(params.performanceRunId) validatePerformanceRun_(ss,params);
++    if(params.performanceRunId) { validatePerformanceRun_(ss,params); var validatedPerformanceRun=true; }
+     if(['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1 && !params.requestId) throw new Error('저장 요청 ID가 없습니다. 앱을 새로고침한 뒤 저장해 주세요.');
+     if (['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','updateRoster','deleteRosterStudents','getSaveStatus'].indexOf(action) !== -1) {
+       lock = LockService.getScriptLock();
+@@ -202,8 +202,12 @@
+       lock.releaseLock();
+     }
+     if(params && params.measurePerformance===true && result) {
+-      result.performance={lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs,lockTimeoutCount:requestPerformance_.lockTimeoutCount,totalMs:Date.now()-requestPerformance_.startedAt};
++      result.performance={lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs,lockTimeoutCount:requestPerformance_.lockTimeoutCount,totalMs:Date.now()-requestPerformance_.startedAt};
+       output.setContent(JSON.stringify(result));
++    }
++    // The trace survives a lost HTTP response. Never log tokens, keys, answers or URLs.
++    if(validatedPerformanceRun && params && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(params.performanceTraceId || '') && typeof Logger!=='undefined') {
++      try { Logger.log(JSON.stringify({event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs})); } catch(ignored) {}
+     }
+     requestPerformance_=undefined;
+   }
+@@ -224,7 +228,7 @@
+   function prefix(s) { return "'"+s.getName().replace(/'/g,"''")+"'!"; }
+   var ranges=sheets.map(function(s) { return prefix(s)+'A1:'+col(s.getLastColumn())+'1'; });
+   if (!ranges.length) return;
+-  var headers=Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:ranges,valueRenderOption:'UNFORMATTED_VALUE'}).valueRanges || [];
++  var headers=timeSheetRead_(function() { return Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:ranges,valueRenderOption:'UNFORMATTED_VALUE'}); }).valueRanges || [];
+   context.physical={}; context.identifiers={};
+   var requests=[], descriptors=[];
+   sheets.forEach(function(s,i) {
+@@ -238,7 +242,7 @@
+     });
+   });
+   if(requests.length) {
+-    var values=Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:requests,valueRenderOption:'UNFORMATTED_VALUE'}).valueRanges || [];
++    var values=timeSheetRead_(function() { return Sheets.Spreadsheets.Values.batchGet(ss.getId(),{ranges:requests,valueRenderOption:'UNFORMATTED_VALUE'}); }).valueRanges || [];
+     descriptors.forEach(function(d,i) { var rows=values[i].values || []; context.identifiers[d.name][d.field]=Array.from({length:d.count},function(_,j) { return [rows[j] && rows[j][0] || '']; }); });
+   }
+ }
+@@ -436,8 +440,19 @@
+   };
+   return aliases[norm] || norm;
+ }
++function timeSheetRead_(reader) {
++  var at=Date.now();
++  try { return reader(); }
++  finally { if(requestPerformance_) { requestPerformance_.sheetReadMs+=Date.now()-at; requestPerformance_.sheetReadCalls++; } }
++}
++function readSheetValues_(range) { return timeSheetRead_(function() { return range.getValues(); }); }
+ function physicalHeaders_(sheet) {
+-  return sheet.getLastColumn() ? sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0] : [];
++  var context=requestReadContext_, name=sheet.getName();
++  if(context && context.physical && context.physical[name]) return context.physical[name].slice();
++  var width=sheet.getLastColumn();
++  var headers=width ? readSheetValues_(sheet.getRange(1, 1, 1, width))[0] : [];
++  if(context) { context.physical=context.physical || {}; context.physical[name]=headers.slice(); }
++  return headers;
+ }
+ function logicalHeaders_(sheet, physical) {
+   var names = (schemas_()[sheet.getName()] || []).slice();
+@@ -453,7 +468,7 @@
+   for (var i=0;i<columns.length;) {
+     var group=[columns[i++]], start=group[0].col;
+     while(i<columns.length && columns[i].col===start+group.length) group.push(columns[i++]);
+-    var values = count ? sheet.getRange(2,start,count,group.length).getValues() : [];
++    var values = count ? readSheetValues_(sheet.getRange(2,start,count,group.length)) : [];
+     group.forEach(function(entry,index) { result[entry.field] = values.map(function(row) { return [row[index]]; }); });
+   }
+   return result;
+@@ -489,12 +504,12 @@
+         // Roster's five required fields may be read together; names/IDs remain server-only.
+         if(name==='Roster' && physicalColumns.every(function(h) { return rosterFields.some(function(f) { return headerName_(f)===headerName_(h); }); }) && identifiers.name && identifiers.googleId) {
+           ownRow=physicalColumns.map(function(h) { var f=rosterFields.find(function(f) { return headerName_(f)===headerName_(h); }); return identifiers[f][index][0]; });
+-        } else ownRow=sheet.getRange(index+2,1,1,physicalColumns.length).getValues()[0];
++        } else ownRow=readSheetValues_(sheet.getRange(index+2,1,1,physicalColumns.length))[0];
+       }
+       data.push(ownRow);
+     }
+   } else {
+-    data = sheet.getDataRange().getValues();
++    data = readSheetValues_(sheet.getDataRange());
+   }
+   var physical = data[0] || [];
+   var logical = logicalHeaders_(sheet, physical);
+--- a/api/staging-performance.ts
++++ b/api/staging-performance.ts
+@@ -69,6 +69,6 @@
+   }catch{return res.status(403).json({success:false,message:'invalid staging test token'});}
+   try {
+     const admin=['getPerformanceSnapshot','finishPerformanceRun'].includes(body.action);
+-    return res.json(await call({...body,createPerformanceRun:undefined,performanceRunId:claims.runId,performanceSubject:claims.subject,adminSecret:admin?env.STAGING_GAS_ADMIN_SECRET:undefined,measurePerformance:true}));
++    return res.json(await call({...body,createPerformanceRun:undefined,performanceRunId:claims.runId,performanceSubject:claims.subject,performanceTraceId:correlationId,adminSecret:admin?env.STAGING_GAS_ADMIN_SECRET:undefined,measurePerformance:true}));
+   }catch(error:any){failure(error);return res.status(error?.name==='TimeoutError'?504:502).json({success:false,message:'staging outcome unknown'});}
+ }
+--- a/tests/run.cjs
++++ b/tests/run.cjs
+@@ -16,3 +16,4 @@
+ 
+ require('./receipt-allowlist.test.cjs');
+ require('./staging-diagnostics.test.cjs');
++require('./concurrency-hotpath.test.cjs');
+--- /dev/null
++++ b/tests/concurrency-hotpath.test.cjs
+@@ -0,0 +1,90 @@
++const {test}=require('node:test'),assert=require('node:assert/strict');
++const {backend}=require('./mock-runtime.cjs');
++const credentials={action:'verifyStudent',grade:3,classNum:1,number:1,name:'가상학생1'};
++
++test('header reuse preserves reordered columns and new schema between requests',()=>{
++  const b=backend(),token=b.request(credentials).studentToken;
++  const request=p=>b.request({studentKey:'3-1-1',studentToken:token,...p});
++  assert.equal(request({action:'saveProgress',roleModelName:'before'}).success,true);
++  const sheet=b.sheets.get('Progress');
++  sheet.rows[0].push('teacherFormula');sheet.rows[1].push('=PRESERVE()');
++  sheet.rows=sheet.rows.map(row=>row.slice().reverse());
++  assert.equal(request({action:'saveProgress',roleModelName:'after'}).success,true);
++  assert.equal(sheet.rows[1][sheet.rows[0].indexOf('teacherFormula')],'=PRESERVE()');
++  assert.equal(request({action:'loadProgress'}).data.roleModelName,'after');
++  assert.equal(b.context.requestReadContext_,undefined);
++});
++
++test('header reuse measurably removes duplicate reads without changing writes or lock scope',()=>{
++  const b=backend(),token=b.request(credentials).studentToken;
++  const request=p=>b.request({studentKey:'3-1-1',studentToken:token,...p});
++  for(const action of ['saveProgress','saveTests','submitFinal'])assert.equal(request({action}).success,true);
++  b.resetStats();const result=request({action:'saveTests',test1Result:'changed',measurePerformance:true});
++  const stats=b.stats(),reads=Object.values(stats.sheets).reduce((sum,s)=>sum+s.reads,0);
++  assert.equal(result.success,true);assert.equal(reads,11);
++  assert.equal(result.performance.sheetReadCalls,reads);
++  assert.equal(stats.locks,1);assert.equal(b.state.locked,false);
++});
++
++test('cached header arrays cannot be mutated by a caller and refresh after a write',()=>{
++  const b=backend(),s=b.sheets.get('Progress');
++  b.context.requestReadContext_={tables:{},headerMaps:{},emptySheets:{}};
++  const first=b.context.physicalHeaders_(s);first.push('not-a-real-column');
++  assert.equal(b.context.physicalHeaders_(s).includes('not-a-real-column'),false);
++  b.context.writePatch_(s,-1,{studentKey:'3-1-1',newField:'value'});
++  assert.equal(b.context.physicalHeaders_(s).at(-1),'newField');
++  assert.equal(b.context.physicalHeaders_(s).includes('not-a-real-column'),false);
++});
++
++function staging() {
++  const b=backend(),p=b.context.PropertiesService.getScriptProperties();
++  b.ss.getSheets=()=>Array.from(b.sheets.values());for(const s of b.sheets.values())s.rows=[];
++  p.setProperty('PERF_TEST_MODE','synthetic-25');p.setProperty('PERF_TEST_SPREADSHEET_ID',b.ss.getId());
++  b.context.initializeEmptyPerformanceFixture();
++  const runId='synthetic-hotpath-run-001';
++  assert.equal(b.request({action:'getPerformanceFixture',adminSecret:'test-admin-secret',createPerformanceRun:{runId,exp:Date.now()+590000}}).success,true);
++  const rows=[];b.context.Logger={log:s=>rows.push(JSON.parse(s))};
++  const scope={performanceRunId:runId,performanceSubject:'3-99-1',measurePerformance:true};
++  return {b,rows,scope};
++}
++
++test('staging GAS completion survives response loss with aggregate-only correlated logs',()=>{
++  const {b,rows,scope}=staging(),id='aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
++  const login=b.request({...scope,action:'verifyStudent',grade:3,classNum:99,number:1,name:'Synthetic Student 1',performanceTraceId:id});
++  assert.equal(login.success,true);assert.equal(rows.length,1);assert.equal(rows[0].correlationId,id);
++  assert.equal(rows[0].sheetReadCalls,login.performance.sheetReadCalls);
++  assert.equal(/Synthetic|synthetic1@|studentToken|studentKey|googleId|http/.test(JSON.stringify(rows)),false);
++  b.request({...scope,action:'loadProgress',studentKey:'3-99-1',studentToken:login.studentToken,performanceTraceId:'PRIVATE_INVALID_TRACE'});
++  assert.equal(rows.length,1);
++  b.request({...scope,performanceRunId:'invalid-run-00000001',action:'loadProgress',studentKey:'3-99-1',studentToken:login.studentToken,performanceTraceId:id});
++  assert.equal(rows.length,1);
++  b.context.Logger.log=()=>{throw Error('logging failure');};
++  assert.equal(b.request({...scope,action:'loadProgress',studentKey:'3-99-1',studentToken:login.studentToken,performanceTraceId:id}).success,true);
++});
++
++test('a new transport trace does not defeat save request idempotency',()=>{
++  const {b,scope}=staging();
++  const token=b.request({...scope,action:'verifyStudent',grade:3,classNum:99,number:1,name:'Synthetic Student 1'}).studentToken;
++  const payload={...scope,action:'saveProgress',studentKey:'3-99-1',studentToken:token,requestId:'same_request_hotpath_0001',requestIssuedAt:Date.now(),roleModelName:'synthetic'};
++  assert.equal(b.request({...payload,performanceTraceId:'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'}).success,true);
++  b.resetStats();const repeated=b.request({...payload,performanceTraceId:'bbbbbbbb-bbbb-cccc-dddd-eeeeeeeeeeee'});
++  assert.equal(repeated.success,true);assert.equal(repeated.replayed,true);
++  assert.equal(Object.values(b.stats().sheets).reduce((sum,s)=>sum+s.writes,0),0);
++  assert.equal(b.sheets.get('Progress').rows.length,2);
++});
++
++test('login probe rejects invalid wave sizes and does not retry failures or perform student writes',async()=>{
++  const {probe,probeCount}=require('./staging-login-probe.cjs');
++  for(const count of [undefined,0,2,26,'1.0'])assert.throws(()=>probeCount(count));
++  const env={STAGING_CONFIRM:'SYNTHETIC_25_ONLY',STAGING_URL:'https://staging-fixture.vercel.app/',STAGING_TEST_SECRET:'PRIVATE_SECRET',TEST_SPREADSHEET_ID:'PRIVATE_SHEET'};
++  const actions=[];
++  const result=await probe(5,env,async(_url,options)=>{
++    const body=JSON.parse(options.body);actions.push(body.action);
++    const data=body.action==='startPerformanceRun'?{success:true,runToken:'PRIVATE_RUN',studentTokens:Array(25).fill('PRIVATE_TOKEN'),fixture:{spreadsheetId:env.TEST_SPREADSHEET_ID}}:
++      body.action==='finishPerformanceRun'?{success:true,ended:true}:{success:false,message:'PRIVATE_UPSTREAM_ERROR'};
++    return {status:200,ok:true,headers:{get:()=>null},json:async()=>data};
++  });
++  assert.equal(result.completed,false);assert.equal(result.ended,true);
++  assert.deepEqual(actions,['startPerformanceRun',...Array(5).fill('verifyStudent'),'finishPerformanceRun']);
++  assert.equal(JSON.stringify(result).includes('PRIVATE'),false);
++});
+--- /dev/null
++++ b/tests/staging-login-probe.cjs
+@@ -0,0 +1,57 @@
++// One explicitly selected synthetic login wave. No student writes or automatic retries.
++const fs=require('node:fs');
++const {guard}=require('./staging-load.cjs');
++
++function probeCount(value) {
++  if(!['1','5','10','25'].includes(String(value)))throw Error('Choose exactly 1, 5, 10 or 25 synthetic students.');
++  return Number(value);
++}
++async function probe(count,env=process.env,fetchImpl=fetch) {
++  count=probeCount(count);
++  const origin=guard(env),report={purpose:'login diagnosis only; not a production release gate',count,requests:[],completed:false};
++  let runToken;
++  const call=async(body,token)=>{
++    const at=performance.now();
++    try {
++      const response=await fetchImpl(new URL('/api/staging-performance',origin),{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+token},body:JSON.stringify(body),signal:AbortSignal.timeout(50000)});
++      const data=await response.json(),raw=response.headers.get('x-staging-correlation-id')||'';
++      const summary={stage:body.action,status:response.status,success:response.ok && data.success===true,clientMs:Math.round(performance.now()-at),correlationId:/^[0-9a-f-]{36}$/i.test(raw)?raw:null};
++      if(data.performance) {
++        summary.performance={};
++        for(const key of ['totalMs','lockWaitMs','lockHeldMs','sheetReadMs','sheetReadCalls','sheetWriteMs','flushMs','lockTimeoutCount'])
++          if(Number.isFinite(data.performance[key]) && data.performance[key]>=0)summary.performance[key]=data.performance[key];
++      }
++      report.requests.push(summary);return {success:summary.success,data};
++    } catch(error) {
++      report.requests.push({stage:body.action,status:0,success:false,clientMs:Math.round(performance.now()-at),errorKind:['TimeoutError','AbortError'].includes(error.name)?'timeout':'transport-or-json'});
++      return {success:false};
++    }
++  };
++  try {
++    const start=await call({action:'startPerformanceRun'},env.STAGING_TEST_SECRET);
++    if(!start.success) {report.blocker='start failed; do not restart blindly, inspect active GAS session';return report;}
++    runToken=start.data.runToken;
++    if(!runToken || start.data.fixture?.spreadsheetId!==env.TEST_SPREADSHEET_ID || !Array.isArray(start.data.studentTokens) || start.data.studentTokens.length!==25) {
++      report.blocker='fixture or session mismatch';return report;
++    }
++    const rows=await Promise.all(Array.from({length:count},(_,i)=>call({action:'verifyStudent',grade:3,classNum:99,number:i+1,name:'Synthetic Student '+(i+1)},start.data.studentTokens[i])));
++    report.completed=rows.every((r,i)=>r.success && r.data.student?.studentKey===`3-99-${i+1}` && r.data.student.googleId===`synthetic${i+1}@example.invalid`);
++    if(!report.completed)report.blocker='login wave failed; no next wave or writes were executed';
++  } finally {
++    if(runToken) {
++      const end=await call({action:'finishPerformanceRun'},runToken);
++      report.ended=end.success && end.data.ended===true;
++      if(!report.ended){report.completed=false;report.blocker='session end unconfirmed; inspect GAS active session before further tests';}
++    }
++  }
++  return report;
++}
++module.exports={probeCount,probe};
++if(require.main===module) {
++  probe(process.argv[2]).then(report=>{
++    const file=`staging-login-${report.count}-results.json`;
++    fs.writeFileSync(file,JSON.stringify(report,null,2));
++    console.log(`${report.completed?'PASS':'STOP'}: ${file}. Login diagnosis only, not deployment approval.`);
++    if(!report.completed)process.exitCode=1;
++  }).catch(()=>{console.error('Check the synthetic staging environment and student count. No secrets are printed.');process.exitCode=1;});
++}

@@ -1,6 +1,7 @@
 import { extractAdminToken, verifyAdminSessionToken } from '../_lib.js';
 
 export default async function handler(req: any, res: any) {
+  res.setHeader('Cache-Control','no-store');
   if (req.method !== 'GET') {
     return res.status(405).json({ authenticated: false, message: 'Method Not Allowed' });
   }
@@ -19,4 +20,5 @@ export default async function handler(req: any, res: any) {
     authenticated: true,
   });
 }
+
 

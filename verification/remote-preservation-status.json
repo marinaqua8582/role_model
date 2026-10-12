@@ -1,0 +1,17 @@
+{
+  "remoteCommit": "9a21f65a9b216da0f4300e9ba76cd7811439bea7",
+  "remoteTree": "fdb56f30eb80671e14e219761b9e37e64060ddd9",
+  "matchedChangedTextSourceFiles": 41,
+  "localOriginal": "3e03cc8f7de82cd0fafb8b4146320befe5548d7d",
+  "localReview": "7d10e287eb5770de99a28ac95439787b194452b2",
+  "fullTreeMatchesLocal": false,
+  "excluded": [
+    "handoff-preservation/3e03cc8-local-history.bundle",
+    "verification/integration-gas-trigger-status.png",
+    "verification/integration-ui-final-restored.png",
+    "verification/integration-ui-own-id.png",
+    "verification/lock-gas-trigger-status.png",
+    "verification/receipt-gas-v12-trigger-status.png"
+  ],
+  "checkedAt": "2026-10-12T13:38:04.557Z"
+}

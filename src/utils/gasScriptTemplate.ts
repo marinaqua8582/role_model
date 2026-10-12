@@ -23,7 +23,7 @@ var requestPerformance_;
 function handleRequest(e) {
   requestSheetCache_ = undefined;
   requestReadContext_ = undefined;
-  requestPerformance_={startedAt:Date.now(),lockWaitMs:0,lockHeldMs:0,sheetReadMs:0,sheetReadCalls:0,sheetWriteMs:0,flushMs:0,lockTimeoutCount:0};
+  requestPerformance_={startedAt:Date.now(),lockWaitMs:0,lockHeldMs:0,sheetReadMs:0,sheetReadCalls:0,sheetWriteMs:0,flushMs:0,lockTimeoutCount:0,functionMs:{},functionCalls:{}};
   var lock = null;
   var receiptId, receiptStudentKey, result, lockStart, acquiredAt, receiptExpiry;
   var output = ContentService.createTextOutput();
@@ -40,10 +40,19 @@ function handleRequest(e) {
     var action = params.action || (e.parameter && e.parameter.action);
     if (['verifyStudent','loadProgress','getProgress','saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','getSaveStatus'].indexOf(action)!==-1) requestSheetCache_={values:{}};
     if(params.requestId && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1) {
-      var fingerprintInput=JSON.parse(JSON.stringify(params)); delete fingerprintInput.studentToken; delete fingerprintInput.measurePerformance; delete fingerprintInput.performanceRunId; delete fingerprintInput.performanceSubject; delete fingerprintInput.performanceTraceId;
-      var fingerprint=Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(fingerprintInput)).map(function(b) { return ('0'+(b & 255).toString(16)).slice(-2); }).join('');
+      var fingerprint=saveFingerprint_(params);
     }
+    var bodyForKey = params.progress || params.submission || params.counseling || params.tests || params;
+    var scopedKey;
+    try { scopedKey = studentKey_(bodyForKey.studentKey || bodyForKey); } catch (ignored) {}
+    var preparedNames=[];
     var ss = SpreadsheetApp.getActiveSpreadsheet();
+    // Only immutable handles/names are prefetched. No rows, headers, sizes or authorization snapshots.
+    if(requestSheetCache_ && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','getSaveStatus'].indexOf(action)!==-1) {
+      var preparationAt=Date.now();
+      ['Roster','Progress','Tests','Submissions'].forEach(function(name) { var sheet=requestSheet_(ss,name); if(sheet)preparedNames.push({sheet:sheet,name:name}); });
+      requestPerformance_.preparationMs=Date.now()-preparationAt;
+    }
     if(params.performanceRunId) { validatePerformanceRun_(ss,params); var validatedPerformanceRun=true; }
     if(['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].indexOf(action)!==-1 && !params.requestId) throw new Error('저장 요청 ID가 없습니다. 앱을 새로고침한 뒤 저장해 주세요.');
     if (['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData','updateRoster','deleteRosterStudents','getSaveStatus'].indexOf(action) !== -1) {
@@ -59,14 +68,12 @@ function handleRequest(e) {
     if (['Roster','Progress','Tests','Submissions'].some(function(name) { return !requestSheet_(ss,name); })) initSheetsIfNeeded(ss);
     // Contexts live for one request and are invalidated after each write.
     var readContext = ['verifyStudent','loadProgress','getProgress'].indexOf(action) !== -1 ? {tables:{},headerMaps:{},emptySheets:{}} : undefined;
-    var bodyForKey = params.progress || params.submission || params.counseling || params.tests || params;
-    var scopedKey;
-    try { scopedKey = studentKey_(bodyForKey.studentKey || bodyForKey); } catch (ignored) {}
     requestReadContext_ = readContext || {tables:{},headerMaps:{},emptySheets:{}};
     requestReadContext_.studentKey = scopedKey;
+    requestReadContext_.sheetNames = preparedNames;
     if (scopedKey && ['verifyStudent','loadProgress','getProgress'].indexOf(action)!==-1) prepareStudentReads_(ss, requestReadContext_);
     if (['loadProgress', 'getProgress', 'saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData','getSaveStatus'].indexOf(action) !== -1) {
-      authorizeStudent_(ss, params, readContext);
+      measureFunction_('authorizeStudent_',authorizeStudent_,[ss,params,readContext]);
     }
 
     
@@ -96,6 +103,9 @@ function handleRequest(e) {
       if(!Number.isFinite(receiptExpiry)) throw new Error('잘못된 저장 요청 시간입니다.');
       var statusReceipt=receiptRead_(params.requestId);
       if(statusReceipt && statusReceipt.studentKey!==scopedKey) throw new Error('저장 요청을 확인할 권한이 없습니다.');
+      if(statusReceipt && statusReceipt.state==='completed' && params.expectedSaveIntent) {
+        if(params.expectedSaveIntent.requestId!==params.requestId || statusReceipt.fingerprint!==saveFingerprint_(params.expectedSaveIntent)) throw new Error('저장 요청 ID가 충돌했습니다.');
+      }
       if(!statusReceipt) { statusReceipt={studentKey:scopedKey,state:'cancelled',expiresAt:receiptExpiry}; receiptWrite_(params.requestId,statusReceipt); }
       result={success:true,state:statusReceipt.state,savedAt:statusReceipt.savedAt};
       output.setContent(JSON.stringify(result)); return output;
@@ -211,15 +221,16 @@ function handleRequest(e) {
       requestPerformance_.lockHeldMs=Date.now()-acquiredAt;
       lock.releaseLock();
     }
+    if(params && /^[a-f0-9-]{36}$/i.test(params.transportRequestId || '') && result) { result.transportRequestId=params.transportRequestId; output.setContent(JSON.stringify(result)); }
     if(params && params.measurePerformance===true && result) {
-      result.performance={lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs,lockTimeoutCount:requestPerformance_.lockTimeoutCount,totalMs:Date.now()-requestPerformance_.startedAt};
+      result.performance={preparationMs:requestPerformance_.preparationMs || 0,functionMs:requestPerformance_.functionMs,functionCalls:requestPerformance_.functionCalls,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs,lockTimeoutCount:requestPerformance_.lockTimeoutCount,totalMs:Date.now()-requestPerformance_.startedAt};
       output.setContent(JSON.stringify(result));
     }
     // The trace survives a lost HTTP response. Never log tokens, keys, answers or URLs.
     if(validatedPerformanceRun && params && /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(params.performanceTraceId || '') && typeof Logger!=='undefined') {
-      var traceSummary={event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs};
+      var traceSummary={event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,preparationMs:requestPerformance_.preparationMs || 0,functionMs:requestPerformance_.functionMs,functionCalls:requestPerformance_.functionCalls,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs};
       try { CacheService.getScriptCache().put('perf-trace:'+params.performanceTraceId,JSON.stringify({runId:params.performanceRunId,summary:traceSummary}),600); } catch(ignored) {}
-      try { Logger.log(JSON.stringify({event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs})); } catch(ignored) {}
+      try { Logger.log(JSON.stringify({event:'staging-gas-complete',correlationId:params.performanceTraceId,success:Boolean(result && result.success),totalMs:Date.now()-requestPerformance_.startedAt,preparationMs:requestPerformance_.preparationMs || 0,functionMs:requestPerformance_.functionMs,functionCalls:requestPerformance_.functionCalls,lockWaitMs:requestPerformance_.lockWaitMs,lockHeldMs:requestPerformance_.lockHeldMs,sheetReadMs:requestPerformance_.sheetReadMs,sheetReadCalls:requestPerformance_.sheetReadCalls,sheetWriteMs:requestPerformance_.sheetWriteMs,flushMs:requestPerformance_.flushMs})); } catch(ignored) {}
     }
     requestPerformance_=undefined;
   }
@@ -319,8 +330,10 @@ function receiptKey_(id) {
   if(!/^[a-zA-Z0-9_-]{16,100}$/.test(String(id || ''))) throw new Error('잘못된 저장 요청 ID입니다.');
   return 'save-receipt:'+id;
 }
-function receiptRead_(id) { var text=PropertiesService.getScriptProperties().getProperty(receiptKey_(id)); return text ? JSON.parse(text) : null; }
-function receiptWrite_(id,value) { try {PropertiesService.getScriptProperties().setProperty(receiptKey_(id),JSON.stringify(value));} catch(e) {throw new Error('저장 중복방지 기록을 보관할 수 없습니다. 관리자에게 receipt 정리 상태와 Script Properties 저장 공간 확인을 요청하세요. 저장 결과는 확인 전까지 불명확합니다.');} }
+function receiptRead_(id) { return measureFunction_('receiptRead_',receiptRead_Measured_,arguments); }
+function receiptRead_Measured_(id) { var text=PropertiesService.getScriptProperties().getProperty(receiptKey_(id)); return text ? JSON.parse(text) : null; }
+function receiptWrite_(id,value) { return measureFunction_('receiptWrite_',receiptWrite_Measured_,arguments); }
+function receiptWrite_Measured_(id,value) { try {PropertiesService.getScriptProperties().setProperty(receiptKey_(id),JSON.stringify(value));} catch(e) {throw new Error('저장 중복방지 기록을 보관할 수 없습니다. 관리자에게 receipt 정리 상태와 Script Properties 저장 공간 확인을 요청하세요. 저장 결과는 확인 전까지 불명확합니다.');} }
 
 function studentKey_(value) {
   var parts = typeof value === 'object' ? [value.grade, value.classNum || value.classNo || value.class, value.number] : String(value || '').split('-');
@@ -337,7 +350,8 @@ function objectJson_(value) {
 
 // Pick the newest valid row; fill missing cells from older rows of the same identity.
 // Never delete duplicates or rewrite the other rows.
-function selectStudentRow_(sheet, key, table, readContext) {
+function selectStudentRow_(sheet, key, table, readContext) { return measureFunction_('selectStudentRow_',selectStudentRow_Measured_,arguments); }
+function selectStudentRow_Measured_(sheet, key, table, readContext) {
   var data = table || readTable_(sheet, readContext);
   var headers = data[0] || [];
   var map = getHeaderMap(sheet, readContext);
@@ -459,14 +473,16 @@ function timeSheetRead_(reader) {
 }
 function readSheetValues_(range) { return timeSheetRead_(function() { return range.getValues(); }); }
 // Student-request-only metadata snapshots. Never shared across requests; writes invalidate sizes.
-function sheetName_(sheet) {
+function sheetName_(sheet) { return measureFunction_('sheetName_',sheetName_Measured_,arguments); }
+function sheetName_Measured_(sheet) {
   var context=requestReadContext_;
   if(!context || !context.studentKey)return sheet.getName();
   var entries=context.sheetNames || (context.sheetNames=[]);
   for(var i=0;i<entries.length;i++)if(entries[i].sheet===sheet)return entries[i].name;
   var name=sheet.getName();entries.push({sheet:sheet,name:name});return name;
 }
-function sheetMetadata_(sheet, method) {
+function sheetMetadata_(sheet, method) { return measureFunction_('sheetMetadata_',sheetMetadata_Measured_,arguments); }
+function sheetMetadata_Measured_(sheet, method) {
   var context=requestReadContext_;
   if(!context || !context.studentKey)return sheet[method]();
   var all=context.metadata || (context.metadata={}), name=sheetName_(sheet), values=all[name] || (all[name]={});
@@ -625,7 +641,8 @@ function isUnownedLegacyTest_(sheet, row, map) {
     return !String(getValByHeader(row,map,[field]) || '').trim();
   });
 }
-function assertStudentOwnsRows_(ss, student, readContext) {
+function assertStudentOwnsRows_(ss, student, readContext) { return measureFunction_('assertStudentOwnsRows_',assertStudentOwnsRows_Measured_,arguments); }
+function assertStudentOwnsRows_Measured_(ss, student, readContext) {
   var rows = [];
   ['Progress','Tests','Submissions','Counseling'].forEach(function(name) {
     var sheet = requestSheet_(ss,name);
@@ -646,7 +663,8 @@ function assertStudentOwnsRows_(ss, student, readContext) {
   });
   if (rows.length && !identified) throw new Error('기존 자료의 학생 신원을 확인할 수 없습니다. 선생님께 확인해 주세요.');
 }
-function recordOwner_(sheet, index, student, physical) {
+function recordOwner_(sheet, index, student, physical) { return measureFunction_('recordOwner_',recordOwner_Measured_,arguments); }
+function recordOwner_Measured_(sheet, index, student, physical) {
   writePatch_(sheet,index,{ownerName:student.name,ownerGoogleId:student.googleId || ''}, physical);
 }
 function latestTable_(sheet) {
@@ -1211,7 +1229,8 @@ function loadProgress(ss, studentKey, readContext) {
   };
 }
 
-function saveProgress(ss, progress, progressWrite) {
+function saveProgress(ss, progress, progressWrite) { return measureFunction_('saveProgress',saveProgressMeasured_,arguments); }
+function saveProgressMeasured_(ss, progress, progressWrite) {
   var sheet = requestSheet_(ss,'Progress');
   if (!sheet) return { success: false, message: 'Progress 시트를 찾을 수 없습니다.' };
   var studentKey = studentKey_(progress.studentKey || progress);
@@ -1355,7 +1374,8 @@ function writeStudentRecord_(sheet,selected,rowData,student,extra) {
   Object.keys(extra || {}).forEach(function(key) { patch[key]=extra[key]; });
   return writePatch_(sheet,selected ? selected.index : -1,patch);
 }
-function saveTests(ss, params) {
+function saveTests(ss, params) { return measureFunction_('saveTests',saveTestsMeasured_,arguments); }
+function saveTestsMeasured_(ss, params) {
   var sheet = requestSheet_(ss,'Tests');
   if (!sheet) return { success: false, message: 'Tests 시트를 찾을 수 없습니다.' };
   var studentKey = studentKey_(params.studentKey);
@@ -1384,13 +1404,15 @@ function saveTests(ss, params) {
   return { success: true, message: '테스트 결과가 저장되었습니다.', studentKey: studentKey, savedAt: now };
 }
 
-function updateRevision(ss, params) {
+function updateRevision(ss, params) { return measureFunction_('updateRevision',updateRevisionMeasured_,arguments); }
+function updateRevisionMeasured_(ss, params) {
   var result = saveProgress(ss, params);
   if (!result.success) return result;
   return saveTests(ss, {studentKey: params.studentKey, name:params.name, googleId:params.googleId, problemDescription: params.problemDescription, revisionNote: params.revisionNote, currentStep: params.currentStep});
 }
 
-function submitFinal(ss, submission) {
+function submitFinal(ss, submission) { return measureFunction_('submitFinal',submitFinalMeasured_,arguments); }
+function submitFinalMeasured_(ss, submission) {
   var sheet = requestSheet_(ss,'Submissions');
   if (!sheet) {
     if (['Roster','Progress','Tests','Submissions'].some(function(name) { return !requestSheet_(ss,name); })) initSheetsIfNeeded(ss);
@@ -2100,7 +2122,8 @@ function initializeEmptyPerformanceFixture() {
 }
 
 function timeSheetMutation_(callback) {var at=Date.now();try{return callback();}finally{if(requestPerformance_)requestPerformance_.sheetWriteMs+=Date.now()-at;}}
-function validatePerformanceRun_(ss,params) {
+function validatePerformanceRun_(ss,params) { return measureFunction_('validatePerformanceRun_',validatePerformanceRun_Measured_,arguments); }
+function validatePerformanceRun_Measured_(ss,params) {
   var props=PropertiesService.getScriptProperties(), run=objectJson_(props.getProperty('PERF_ACTIVE_RUN'));
   if(props.getProperty('PERF_TEST_MODE')!=='synthetic-25'||props.getProperty('PERF_TEST_SPREADSHEET_ID')!==ss.getId()||run.runId!==params.performanceRunId||!(run.exp>Date.now()))throw new Error('시험 세션이 종료되었거나 유효하지 않습니다.');
   if(['getPerformanceSnapshot','finishPerformanceRun','getPerformanceTrace'].indexOf(params.action)!==-1) {if(params.performanceSubject!=='run')throw new Error('시험 범위 불일치');return;}
@@ -2130,7 +2153,8 @@ function cleanupLastResult_(text) {
 }
 
 // Existing sheet handles are immutable for a student request; absent sheets are never cached.
-function requestSheet_(ss, name) {
+function requestSheet_(ss, name) { return measureFunction_('requestSheet_',requestSheet_Measured_,arguments); }
+function requestSheet_Measured_(ss, name) {
   var cache=requestSheetCache_;
   if(!cache)return ss.getSheetByName(name);
   if(cache.spreadsheet && cache.spreadsheet!==ss)return ss.getSheetByName(name);
@@ -2139,6 +2163,19 @@ function requestSheet_(ss, name) {
   var sheet=ss.getSheetByName(name);
   if(sheet)cache.values[name]=sheet;
   return sheet;
+}
+
+// Inclusive function timings overlap; never sum these values as exclusive lock phases.
+function measureFunction_(name, callback, args) {
+  var at=Date.now();
+  try { return callback.apply(null,args); }
+  finally { if(requestPerformance_) { var p=requestPerformance_; p.functionMs[name]=(p.functionMs[name]||0)+Date.now()-at; p.functionCalls[name]=(p.functionCalls[name]||0)+1; } }
+}
+
+function saveFingerprint_(params) {
+  var fingerprintInput=JSON.parse(JSON.stringify(params));
+  ['studentToken','transportRequestId','measurePerformance','performanceRunId','performanceSubject','performanceTraceId'].forEach(function(key) {delete fingerprintInput[key];});
+  return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(fingerprintInput)).map(function(b) { return ('0'+(b & 255).toString(16)).slice(-2); }).join('');
 }
 `;
 }

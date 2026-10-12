@@ -1,0 +1,306 @@
+
+> react-example@0.0.0 test
+> node tests/run.cjs
+
+✔ generated Apps Script preserves Korean whitespace matching and key normalization (11.411ms)
+✔ steps 1/2/3 and repeated requests update one row; restore retains other steps (48.7496ms)
+✔ duplicate rows choose newest data and merge same-identity missing fields without deleting (13.8355ms)
+✔ lock timeout and exceptions return failure and release any acquired lock (4.0615ms)
+✔ student A cannot read or write B; own full Google ID survives re-login (6.4561ms)
+✔ tests, revision and submission persist and are idempotent (30.7012ms)
+✔ translation opt-out is present in the source document (0.6227ms)
+✔ administrator dashboard, detail and roster add/delete retain existing progress (15.2195ms)
+✔ real client and generated GAS round-trip steps and exact custom fields across devices (286.7825ms)
+✔ network and server failures never become save success or offline login (647.132ms)
+✔ logout removes A data and pending response cannot repopulate the next session (68.3909ms)
+✔ navigation saves only metadata and cannot erase saved answers with a stale full snapshot (77.0469ms)
+✔ STEP7 renders the current full Google ID; admin report still renders (280.7449ms)
+✔ real client logout revokes token; offline and corrupt-session logout still clear local state (174.5266ms)
+✔ reused studentKey: Progress blocks all reads, writes and reset without changing old data (22.6842ms)
+✔ reused studentKey: Tests blocks all reads, writes and reset without changing old data (24.6864ms)
+✔ reused studentKey: Submissions blocks all reads, writes and reset without changing old data (27.3997ms)
+✔ reused studentKey: Counseling blocks all reads, writes and reset without changing old data (22.6492ms)
+✔ legacy nameless Tests are isolated; conflicting Progress names cannot be hidden (14.2243ms)
+✔ all student sheet writes survive reordered headers and preserve unknown columns (38.9225ms)
+✔ explicit blanks stay blank with duplicates while omitted STEP data survives and admin agrees (21.996ms)
+✔ logout revokes the server token and is idempotent (8.9921ms)
+✔ test/submission writes advance only the selected normalized Progress row and preserve partial submissions (19.8585ms)
+✔ admin configuration check fails closed for absent or mismatched GAS secret (1.4481ms)
+✔ admin login validates Vercel/GAS secret before issuing session, without exposing it (25.7648ms)
+✔ legacy Tests do not block Roster login or Progress restore and are absent from student/admin reads (16.5304ms)
+✔ new Tests append with authenticated ownership, restore only trusted data and leave legacy untouched (23.9826ms)
+✔ explicit foreign Tests identity remains blocked, including Google ID-only mismatch (59.5206ms)
+✔ revision with only quarantined Tests creates an owned row without altering legacy (16.9222ms)
+READ_COUNT verifyStudent Counseling=false: 0 -> 0
+READ_COUNT loadProgress Counseling=false: 0 -> 0
+READ_COUNT saveProgress Counseling=false: 0 -> 0
+✔ full-read counts and identical responses; Counseling=false (33.6155ms)
+READ_COUNT verifyStudent Counseling=true: 0 -> 0
+READ_COUNT loadProgress Counseling=true: 0 -> 0
+READ_COUNT saveProgress Counseling=true: 0 -> 0
+✔ full-read counts and identical responses; Counseling=true (33.2617ms)
+✔ selected, missing and quarantined rows reuse the same header/table with reordered columns (43.648ms)
+✔ header-only sheets return the identical one-row structure with one full read (7.291ms)
+✔ standalone Apps Script matches the template exactly (6.2086ms)
+REQUEST_READ_COUNT verifyStudent Counseling=false: 0 -> 0
+REQUEST_READ_COUNT loadProgress Counseling=false: 0 -> 0
+REQUEST_READ_COUNT getProgress Counseling=false: 0 -> 0
+REQUEST_READ_COUNT saveProgress Counseling=false: 0 -> 0
+✔ request reuse reads each sheet once, preserves full responses and save path; Counseling=false (62.5552ms)
+REQUEST_READ_COUNT verifyStudent Counseling=true: 0 -> 0
+REQUEST_READ_COUNT loadProgress Counseling=true: 0 -> 0
+REQUEST_READ_COUNT getProgress Counseling=true: 0 -> 0
+REQUEST_READ_COUNT saveProgress Counseling=true: 0 -> 0
+✔ request reuse reads each sheet once, preserves full responses and save path; Counseling=true (60.9389ms)
+✔ request cache never survives a request, write, roster change or logout (28.938ms)
+✔ cached and uncached reads agree on reordered columns, duplicates, blanks and legacy rows (58.9923ms)
+✔ administrator and write contexts are cleared at request end (33.0094ms)
+✔ empty/legacy-only Tests and missing Progress keep identical restoration responses (40.1129ms)
+SAVE_COUNTS {"counseling":false,"before":{"getSheetByName":6,"getLastColumn":5,"Roster:header":2,"getLastRow":5,"Progress:header":6,"Tests:header":1,"Submissions:header":3,"setValues":2,"flush":1},"after":{"getSheetByName":6,"getLastColumn":4,"Roster:header":2,"getLastRow":4,"Progress:header":3,"Tests:header":1,"Submissions:header":3,"setValues":2,"flush":1}}
+✔ save full-read and write counts with identical output; Counseling=false (50.6801ms)
+SAVE_COUNTS {"counseling":true,"before":{"getSheetByName":6,"getLastColumn":6,"Roster:header":2,"getLastRow":6,"Progress:header":6,"Tests:header":1,"Submissions:header":3,"Counseling:header":1,"setValues":2,"flush":1},"after":{"getSheetByName":6,"getLastColumn":5,"Roster:header":2,"getLastRow":5,"Progress:header":3,"Tests:header":1,"Submissions:header":3,"Counseling:header":1,"setValues":2,"flush":1}}
+✔ save full-read and write counts with identical output; Counseling=true (49.8957ms)
+✔ save preserves blanks, omitted fields, stepData, completion and submission on shuffled headers (45.9671ms)
+✔ new rows extend headers safely and repeated requests do not create duplicates (27.7663ms)
+✔ owner is written to the actual selected duplicate even if timestamp ordering changes after save (16.9295ms)
+✔ save rejection for foreign ownership and expired token does not change rows (17.2073ms)
+✔ write exceptions never produce save success and the lock is released (16.9569ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP1 Next: one real client saveProgress, answers + destination, React/storage/backend agree (518.419ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP1 server failure stays on page, retains input/cache and permits retry (491.7809ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ STEP1 network failure stays on page, retains input/cache and permits retry (380.7059ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP1 same-tick double click sends one save and waits for the response (377.0848ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP1 completed student keeps currentStep 10 and submission (479.9215ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP2 Next: one real client saveProgress, answers + destination, React/storage/backend agree (373.2788ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP2 server failure stays on page, retains input/cache and permits retry (358.8137ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ STEP2 network failure stays on page, retains input/cache and permits retry (284.176ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP2 same-tick double click sends one save and waits for the response (283.8537ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP2 completed student keeps currentStep 10 and submission (451.1733ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP3 Next: one real client saveProgress, answers + destination, React/storage/backend agree (296.7079ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP3 server failure stays on page, retains input/cache and permits retry (311.4549ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ STEP3 network failure stays on page, retains input/cache and permits retry (327.8301ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP3 same-tick double click sends one save and waits for the response (437.8875ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP3 completed student keeps currentStep 10 and submission (334.5505ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP4 Next: one real client saveProgress, answers + destination, React/storage/backend agree (331.3897ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP4 server failure stays on page, retains input/cache and permits retry (305.8731ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ STEP4 network failure stays on page, retains input/cache and permits retry (232.1487ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP4 same-tick double click sends one save and waits for the response (298.599ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP4 completed student keeps currentStep 10 and submission (354.6104ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP5 Next: one real client saveProgress, answers + destination, React/storage/backend agree (370.0495ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP5 server failure stays on page, retains input/cache and permits retry (372.1566ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ STEP5 network failure stays on page, retains input/cache and permits retry (379.6267ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP5 same-tick double click sends one save and waits for the response (349.3531ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP5 completed student keeps currentStep 10 and submission (395.5905ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP6 Next: one real client saveProgress, answers + destination, React/storage/backend agree (306.8864ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP6 server failure stays on page, retains input/cache and permits retry (340.148ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ STEP6 network failure stays on page, retains input/cache and permits retry (359.5132ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP6 same-tick double click sends one save and waits for the response (438.7899ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP6 completed student keeps currentStep 10 and submission (493.4908ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP7 Next: one real client saveProgress, answers + destination, React/storage/backend agree (341.0565ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP7 server failure stays on page, retains input/cache and permits retry (320.1214ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ STEP7 network failure stays on page, retains input/cache and permits retry (308.9885ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP7 same-tick double click sends one save and waits for the response (263.8701ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP7 completed student keeps currentStep 10 and submission (349.2774ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ previous/top/jump navigation saves answers and metadata in one request, and blocks unreached steps (938.9698ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ navigation without a component save still persists metadata; metadata failure stays and reports error (383.2126ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ session revoked while save awaits: no navigation, no cache repopulation (221.3395ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP8 uses one action and preserves completed destination (272.443ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP9 uses one action and preserves completed destination (313.7295ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP10 uses one action and preserves completed destination (245.3797ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ admin preview: top/Next remain read only, no student write actions (500.1758ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP1 read-only component does not save or claim saved navigation (160.0445ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP2 read-only component does not save or claim saved navigation (151.4844ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP3 read-only component does not save or claim saved navigation (157.3103ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP4 read-only component does not save or claim saved navigation (145.3023ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP5 read-only component does not save or claim saved navigation (137.6468ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP6 read-only component does not save or claim saved navigation (167.2595ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP7 read-only component does not save or claim saved navigation (85.3509ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP1 keeps its save guard until the async navigation callback finishes (142.7932ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP2 keeps its save guard until the async navigation callback finishes (153.7312ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP3 keeps its save guard until the async navigation callback finishes (156.7785ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP4 keeps its save guard until the async navigation callback finishes (135.4143ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP5 keeps its save guard until the async navigation callback finishes (132.0417ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP6 keeps its save guard until the async navigation callback finishes (236.23ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP7 keeps its save guard until the async navigation callback finishes (143.0847ms)
+✔ STEP1 optional destination changes only currentStep in its serialized payload (106.8631ms)
+✔ STEP2 optional destination changes only currentStep in its serialized payload (112.7893ms)
+✔ STEP3 optional destination changes only currentStep in its serialized payload (117.7419ms)
+✔ STEP4 optional destination changes only currentStep in its serialized payload (143.2067ms)
+✔ STEP5 optional destination changes only currentStep in its serialized payload (113.0654ms)
+✔ STEP6 optional destination changes only currentStep in its serialized payload (103.333ms)
+✔ last saved: Progress newer than submission (103.5309ms)
+✔ last saved: submission newest (142.6331ms)
+✔ last saved: Tests newest (124.5318ms)
+✔ last saved: raw updatedAt newest (96.9188ms)
+✔ last saved: empty and malformed ignored (83.6887ms)
+✔ last saved: timezone offsets compared as instants (89.7208ms)
+✔ last saved: all dates absent uses current-time fallback (135.494ms)
+✔ last saved: all dates invalid uses current-time fallback (130.7226ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP1: Header time changes only after single save succeeds (485.3048ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP2: Header time changes only after single save succeeds (309.4094ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP3: Header time changes only after single save succeeds (380.7546ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP4: Header time changes only after single save succeeds (338.9688ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP5: Header time changes only after single save succeeds (403.0609ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP6: Header time changes only after single save succeeds (391.8828ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ STEP7: Header time changes only after single save succeeds (385.7427ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ last saved: server rejection preserves time and screen (285.5291ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+서버 요청을 확인하지 못했습니다.
+✔ last saved: network rejection preserves time and screen (217.6583ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ navigation metadata failure does not update time; successful retry does (281.5436ms)
+✔ load test rejects missing target, production, Google, DNS, credentials and non-loopback URLs (0.9837ms)
+✔ HTTP 400 never automatically retries (51.8838ms)
+✔ HTTP 401 never automatically retries (76.1689ms)
+✔ HTTP 403 never automatically retries (92.9686ms)
+✔ HTTP 404 never automatically retries (57.1642ms)
+✔ HTTP 422 never automatically retries (49.2078ms)
+✔ HTTP 504 never automatically retries (66.8633ms)
+✔ HTTP 429 concurrent duplicate requests share one bounded retry (408.3952ms)
+✔ HTTP 500 concurrent duplicate requests share one bounded retry (643.0255ms)
+✔ HTTP 502 concurrent duplicate requests share one bounded retry (565.232ms)
+✔ HTTP 503 concurrent duplicate requests share one bounded retry (457.1233ms)
+✔ network interruption retries once; repeated failure stops at two calls (382.1919ms)
+✔ timeout stops without retry and blocks further saves (92.0049ms)
+✔ application validation failure never retries or marks server save success (109.2329ms)
+✔ option cache whitelists safe numbers and shares in-flight requests (87.7497ms)
+✔ concurrent login is one request and returns only own full Google ID and progress (107.244ms)
+✔ options cache invalidates after roster edit; reads proceed when write lock is unavailable (15.6409ms)
+✔ row insertion/deletion is safely rediscovered without a row-number cache (48.3311ms)
+✔ student proxy rejects privileged actions, forwards no errors/URLs, and sets no-store (16.6166ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ lazy student screen exposes only own full Google ID and preserves the copy button (2217.2635ms)
+✔ fixture setup requires explicit dedicated ID, empty sheets and preserves existing data (22.3696ms)
+✔ receipt maintenance removes only expired receipts under a real script lock (3.5596ms)
+✔ missing request IDs are rejected before any student write (11.8534ms)
+✔ staging runner refuses production, missing confirmation and an arbitrary staging URL (2.5197ms)
+✔ optional batch failure does not fall back to extra reads or report success (4.2302ms)
+✔ batch header/identity reads preserve own details and reduce logical calls for 25/120 students (13363.4544ms)
+✔ receipts prevent replay, mismatched payloads, cross-student access and late writes after cancellation (62.4535ms)
+✔ flush failure never reports success or allows uncertain request replay (30.0701ms)
+✔ client write network failure is one call; cancellation confirmation unlocks safe new request (102.8222ms)
+✔ authentication policy functions remain byte-equivalent to the supplied ZIP (1.9062ms)
+✔ signed staging tokens reject forgery, expiry, wrong origin, wrong sheet and cross-student reuse (13.0141ms)
+✔ API inspects full fixture only once, binds student token and uses one upstream call per operation (38.5681ms)
+✔ cleanup trigger installs once, status reports it and removal preserves unrelated triggers (6.3067ms)
+✔ registered trigger invisible to a different administrator is not duplicated (4.3558ms)
+✔ manual cleanup triggers are replaced with one managed five-minute trigger (3.4607ms)
+✔ one cleanup invocation limits expired deletes so maintenance does not monopolize the lock (4.591ms)
+✔ cleanup preserves valid, pending, unknown and malformed receipts; records aggregate counts (3.8118ms)
+✔ cleanup cannot mutate properties while a save owns the global lock (3.0524ms)
+✔ lock timeout emits failure metrics and creates no duplicate/new rows (13.3021ms)
+✔ sheet mutation and flush spans are separately measured within the real lock scope (25.0629ms)
+✔ Properties capacity failure rejects before sheet writes and explains administrator recovery (11.4902ms)
+✔ GAS persists active test run and revokes it without reading the whole fixture again (26.875ms)
+✔ administrator status logging excludes unrecognized or private property content (4.5026ms)
+✔ three 25-user runner cases exercise loss, cancellation and all table integrity using synthetic emulation only (8014.1634ms)
+✔ receipt allowlist deletes only expired completed/cancelled with finite numeric expiry (4.6722ms)
+✔ cleanup status safely exposes new aggregates without property details (1.7065ms)
+✔ staging diagnostics identify JSON failures without body, URLs, payload or secrets (17.6558ms)
+✔ staging diagnostics sanitize exception names and do not automatically retry upstream (16.0166ms)
+✔ redirect tracing follows Google content GET without repeating the POST (16.3045ms)
+✔ redirect tracing blocks non-Google destinations before transmitting (16.7893ms)
+✔ existing columns skip capacity service calls while new columns still expand safely (5.1552ms)
+✔ student sheet handles are reused only within one request; absent sheets and other books remain fresh (22.1171ms)
+✔ header reuse preserves reordered columns and new schema between requests (40.4912ms)
+✔ header reuse measurably removes duplicate reads without changing writes or lock scope (49.4436ms)
+✔ cached header arrays cannot be mutated by a caller and refresh after a write (2.8665ms)
+✔ student metadata snapshot reuses service reads, invalidates on writes and never survives a request (2.4157ms)
+✔ student write budget changes neither real lock protection nor teacher lock policy (24.2326ms)
+✔ staging GAS completion survives response loss with aggregate-only correlated logs (12.1985ms)
+✔ a new transport trace does not defeat save request idempotency (38.716ms)
+✔ bounded staging trace fallback is aggregate-only and restricted to its live run administrator (30.4521ms)
+✔ login probe rejects invalid wave sizes and does not retry failures or perform student writes (5.5962ms)
+✔ real student proxy separates read/write budgets and traces redirects without repeating saves or leaking payload (25.5656ms)
+✔ real student proxy never resubmits a failed POST and blocks foreign redirect targets (45.7073ms)
+✔ proxy stops a redirect into execution GET before it can run a second GAS handler (11.6078ms)
+✔ proxy rejects an unrelated or missing transport response nonce without a second write (31.2927ms)
+✔ roster choices retain numeric class and grade-class keys for student login (120.0968ms)
+✔ unchanged own-row patch makes no reads or writes and keeps its request snapshot (42.4282ms)
+✔ changed patch writes while preserving unknown cells and another student row (32.6358ms)
+✔ unchanged patch never hides duplicate physical headers (35.0218ms)
+✔ without a request snapshot a patch is written rather than guessed unchanged (26.8452ms)
+✔ transport nonce does not change durable idempotency and a replay echoes the current transport (34.8801ms)
+✔ function timing names are fixed and privacy-safe while authorization, receipt, flush remain locked (18.9744ms)
+✔ handle prefetch runs before lock without caching mutable row bounds or identity (25.182ms)
+ℹ tests 200
+ℹ suites 0
+ℹ pass 200
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 53492.198

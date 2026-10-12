@@ -1,0 +1,12 @@
+{
+  "checkedAt": "2026-10-12T12:58:28.233Z",
+  "id": "dpl_F7uf2pAbWotAKHXigMaE9t1im4UH",
+  "url": "https://staging-role-model-synthetic25-20261009-pwx5i00wk-jeonghee.vercel.app",
+  "projectId": "prj_f16TrHu2qlMK75Az7msfUkumkIQM",
+  "target": "preview",
+  "readyState": "READY",
+  "gitRef": "integration-20261012-concurrency",
+  "gitSha": "a49a1d44f33a8084e67f7d600fd42fb0c2f76464",
+  "stagingAlias": "staging-role-model-synthetic25-20261009.vercel.app",
+  "aliasDeploymentMatched": true
+}

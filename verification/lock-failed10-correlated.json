@@ -1,0 +1,52 @@
+[
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-fetch",
+    "elapsedMs": 0
+  },
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-fetch",
+    "elapsedMs": 0
+  },
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-hop-0",
+    "elapsedMs": 8391,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 8391
+  },
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-redirect",
+    "elapsedMs": 8391,
+    "destinationKind": "google-content"
+  },
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-fetch",
+    "elapsedMs": 8391
+  },
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-hop-1",
+    "elapsedMs": 17724,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 9333
+  },
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-redirect",
+    "elapsedMs": 17724,
+    "destinationKind": "google-execution"
+  },
+  {
+    "correlationId": "fd7bf467-577d-4b35-a5e6-8ba87f67447a",
+    "stage": "proxy-failed",
+    "elapsedMs": 17724,
+    "exceptionName": "Error",
+    "errorKind": "transport-or-json"
+  }
+]

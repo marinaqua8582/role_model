@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-12T10:09:23.944Z",
+  "project": "role_model_STAGING_SYNTHETIC25",
+  "sourceCommit": "1a6546d3d17761c8b217ef0a42a4677a282eb5d8",
+  "previousCandidateMatched": true,
+  "savedIntegrationMatched": true,
+  "normalization": "CRLF to LF and trailing newline only",
+  "deployedVersion": 9,
+  "existingTestUrlMaintained": true,
+  "productionAccessed": false
+}

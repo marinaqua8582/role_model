@@ -1,0 +1,130 @@
+[
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-fetch",
+    "elapsedMs": 0
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-fetch",
+    "elapsedMs": 0
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-hop-0",
+    "elapsedMs": 26899,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 26899
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-fetch",
+    "elapsedMs": 26899
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-hop-2",
+    "elapsedMs": 35343,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 991
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-fetch",
+    "elapsedMs": 35344
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-hop-3",
+    "elapsedMs": 35399,
+    "upstreamStatus": 200,
+    "googleAppsScriptHost": true,
+    "durationMs": 55
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-response",
+    "elapsedMs": 35399,
+    "contentType": "application/json",
+    "responseSize": 0
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-hop-1",
+    "elapsedMs": 34352,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 7453
+  },
+  {
+    "correlationId": "5bc48f26-a010-4db8-9011-10167c23ddc7",
+    "stage": "proxy-fetch",
+    "elapsedMs": 34352
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-fetch",
+    "elapsedMs": 0
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-fetch",
+    "elapsedMs": 0
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-hop-0",
+    "elapsedMs": 48473,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 48473
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-fetch",
+    "elapsedMs": 48473
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-hop-1",
+    "elapsedMs": 55868,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 7395
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-fetch",
+    "elapsedMs": 55868
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-hop-2",
+    "elapsedMs": 63204,
+    "upstreamStatus": 302,
+    "googleAppsScriptHost": true,
+    "durationMs": 7336
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-fetch",
+    "elapsedMs": 63204
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-hop-3",
+    "elapsedMs": 63341,
+    "upstreamStatus": 200,
+    "googleAppsScriptHost": true,
+    "durationMs": 137
+  },
+  {
+    "correlationId": "236b7915-033d-491f-8b7a-a2380a30edb2",
+    "stage": "proxy-response",
+    "elapsedMs": 63341,
+    "contentType": "application/json",
+    "responseSize": 0
+  }
+]

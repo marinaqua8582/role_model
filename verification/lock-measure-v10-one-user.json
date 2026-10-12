@@ -1,0 +1,807 @@
+{
+  "count": 1,
+  "profile": "lock-measure-v10",
+  "startedAt": "2026-10-12T10:45:55.339Z",
+  "requests": [
+    {
+      "phase": "startPerformanceRun",
+      "route": "staging-control",
+      "status": 200,
+      "success": true,
+      "ms": 4827,
+      "correlationId": "919ec3a4-4e23-4400-a8ef-225f6d190b97",
+      "performance": null
+    },
+    {
+      "phase": "login",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3159,
+      "correlationId": "7fe4a9e4-f6e8-4beb-ba41-9f249b15c842",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 172,
+          "requestSheet_": 190,
+          "sheetName_": 3,
+          "sheetMetadata_": 465,
+          "assertStudentOwnsRows_": 543,
+          "selectStudentRow_": 3
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 1,
+          "requestSheet_": 12,
+          "sheetName_": 128,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "selectStudentRow_": 3
+        },
+        "lockWaitMs": 0,
+        "lockHeldMs": 0,
+        "sheetReadMs": 247,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 1218
+      }
+    },
+    {
+      "phase": "saveProgress_first",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3024,
+      "correlationId": "1276067d-2a58-48b1-b2cf-5add74514371",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 187,
+          "requestSheet_": 150,
+          "sheetName_": 4,
+          "sheetMetadata_": 503,
+          "assertStudentOwnsRows_": 586,
+          "authorizeStudent_": 796,
+          "receiptRead_": 36,
+          "receiptWrite_": 128,
+          "selectStudentRow_": 3,
+          "saveProgress": 16
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 9,
+          "sheetName_": 78,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 2,
+          "selectStudentRow_": 1,
+          "saveProgress": 1
+        },
+        "lockWaitMs": 76,
+        "lockHeldMs": 1431,
+        "sheetReadMs": 239,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 11,
+        "flushMs": 180,
+        "lockTimeoutCount": 0,
+        "totalMs": 1653
+      }
+    },
+    {
+      "phase": "saveProgress_update",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3981,
+      "correlationId": "67f4cce5-238c-47e1-a1f5-47621ef41340",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 210,
+          "requestSheet_": 214,
+          "sheetName_": 1,
+          "sheetMetadata_": 695,
+          "assertStudentOwnsRows_": 789,
+          "authorizeStudent_": 1128,
+          "receiptRead_": 51,
+          "receiptWrite_": 141,
+          "selectStudentRow_": 15,
+          "saveProgress": 31
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 9,
+          "sheetName_": 78,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 2,
+          "selectStudentRow_": 1,
+          "saveProgress": 1
+        },
+        "lockWaitMs": 44,
+        "lockHeldMs": 2030,
+        "sheetReadMs": 342,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 13,
+        "flushMs": 287,
+        "lockTimeoutCount": 0,
+        "totalMs": 2255
+      }
+    },
+    {
+      "phase": "saveTests_first",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3097,
+      "correlationId": "9bf77a0c-ade3-4536-b848-1cd8df47372c",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 258,
+          "requestSheet_": 154,
+          "sheetName_": 4,
+          "sheetMetadata_": 765,
+          "assertStudentOwnsRows_": 867,
+          "authorizeStudent_": 1097,
+          "receiptRead_": 38,
+          "receiptWrite_": 133,
+          "selectStudentRow_": 2,
+          "saveTests": 14
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 10,
+          "sheetName_": 112,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 2,
+          "selectStudentRow_": 2,
+          "saveTests": 1
+        },
+        "lockWaitMs": 49,
+        "lockHeldMs": 1799,
+        "sheetReadMs": 246,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 10,
+        "flushMs": 181,
+        "lockTimeoutCount": 0,
+        "totalMs": 2042
+      }
+    },
+    {
+      "phase": "saveTests_update",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3527,
+      "correlationId": "c0f33872-2cfb-4492-b452-e7328754a5dc",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 299,
+          "requestSheet_": 179,
+          "sheetName_": 4,
+          "sheetMetadata_": 894,
+          "assertStudentOwnsRows_": 991,
+          "authorizeStudent_": 1266,
+          "receiptRead_": 36,
+          "receiptWrite_": 133,
+          "selectStudentRow_": 3,
+          "saveTests": 14
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 10,
+          "sheetName_": 112,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 2,
+          "selectStudentRow_": 2,
+          "saveTests": 1
+        },
+        "lockWaitMs": 60,
+        "lockHeldMs": 2015,
+        "sheetReadMs": 267,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 9,
+        "flushMs": 167,
+        "lockTimeoutCount": 0,
+        "totalMs": 2290
+      }
+    },
+    {
+      "phase": "submitFinal_first",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 4607,
+      "correlationId": "f22e3bd6-a021-4a86-8567-6147520ebae5",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 356,
+          "requestSheet_": 249,
+          "sheetName_": 2,
+          "sheetMetadata_": 1036,
+          "assertStudentOwnsRows_": 1176,
+          "authorizeStudent_": 1537,
+          "receiptRead_": 55,
+          "receiptWrite_": 184,
+          "selectStudentRow_": 4,
+          "submitFinal": 11
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 10,
+          "sheetName_": 114,
+          "sheetMetadata_": 17,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 2,
+          "selectStudentRow_": 2,
+          "submitFinal": 1
+        },
+        "lockWaitMs": 138,
+        "lockHeldMs": 2683,
+        "sheetReadMs": 431,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 7,
+        "flushMs": 271,
+        "lockTimeoutCount": 0,
+        "totalMs": 3139
+      }
+    },
+    {
+      "phase": "submitFinal_update",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 4113,
+      "correlationId": "c53dbb09-3fec-4888-a176-bd3b30063b65",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 212,
+          "requestSheet_": 234,
+          "sheetName_": 1,
+          "sheetMetadata_": 1078,
+          "assertStudentOwnsRows_": 1257,
+          "authorizeStudent_": 1523,
+          "receiptRead_": 20,
+          "receiptWrite_": 191,
+          "selectStudentRow_": 5,
+          "submitFinal": 20
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 10,
+          "sheetName_": 114,
+          "sheetMetadata_": 17,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 2,
+          "selectStudentRow_": 2,
+          "submitFinal": 1
+        },
+        "lockWaitMs": 41,
+        "lockHeldMs": 2349,
+        "sheetReadMs": 370,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 12,
+        "flushMs": 234,
+        "lockTimeoutCount": 0,
+        "totalMs": 2578
+      }
+    },
+    {
+      "phase": "sameRequestDuplicate",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 4250,
+      "correlationId": "0d5ca03d-a54d-44ad-8e44-3f1098e10d24",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 344,
+          "requestSheet_": 245,
+          "sheetName_": 1,
+          "sheetMetadata_": 896,
+          "assertStudentOwnsRows_": 1024,
+          "authorizeStudent_": 1444,
+          "receiptRead_": 96
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 8,
+          "sheetName_": 42,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1
+        },
+        "lockWaitMs": 154,
+        "lockHeldMs": 2083,
+        "sheetReadMs": 438,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 2588
+      }
+    },
+    {
+      "phase": "sameRequestDuplicate",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 5534,
+      "correlationId": "ba89b91f-6dd9-4208-a804-a17e39f19982",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 265,
+          "requestSheet_": 164,
+          "sheetName_": 8,
+          "sheetMetadata_": 464,
+          "assertStudentOwnsRows_": 562,
+          "authorizeStudent_": 775,
+          "receiptRead_": 49
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 8,
+          "sheetName_": 42,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1
+        },
+        "lockWaitMs": 2132,
+        "lockHeldMs": 1197,
+        "sheetReadMs": 232,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 3512
+      }
+    },
+    {
+      "phase": "sameRequestDuplicate",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 6547,
+      "correlationId": "ae547e38-c7b3-4625-a4d0-48522ab67e39",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 252,
+          "requestSheet_": 178,
+          "sheetName_": 1,
+          "sheetMetadata_": 453,
+          "assertStudentOwnsRows_": 528,
+          "authorizeStudent_": 758,
+          "receiptRead_": 34
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 8,
+          "sheetName_": 42,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1
+        },
+        "lockWaitMs": 3191,
+        "lockHeldMs": 1160,
+        "sheetReadMs": 224,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 4525
+      }
+    },
+    {
+      "phase": "frontend_verifyStudent",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 2359,
+      "correlationId": "44945197-5bda-43e3-b00e-726a39f688e2",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 77,
+          "requestSheet_": 184,
+          "sheetName_": 5,
+          "sheetMetadata_": 590,
+          "assertStudentOwnsRows_": 729,
+          "selectStudentRow_": 3
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 1,
+          "requestSheet_": 12,
+          "sheetName_": 128,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "selectStudentRow_": 3
+        },
+        "lockWaitMs": 0,
+        "lockHeldMs": 0,
+        "sheetReadMs": 332,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 1293
+      }
+    },
+    {
+      "phase": "frontend_saveProgress",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3614,
+      "correlationId": "88aee66d-6945-4be2-b3e1-c129e8b5a5d1",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 209,
+          "requestSheet_": 182,
+          "sheetName_": 3,
+          "sheetMetadata_": 921,
+          "assertStudentOwnsRows_": 1013,
+          "authorizeStudent_": 1222,
+          "receiptRead_": 33,
+          "receiptWrite_": 122,
+          "selectStudentRow_": 3,
+          "saveProgress": 11
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 9,
+          "sheetName_": 78,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 2,
+          "selectStudentRow_": 1,
+          "saveProgress": 1
+        },
+        "lockWaitMs": 51,
+        "lockHeldMs": 2215,
+        "sheetReadMs": 215,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 5,
+        "flushMs": 480,
+        "lockTimeoutCount": 0,
+        "totalMs": 2418
+      }
+    },
+    {
+      "phase": "frontend_getSaveStatus",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3066,
+      "correlationId": "26177e5f-345d-4dac-8b71-a231aa05da6e",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 57,
+          "requestSheet_": 180,
+          "sheetName_": 16,
+          "sheetMetadata_": 601,
+          "assertStudentOwnsRows_": 721,
+          "authorizeStudent_": 1072,
+          "receiptRead_": 10
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 8,
+          "sheetName_": 42,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1
+        },
+        "lockWaitMs": 86,
+        "lockHeldMs": 1355,
+        "sheetReadMs": 356,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 1568
+      }
+    },
+    {
+      "phase": "getSaveStatus",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3405,
+      "correlationId": "f614ca23-8c41-456a-a8a5-c43d31204707",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 235,
+          "requestSheet_": 434,
+          "sheetName_": 5,
+          "sheetMetadata_": 708,
+          "assertStudentOwnsRows_": 777,
+          "authorizeStudent_": 1122,
+          "receiptRead_": 45,
+          "receiptWrite_": 61
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 8,
+          "sheetName_": 42,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1,
+          "receiptWrite_": 1
+        },
+        "lockWaitMs": 53,
+        "lockHeldMs": 1825,
+        "sheetReadMs": 332,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 2086
+      }
+    },
+    {
+      "phase": "cancelledLateWrite",
+      "route": "student-proxy",
+      "status": 200,
+      "success": false,
+      "ms": 3357,
+      "correlationId": "0e4193a9-6eaf-4066-b485-4f9e46797da8",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 156,
+          "requestSheet_": 224,
+          "sheetName_": 3,
+          "sheetMetadata_": 1065,
+          "assertStudentOwnsRows_": 1176,
+          "authorizeStudent_": 1523,
+          "receiptRead_": 26
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 8,
+          "sheetName_": 42,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1
+        },
+        "lockWaitMs": 37,
+        "lockHeldMs": 1888,
+        "sheetReadMs": 382,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 2055
+      },
+      "errorKind": "unclassified",
+      "expectedRejected": true
+    },
+    {
+      "phase": "reloginRestore",
+      "route": "student-proxy",
+      "status": 200,
+      "success": true,
+      "ms": 3084,
+      "correlationId": "626b79ba-068d-4a71-8354-c4e42ea77574",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 17,
+          "requestSheet_": 177,
+          "sheetName_": 1,
+          "sheetMetadata_": 909,
+          "assertStudentOwnsRows_": 1285,
+          "selectStudentRow_": 7
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 1,
+          "requestSheet_": 12,
+          "sheetName_": 128,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "selectStudentRow_": 3
+        },
+        "lockWaitMs": 0,
+        "lockHeldMs": 0,
+        "sheetReadMs": 549,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 1725
+      }
+    },
+    {
+      "phase": "getPerformanceSnapshot",
+      "route": "staging-control",
+      "status": 200,
+      "success": true,
+      "ms": 3955,
+      "correlationId": "0b5997ab-4dca-43f2-8283-a16615c34a81",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 61,
+          "requestSheet_": 196,
+          "sheetName_": 7,
+          "sheetMetadata_": 381
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 1,
+          "requestSheet_": 7,
+          "sheetName_": 3,
+          "sheetMetadata_": 3
+        },
+        "lockWaitMs": 0,
+        "lockHeldMs": 0,
+        "sheetReadMs": 1801,
+        "sheetReadCalls": 6,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 2707
+      }
+    },
+    {
+      "phase": "getPerformanceTrace",
+      "route": "staging-control",
+      "status": 200,
+      "success": true,
+      "ms": 2058,
+      "correlationId": "a200cead-33e7-4e6e-9fa1-27fb146bc314",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 116,
+          "requestSheet_": 234
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 1,
+          "requestSheet_": 4
+        },
+        "lockWaitMs": 0,
+        "lockHeldMs": 0,
+        "sheetReadMs": 0,
+        "sheetReadCalls": 0,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 428
+      }
+    },
+    {
+      "phase": "finishPerformanceRun",
+      "route": "staging-control",
+      "status": 200,
+      "success": true,
+      "ms": 2334,
+      "correlationId": "3fd9510f-cfc1-4f02-9221-7e4380ae538d",
+      "performance": {
+        "functionMs": {
+          "validatePerformanceRun_": 304,
+          "requestSheet_": 251
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 4
+        },
+        "lockWaitMs": 0,
+        "lockHeldMs": 0,
+        "sheetReadMs": 0,
+        "sheetReadCalls": 0,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 1044
+      }
+    }
+  ],
+  "checks": {
+    "ownFullId": true,
+    "responseLoss": {
+      "writeCalls": 1,
+      "automaticResaves": 0,
+      "confirmed": "completed"
+    },
+    "cancelledLateWrite": true,
+    "restoration": true
+  },
+  "passed": true,
+  "initialCounts": {
+    "Progress": 25,
+    "Tests": 25,
+    "Submissions": 25
+  },
+  "after": {
+    "success": true,
+    "sheets": {
+      "Progress": {
+        "rows": 25,
+        "duplicates": 0
+      },
+      "Tests": {
+        "rows": 25,
+        "duplicates": 0
+      },
+      "Submissions": {
+        "rows": 25,
+        "duplicates": 0
+      }
+    },
+    "foreignRows": 0,
+    "performance": {
+      "functionMs": {
+        "validatePerformanceRun_": 61,
+        "requestSheet_": 196,
+        "sheetName_": 7,
+        "sheetMetadata_": 381
+      },
+      "functionCalls": {
+        "validatePerformanceRun_": 1,
+        "requestSheet_": 7,
+        "sheetName_": 3,
+        "sheetMetadata_": 3
+      },
+      "lockWaitMs": 0,
+      "lockHeldMs": 0,
+      "sheetReadMs": 1801,
+      "sheetReadCalls": 6,
+      "sheetWriteMs": 0,
+      "flushMs": 0,
+      "lockTimeoutCount": 0,
+      "totalMs": 2707
+    }
+  },
+  "joinedTraces": [
+    {
+      "correlationId": "0e4193a9-6eaf-4066-b485-4f9e46797da8",
+      "found": true,
+      "trace": {
+        "event": "staging-gas-complete",
+        "correlationId": "0e4193a9-6eaf-4066-b485-4f9e46797da8",
+        "success": false,
+        "totalMs": 2057,
+        "functionMs": {
+          "validatePerformanceRun_": 156,
+          "requestSheet_": 224,
+          "sheetName_": 3,
+          "sheetMetadata_": 1065,
+          "assertStudentOwnsRows_": 1176,
+          "authorizeStudent_": 1523,
+          "receiptRead_": 26
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 8,
+          "sheetName_": 42,
+          "sheetMetadata_": 16,
+          "assertStudentOwnsRows_": 1,
+          "authorizeStudent_": 1,
+          "receiptRead_": 1
+        },
+        "lockWaitMs": 37,
+        "lockHeldMs": 1888,
+        "sheetReadMs": 382,
+        "sheetReadCalls": 11,
+        "sheetWriteMs": 0,
+        "flushMs": 0
+      }
+    }
+  ],
+  "ended": true
+}

@@ -70,7 +70,7 @@ test('row insertion/deletion is safely rediscovered without a row-number cache',
 test('student proxy rejects privileged actions, forwards no errors/URLs, and sets no-store',async()=>{
   const source=fs.readFileSync(path.join(__dirname,'../api/gas-proxy.ts'),'utf8');
   const exports={};let calls=0;
-  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,process:{env:{GAS_URL:'https://example.invalid/private'}},AbortSignal,fetch:async()=>{calls++;throw Error('secret-url');}});
+  vm.runInNewContext(ts.transpileModule(source,{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports,crypto:require('node:crypto').webcrypto,process:{env:{GAS_URL:'https://example.invalid/private'}},AbortSignal,fetch:async()=>{calls++;throw Error('secret-url');}});
   const res=()=>({headers:{},status(code){this.code=code;return this;},setHeader(k,v){this.headers[k]=v;},json(data){this.data=data;return this;}});
   let r=res();await exports.default({method:'POST',body:{action:'getAdminDashboard'}},r);assert.equal(r.code,403);assert.equal(calls,0);
   r=res();await exports.default({method:'POST',body:{action:'verifyStudent'}},r);assert.equal(r.headers['Cache-Control'],'no-store');assert.equal(JSON.stringify(r.data).includes('secret-url'),false);

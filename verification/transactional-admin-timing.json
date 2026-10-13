@@ -1,0 +1,25 @@
+{
+  "environment": "existing synthetic PostgreSQL Preview",
+  "measurement": "HTTP request through complete JSON response; three sequential samples, not concurrent load or browser render time",
+  "dashboard": {
+    "samplesMs": [
+      1913.37,
+      796.17,
+      781.45
+    ],
+    "meanMs": 1163.66,
+    "maxMs": 1913.37
+  },
+  "studentDetail": {
+    "samplesMs": [
+      1699.3,
+      604.41,
+      600.69
+    ],
+    "meanMs": 968.13,
+    "maxMs": 1699.3
+  },
+  "students": 25,
+  "failures": 0,
+  "productionAccessed": false
+}

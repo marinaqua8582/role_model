@@ -18,12 +18,12 @@ function tableRows(table) {
     return Object.fromEntries(header.map((h,i)=>[h,r[i]??'']));
   });
 }
-function owner(row) {
+function owner(row, rosterOnly=false) {
   const derived=[row.grade,row.classNum,row.number].every(v=>v!==undefined&&v!=='')?normalizeLegacyKey([row.grade,row.classNum,row.number].join('-')):null;
   const key=row.studentKey?normalizeLegacyKey(row.studentKey):derived;
   if(!key||derived&&key!==derived)throw Error('Identity/key conflict');
   const student=fixture.find(s=>s.studentKey===key);
-  if(!student||norm(row.name)!==norm(student.name)||String(row.googleId||'').trim()!==student.googleId)throw Error('Non-synthetic or ambiguous legacy identity');
+  if(!student||rosterOnly&&(!row.name||!row.googleId)||row.name&&norm(row.name)!==norm(student.name)||row.googleId&&String(row.googleId).trim()!==student.googleId||row.ownerName&&norm(row.ownerName)!==norm(student.name)||row.ownerGoogleId&&String(row.ownerGoogleId).trim()!==student.googleId)throw Error('Non-synthetic or ambiguous legacy identity');
   return student;
 }
 function parseFields(row) {
@@ -34,17 +34,27 @@ function parseFields(row) {
 }
 export function planSyntheticMigration(input) {
   if(input?.format!=='legacy-sheets-synthetic-v1'||!input.sheets)throw Error('Synthetic legacy format required');
-  const rows=Object.fromEntries(['Roster','Progress','Tests','Submissions'].map(name=>[name,tableRows(input.sheets[name])]));
+  const rows=Object.fromEntries(['Roster','Progress','Tests','Submissions','Counseling'].map(name=>[name,name==='Counseling'&&!input.sheets[name]?[]:tableRows(input.sheets[name])]));
   if(rows.Roster.length!==25)throw Error('Exactly 25 synthetic roster rows required');
-  const roster=rows.Roster.map(owner);if(new Set(roster.map(s=>s.studentKey)).size!==25)throw Error('Duplicate roster identity');
+  const roster=rows.Roster.map(r=>owner(r,true));if(new Set(roster.map(s=>s.studentKey)).size!==25)throw Error('Duplicate roster identity');
   let duplicates=0;const grouped={};
-  for(const name of ['Progress','Tests','Submissions']){
+  for(const name of ['Progress','Tests','Submissions','Counseling']){
     grouped[name]=new Map();for(const row of rows[name]){const s=owner(row),parsed=parseFields(row),old=grouped[name].get(s.studentKey);if(old){duplicates++;if(hash(old)!==hash(parsed))throw Error('Conflicting duplicate rows require manual resolution; source preserved');}else grouped[name].set(s.studentKey,parsed);}
   }
   const students=fixture.map(s=>{
-    const progress=grouped.Progress.get(s.studentKey)||{},tests=grouped.Tests.get(s.studentKey)||{},submission=grouped.Submissions.get(s.studentKey)||{};
-    const document={...progress,...tests,...submission,...s,stepData:progress.stepData||{},step8:tests.step8||tests,step10:submission.step10||submission,currentStep:Number(progress.currentStep)||1};
-    document.isFinalSubmitted=progress.isFinalSubmitted??Boolean(submission.submittedAt);if(document.isFinalSubmitted)document.currentStep=10;
+    const progress=grouped.Progress.get(s.studentKey)||{},tests=grouped.Tests.get(s.studentKey)||{},submission=grouped.Submissions.get(s.studentKey)||{},counseling=grouped.Counseling.get(s.studentKey)||{};
+    const final={...submission,...submission.step10};
+    for(const k of ['barrierAnswer','barrierReflection','decisionAnswer','decisionReflection','educationAnswer','educationReflection','finalCareerReflection','gemUrl']){
+      const value=counseling[k];if(value===undefined||value==='')continue;
+      if(final[k]!==undefined&&final[k]!==''&&final[k]!==value){
+        const a=Date.parse(submission.submittedAt),b=Date.parse(counseling.completedAt);
+        if(!Number.isFinite(a)||!Number.isFinite(b)||a===b)throw Error('Conflicting counseling/submission requires explicit resolution');
+        if(b<a)continue;
+      } final[k]=value;
+    }
+    const document={...progress,...tests,...final,...s,stepData:progress.stepData||{},step8:tests.step8||tests,step10:final,step11:counseling,isCounselingCompleted:Boolean(counseling.completedAt),currentStep:Number(progress.currentStep)||1};
+    document.isFinalSubmitted=Boolean(progress.isFinalSubmitted||submission.submittedAt||counseling.completedAt);
+    if(Object.keys(counseling).length)document.stepData={...document.stepData,step10:{...document.stepData.step10,...document.step10},step11:counseling};if(document.isFinalSubmitted)document.currentStep=10;
     return {student_key:s.studentKey,identity:JSON.stringify(s),version:1,document:JSON.stringify(document)};
   });
   const sourceDigest=hash(input);
@@ -56,7 +66,8 @@ export async function applySyntheticMigration(db,plan) {
   // Rebuild from archive; never trust caller-provided plan documents/hash.
   const verified=planSyntheticMigration(plan.legacyArchive);if(plan.sourceDigest!==verified.sourceDigest||hash(plan.snapshot)!==hash(verified.snapshot))throw Error('Migration plan was changed');
   const requestId='migration_'+plan.sourceDigest;
-  return db.transaction(fixture[0].studentKey,async q=>{
+  return db.transaction('__roster__',async q=>{
+    await q('SELECT id FROM synthetic_meta WHERE id=1'+(db.kind==='postgres'?' FOR UPDATE':''));
     const all=await q('SELECT student_key,version FROM synthetic_students ORDER BY student_key'+(db.kind==='postgres'?' FOR UPDATE':''));
     const receipts=await q('SELECT student_key FROM synthetic_receipts WHERE request_id=?',[requestId]);
     if(receipts.length===25)return {success:true,alreadyApplied:true,students:25};

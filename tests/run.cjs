@@ -26,3 +26,4 @@ require('./transactional-client.test.cjs');
 require('./transactional-recovery.test.cjs');
 require('./transactional-runtime.test.cjs');
 require('./transactional-migration.test.cjs');
+require('./transactional-readiness.test.cjs');

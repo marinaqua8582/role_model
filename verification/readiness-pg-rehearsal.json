@@ -1,0 +1,12 @@
+{
+  "environment": "actual Supabase PostgreSQL synthetic rehearsal schemas only",
+  "students": 25,
+  "migrationIdempotency": true,
+  "studentKeyOnlyTests": true,
+  "counselingActiveRestored": true,
+  "postCutoverNewAnswerPreserved": true,
+  "exactDocumentsVersionsReceipts": true,
+  "postgresToPostgresRestore": true,
+  "originalStagingSchemaModified": false,
+  "productionAccessed": false
+}

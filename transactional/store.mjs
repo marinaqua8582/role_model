@@ -1,3 +1,4 @@
+import {syntheticIdentity,rosterRows,changeRoster} from './roster.mjs';
 import { createHash, createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import {readFileSync} from 'node:fs';
@@ -26,14 +27,15 @@ export function postgresOptions(url) {
   if(parsed.hostname.endsWith('.pooler.supabase.com')||parsed.hostname.endsWith('.supabase.co'))ssl.ca=readFileSync(new URL('./supabase-ca.crt',import.meta.url),'utf8');
   return {connectionString:parsed.toString(),ssl,max:10,connectionTimeoutMillis:5000,statement_timeout:8000};
 }
-export async function openDatabase({file,url}) {
+export async function openDatabase({file,url,schema='role_model_synthetic'}) {
+  if(!/^role_model_synthetic(?:_rehearsal_[a-z0-9_]+)?$/.test(schema))throw new Error('Only synthetic schema allowed');
   if(url) {
     if(!url.startsWith('postgresql://')&&!url.startsWith('postgres://')) throw new Error('PostgreSQL required');
     const {default:pg}=await import('pg');
     const pool=new pg.Pool(postgresOptions(url));
     pool.on('error',()=>console.warn(JSON.stringify({stage:'synthetic-db-idle-error'})));
-    const wrap=c=>({query:async(sql,args=[])=>{let i=0;return (await c.query(sql.replace(/\bsynthetic_(meta|students|receipts|sessions)\b/g,'role_model_synthetic.synthetic_$1').replace(/\?/g,()=>`$${++i}`),args)).rows;}});
-    return {kind:'postgres',query:wrap(pool).query,close:()=>pool.end(),transaction:async(key,fn)=>{
+    const wrap=c=>({query:async(sql,args=[])=>{let i=0;return (await c.query(sql.replace(/\bsynthetic_(meta|students|receipts|sessions)\b/g,schema+'.synthetic_$1').replace(/\?/g,()=>`$${++i}`),args)).rows;}});
+    return {kind:'postgres',schema,query:wrap(pool).query,close:()=>pool.end(),transaction:async(key,fn)=>{
       const queued=performance.now(),c=await pool.connect(), q=wrap(c).query; const start=performance.now();
       try {await q('BEGIN');await q("SET LOCAL lock_timeout = '4s'");await q('SELECT student_key FROM synthetic_students WHERE student_key=? FOR UPDATE',[key]);const acquired=performance.now(),measured=measuredQuery(q);const result=await fn(measured.query);const commitAt=performance.now();await q('COMMIT');return {...result,metrics:{...measured.times,poolWaitMs:start-queued,lockWaitMs:acquired-start,lockHeldMs:performance.now()-acquired,commitMs:performance.now()-commitAt}};}
       catch(e){await q('ROLLBACK').catch(()=>{});throw e;}finally{c.release();}
@@ -49,7 +51,7 @@ export async function openDatabase({file,url}) {
 }
 
 export async function initialize(db) {
-  if(db.kind==='postgres') await db.query('CREATE SCHEMA IF NOT EXISTS role_model_synthetic');
+  if(db.kind==='postgres') await db.query('CREATE SCHEMA IF NOT EXISTS '+db.schema);
   await db.query('CREATE TABLE IF NOT EXISTS synthetic_meta (id INTEGER PRIMARY KEY, marker TEXT NOT NULL)');
   const meta=await db.query('SELECT marker FROM synthetic_meta');
   if(meta.length&&meta[0].marker!=='role-model-synthetic-only-v1') throw new Error('Database marker mismatch');
@@ -64,29 +66,29 @@ export async function verifyInitialized(db) {
   const meta=await db.query('SELECT marker FROM synthetic_meta WHERE id=1');
   if(meta.length!==1||meta[0].marker!=='role-model-synthetic-only-v1')throw new Error('Synthetic database not initialized');
   const rows=await db.query('SELECT student_key,identity FROM synthetic_students');
-  if(rows.length!==25 || rows.some(r=>JSON.stringify(json(r.identity))!==JSON.stringify(fixture.find(s=>s.studentKey===r.student_key)))) throw new Error('Synthetic fixture mismatch; no automatic deletion');
+  if(rows.length<25||rows.length>100||rows.some(r=>syntheticIdentity(json(r.identity)).studentKey!==r.student_key)||fixture.some(s=>!rows.some(r=>r.student_key===s.studentKey)))throw new Error('Synthetic fixture mismatch; no automatic deletion');
 }
 
-export function createService(db,secret) {
+export function createService(db,secret,{validateIdentity=syntheticIdentity}={}) {
   if(secret.length<32) throw new Error('Signing secret too short');
   const sign=p=>{const b=Buffer.from(JSON.stringify(p)).toString('base64url');return b+'.'+createHmac('sha256',secret).update(b).digest('base64url');};
   const authenticate=async token=>{
-    try {const [b,s,...rest]=String(token||'').split('.');const expected=createHmac('sha256',secret).update(b).digest();const actual=Buffer.from(s||'','base64url');if(rest.length||actual.length!==expected.length||!timingSafeEqual(actual,expected))throw Error();const p=json(Buffer.from(b,'base64url').toString());if(p.exp<=Date.now()||!fixture.some(s=>s.studentKey===p.key))throw Error();const rows=await db.query('SELECT id FROM synthetic_sessions WHERE id=? AND student_key=? AND expires_at>?',[p.id,p.key,Date.now()]);if(!rows.length)throw Error();return p;}catch{throw new Fault('AUTH','다시 로그인해 주세요.');}
+    try {const [b,s,...rest]=String(token||'').split('.');const expected=createHmac('sha256',secret).update(b).digest();const actual=Buffer.from(s||'','base64url');if(rest.length||actual.length!==expected.length||!timingSafeEqual(actual,expected))throw Error();const p=json(Buffer.from(b,'base64url').toString());if(p.exp<=Date.now())throw Error();const rows=await db.query('SELECT id FROM synthetic_sessions WHERE id=? AND student_key=? AND expires_at>?',[p.id,p.key,Date.now()]);if(!rows.length)throw Error();const [owner]=await db.query('SELECT identity,document FROM synthetic_students WHERE student_key=?',[p.key]);if(!owner||json(owner.document).rosterActive===false)throw Error();return {...p,identity:validateIdentity(json(owner.identity))};}catch{throw new Fault('AUTH','다시 로그인해 주세요.');}
   };
   const read=async key=>{const [r]=await db.query('SELECT document,version FROM synthetic_students WHERE student_key=?',[key]);return {...json(r.document),version:r.version};};
   const dispatch=async (p,{admin=false}={})=>{
     const start=performance.now(); let result;
-    if(p.action==='getRosterOptions')return {success:true,data:{grades:[3],classesByGrade:{3:[1]},numbersByClass:{'3-1':fixture.map(s=>s.number)}},storageBackend:'transactional-synthetic'};
+    if(p.action==='getRosterOptions'){const roster=(await rosterRows(db)).map(r=>json(r.identity));const grades=[...new Set(roster.map(s=>s.grade))].sort((a,b)=>a-b),classesByGrade={},numbersByClass={};for(const s of roster){(classesByGrade[s.grade]??=[]);if(!classesByGrade[s.grade].includes(s.classNum))classesByGrade[s.grade].push(s.classNum);(numbersByClass[s.grade+'-'+s.classNum]??=[]).push(s.number);}return {success:true,data:{grades,classesByGrade,numbersByClass},storageBackend:'transactional-synthetic'};}
     if(admin) {
       if(p.action==='checkAdminConfig')return {success:true};
-      if(p.action==='getAdminDashboard'){const students=await Promise.all(fixture.map(s=>read(s.studentKey)));return {success:true,data:{students,roster:fixture,totalStudents:25}};}
-      if(p.action==='getStudentDetail'){if(!fixture.some(s=>s.studentKey===p.studentKey))throw new Fault('SCOPE','합성 학생만 허용됩니다.');return {success:true,data:await read(p.studentKey)};}
-      throw new Fault('SCOPE','합성 시험에서는 관리자 변경을 허용하지 않습니다.');
+      if(p.action==='getAdminDashboard'){const rows=await rosterRows(db),roster=rows.map(r=>json(r.identity)),students=rows.map(r=>({...json(r.document),version:r.version}));return {success:true,data:{students,roster,totalStudents:students.length}};}
+      if(p.action==='getStudentDetail'){if(!(await rosterRows(db)).some(s=>s.student_key===p.studentKey))throw new Fault('SCOPE','합성 학생만 허용됩니다.');return {success:true,data:await read(p.studentKey)};}
+      if(['updateRoster','deleteRosterStudents'].includes(p.action))return changeRoster(db,p,validateIdentity);throw new Fault('SCOPE','지원하지 않는 관리자 요청입니다.');
     }
     if(p.action==='verifyStudent') {
-      const student=fixture.find(s=>s.grade===Number(p.grade)&&s.classNum===Number(p.classNo||p.classNum)&&s.number===Number(p.number)&&normalize(s.name)===normalize(p.name));
+      const student=(await rosterRows(db)).map(r=>json(r.identity)).find(s=>s.grade===Number(p.grade)&&s.classNum===Number(p.classNo||p.classNum)&&s.number===Number(p.number)&&normalize(s.name)===normalize(p.name));
       if(!student)throw new Fault('AUTH','학생 정보를 확인할 수 없습니다.');
-      const id=randomUUID(),exp=Date.now()+8*3600000;await db.query('INSERT INTO synthetic_sessions(id,student_key,expires_at) VALUES(?,?,?)',[id,student.studentKey,exp]);const progress=await read(student.studentKey);
+      const id=randomUUID(),exp=Date.now()+8*3600000;const {progress}=await db.transaction(student.studentKey,async q=>{const [row]=await q('SELECT document,version FROM synthetic_students WHERE student_key=?',[student.studentKey]);if(!row||json(row.document).rosterActive===false)throw new Fault('AUTH','학생 정보를 확인할 수 없습니다.');await q('INSERT INTO synthetic_sessions(id,student_key,expires_at) VALUES(?,?,?)',[id,student.studentKey,exp]);return {progress:{...json(row.document),version:row.version}};});
       return {success:true,student,studentToken:sign({id,key:student.studentKey,exp}),hasExisting:progress.version>0,progress,version:progress.version,storageBackend:'transactional-synthetic'};
     }
     const session=await authenticate(p.studentToken), key=session.key;
@@ -96,20 +98,20 @@ export function createService(db,secret) {
     if(['loadProgress','getProgress'].includes(p.action)){const data=await read(key);return {success:true,found:data.version>0,data,version:data.version,storageBackend:'transactional-synthetic'};}
     if(!writes.has(p.action)&&!['getSaveStatus','cancelSave'].includes(p.action))throw new Fault('SCOPE','지원하지 않는 합성 시험 요청입니다.');
     if(!/^[a-zA-Z0-9_-]{8,100}$/.test(p.requestId||''))throw new Fault('REQUEST','저장 요청 ID가 필요합니다.');
-    const identity=fixture.find(s=>s.studentKey===key);
+    const identity=session.identity;
     if(['name','googleId','grade','number','classNum','class'].some(k=>input[k]!==undefined && String(input[k])!==String(identity[k==='class'?'classNum':k])))throw new Fault('SCOPE','학생 신원이 일치하지 않습니다.');
     const intent={action:p.action,expectedVersion:p.expectedVersion,input:Object.fromEntries(Object.entries(input).filter(([k])=>!['studentToken','requestId','requestIssuedAt','expectedVersion','performanceRunId'].includes(k)))};
     const fingerprint=digest(intent);
     result=await db.transaction(key,async q=>{
+      const [row]=await q('SELECT version,document FROM synthetic_students WHERE student_key=?',[key]);if(!row||json(row.document).rosterActive===false)throw new Fault('AUTH','명단에서 제외된 학생입니다.');
       const [receipt]=await q('SELECT * FROM synthetic_receipts WHERE student_key=? AND request_id=?',[key,p.requestId]);
       if(p.action==='getSaveStatus')return {success:true,state:receipt?.state||'unknown',result:receipt?.result?json(receipt.result):undefined,version:(await q('SELECT version FROM synthetic_students WHERE student_key=?',[key]))[0].version};
       if(receipt){if(receipt.state==='cancelled')return {success:false,state:'cancelled',code:'CANCELLED',message:'취소된 요청입니다.'};if(p.action==='cancelSave')return {success:true,state:receipt.state,result:json(receipt.result)};if(receipt.fingerprint!==fingerprint)throw new Fault('ID_REUSE','요청 ID를 다른 저장에 사용할 수 없습니다.');return {...json(receipt.result),replayed:true};}
       if(p.action==='cancelSave'){await q('INSERT INTO synthetic_receipts(student_key,request_id,state,expires_at) VALUES(?,?,?,?)',[key,p.requestId,'cancelled',Date.now()+86400000]);return {success:true,state:'cancelled'};}
       if(!Number.isSafeInteger(p.requestIssuedAt)||Math.abs(Date.now()-p.requestIssuedAt)>15*60000)throw new Fault('EXPIRED','오래된 저장 요청입니다. 다시 확인해 주세요.');
-      const [row]=await q('SELECT version,document FROM synthetic_students WHERE student_key=?',[key]);
       if(!Number.isSafeInteger(p.expectedVersion)||p.expectedVersion!==row.version)throw new Fault('VERSION_CONFLICT','다른 화면에서 변경되었습니다. 저장 내용을 다시 불러와 주세요.');
       const old=json(row.document), safe={};
-      for(const [k,v] of Object.entries(input))if(!['action','studentKey','grade','class','classNum','number','name','googleId','studentToken','requestId','requestIssuedAt','expectedVersion','version','isFinalSubmitted','isGemSubmitted','createdAt','updatedAt','storageBackend'].includes(k)&&!k.startsWith('__')&&k!=='constructor'&&k!=='prototype')safe[k]=v;
+      for(const [k,v] of Object.entries(input))if(!['action','studentKey','grade','class','classNum','number','name','googleId','studentToken','requestId','requestIssuedAt','expectedVersion','version','isFinalSubmitted','isGemSubmitted','createdAt','updatedAt','storageBackend','rosterActive'].includes(k)&&!k.startsWith('__')&&k!=='constructor'&&k!=='prototype')safe[k]=v;
       let document={...old,...safe,...identity,stepData:{...old.stepData,...safe.stepData}};
       if(p.action==='saveTests')document={...document,step8:{...old.step8,...(input.step8||safe),tests:{...old.step8?.tests,...input.step8?.tests}},isTestCompleted:true};
       if(p.action==='updateRevision')document={...document,step6:input.step6||old.step6};

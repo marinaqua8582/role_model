@@ -43,15 +43,15 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#2C362B]/50 backdrop-blur-xs">
-      <div className="bg-white rounded-3xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl border border-[#E1E4D8] animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-white rounded-3xl max-w-4xl w-full min-w-0 max-h-[90dvh] overflow-hidden flex flex-col shadow-2xl border border-[#E1E4D8] animate-in fade-in zoom-in-95 duration-150">
         {/* Modal Header */}
-        <div className="p-5 sm:p-6 border-b border-[#E1E4D8] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-[#F1F4EF] border border-[#DCE2D7] text-[#4B6344] flex items-center justify-center font-bold">
+        <div className="relative p-4 pr-14 sm:p-6 sm:pr-16 border-b border-[#E1E4D8] flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 shrink-0 rounded-2xl bg-[#F1F4EF] border border-[#DCE2D7] text-[#4B6344] flex items-center justify-center font-bold">
               {student.classNum}-{student.number}
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0 [overflow-wrap:anywhere]">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="text-lg font-bold text-[#2C362B]">
                   {student.grade}학년 {student.classNum}반 {student.number}번 {student.name}
                 </h3>
@@ -75,7 +75,7 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2 shrink-0 max-w-full">
             <button
               type="button"
               onClick={() => onPreviewStudentMode(student)}
@@ -97,7 +97,8 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
             <button
               type="button"
               onClick={onClose}
-              className="p-2 text-[#6B7280] hover:text-[#2C362B] hover:bg-[#F9FAF8] rounded-xl transition-colors ml-2 cursor-pointer"
+              aria-label="학생 상세 닫기"
+              className="absolute right-3 top-3 sm:right-4 sm:top-4 p-2 text-[#6B7280] hover:text-[#2C362B] hover:bg-[#F9FAF8] rounded-xl transition-colors ml-2 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -127,7 +128,7 @@ export const AdminStudentDetailModal: React.FC<AdminStudentDetailModalProps> = (
         </div>
 
         {/* Modal Scrollable Body */}
-        <div className="p-6 overflow-y-auto space-y-6 flex-1 text-xs">
+        <div className="p-4 sm:p-6 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden [overflow-wrap:anywhere] space-y-6 flex-1 text-xs">
           {/* TAB 1: Submission & Career Counseling (STEP 10) */}
           {activeTab === 'submission' && (
             <div className="space-y-5">

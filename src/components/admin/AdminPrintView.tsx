@@ -53,6 +53,8 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
             break-after: auto !important;
             margin-bottom: 0 !important;
           }
+          .student-print-page { overflow: visible !important; max-height: none !important; }
+          .student-print-page * { overflow-wrap: anywhere; }
           /* Short compact sections: keep together if small */
           .print-section-short {
             page-break-inside: avoid !important;
@@ -74,7 +76,9 @@ export const AdminPrintView: React.FC<AdminPrintViewProps> = ({
             break-inside: auto !important;
             white-space: pre-wrap !important;
             word-break: break-word !important;
-            overflow-wrap: break-word !important;
+            overflow-wrap: anywhere !important;
+            max-height: none !important;
+            overflow: visible !important;
           }
           .counseling-item {
             page-break-inside: auto !important;

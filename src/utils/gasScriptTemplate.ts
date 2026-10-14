@@ -65,7 +65,8 @@ function handleRequest(e) {
       requestPerformance_.lockWaitMs=acquiredAt-lockStart;
       if(params.performanceRunId) validatePerformanceRun_(ss,params);
     }
-    if (['Roster','Progress','Tests','Submissions'].some(function(name) { return !requestSheet_(ss,name); })) initSheetsIfNeeded(ss);
+    if(lock && action!=='getSaveStatus') assertCutoverWriteAllowed_(params);
+    if (['Roster','Progress','Tests','Submissions'].some(function(name) { return !requestSheet_(ss,name); })) { if(getCutoverWriteStatus().closed) throw new Error('점검 중 시트 생성은 허용되지 않습니다.'); initSheetsIfNeeded(ss); }
     // Contexts live for one request and are invalidated after each write.
     var readContext = ['verifyStudent','loadProgress','getProgress'].indexOf(action) !== -1 ? {tables:{},headerMaps:{},emptySheets:{}} : undefined;
     requestReadContext_ = readContext || {tables:{},headerMaps:{},emptySheets:{}};
@@ -81,6 +82,7 @@ function handleRequest(e) {
     if (
       action === 'getPerformanceSnapshot' || action === 'finishPerformanceRun' || action === 'getPerformanceTrace' ||
       action === 'getPerformanceFixture' ||
+      action === 'getCutoverWriteStatus' ||
       action === 'checkAdminConfig' ||
       action === 'getAdminDashboard' ||
       action === 'getStudentDetail' ||
@@ -98,6 +100,7 @@ function handleRequest(e) {
     }
 
     result = { success: true };
+    if(action==='getCutoverWriteStatus') { result=getCutoverWriteStatus(); result.success=true; output.setContent(JSON.stringify(result)); return output; }
     if(action==='getSaveStatus') {
       receiptExpiry=Number(params.requestIssuedAt)+660000;
       if(!Number.isFinite(receiptExpiry)) throw new Error('잘못된 저장 요청 시간입니다.');
@@ -106,6 +109,7 @@ function handleRequest(e) {
       if(statusReceipt && statusReceipt.state==='completed' && params.expectedSaveIntent) {
         if(params.expectedSaveIntent.requestId!==params.requestId || statusReceipt.fingerprint!==saveFingerprint_(params.expectedSaveIntent)) throw new Error('저장 요청 ID가 충돌했습니다.');
       }
+      if(!statusReceipt && getCutoverWriteStatus().closed) { result={success:true,state:'unknown'}; output.setContent(JSON.stringify(result)); return output; }
       if(!statusReceipt) { statusReceipt={studentKey:scopedKey,state:'cancelled',expiresAt:receiptExpiry}; receiptWrite_(params.requestId,statusReceipt); }
       result={success:true,state:statusReceipt.state,savedAt:statusReceipt.savedAt};
       output.setContent(JSON.stringify(result)); return output;
@@ -163,6 +167,7 @@ function handleRequest(e) {
       result = {success:true};
     } else if (action === 'verifyStudent') {
       result = verifyStudent(ss, params, readContext);
+      if(result.success) result.maintenanceEpoch=getCutoverWriteStatus().epoch;
     } else if (action === 'getRosterOptions') {
       result = getRosterOptions(ss);
     } else if (action === 'getAdminDashboard') {
@@ -280,8 +285,10 @@ function validateSaveTime_(issuedAt) {
 }
 // Run manually or via a TESTED time trigger; this touches only expired operational receipts.
 function purgeExpiredSaveReceipts() {
+  if(getCutoverWriteStatus().closed) return {deleted:0,remaining:null,maintenance:true};
   var lock=LockService.getScriptLock(); if(!lock.tryLock(15000)) return {success:false,lockTimeout:true};
   try {
+    if(getCutoverWriteStatus().closed) return {deleted:0,remaining:null,maintenance:true};
     var properties=PropertiesService.getScriptProperties(), entries=properties.getProperties(), now=Date.now(), deleted=0, skippedPending=0, protectedUnknownState=0, invalidExpiresAt=0, malformed=0, deferredExpired=0;
     Object.keys(entries).filter(function(k) { return k.indexOf('save-receipt:')===0; }).forEach(function(k) {
       var item; try { item=JSON.parse(entries[k]); } catch(e) {malformed++;return;}
@@ -2177,5 +2184,31 @@ function saveFingerprint_(params) {
   ['studentToken','transportRequestId','measurePerformance','performanceRunId','performanceSubject','performanceTraceId'].forEach(function(key) {delete fingerprintInput[key];});
   return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(fingerprintInput)).map(function(b) { return ('0'+(b & 255).toString(16)).slice(-2); }).join('');
 }
+
+// Editor-only controls; never expose these through the student/admin HTTP dispatcher.
+function getCutoverWriteStatus() {
+  var raw=PropertiesService.getScriptProperties().getProperty('CUTOVER_WRITE_STATE');
+  if(!raw) return {closed:false,epoch:0,openedAt:0};
+  var state=JSON.parse(raw);
+  if(typeof state.closed!=='boolean' || !Number.isSafeInteger(state.epoch) || !Number.isFinite(state.openedAt)) throw new Error('잘못된 점검 상태: 쓰기를 중단합니다.');
+  return state;
+}
+function assertCutoverWriteAllowed_(params) {
+  var state=getCutoverWriteStatus();
+  if(state.closed) throw new Error('서버 점검 중입니다. 입력 내용을 보관하고 저장 결과를 확인해 주세요.');
+  if(state.epoch>0 && (params.maintenanceEpoch!==state.epoch || !Number.isSafeInteger(params.requestIssuedAt) || params.requestIssuedAt<state.openedAt)) throw new Error('전환 이전 요청입니다. 새로 로그인한 뒤 다시 확인해 주세요.');
+}
+function setCutoverWriteState_(closed) {
+  var lock=LockService.getScriptLock();
+  if(!lock.tryLock(60000)) throw new Error('실행 중 저장 종료를 확인하지 못했습니다. 전환을 중단하세요.');
+  try {
+    var state=getCutoverWriteStatus();
+    if(state.closed!==closed) { state={closed:closed,epoch:state.epoch+1,openedAt:closed?state.openedAt:Date.now()}; PropertiesService.getScriptProperties().setProperty('CUTOVER_WRITE_STATE',JSON.stringify(state)); }
+    SpreadsheetApp.flush();
+    return {closed:state.closed,epoch:state.epoch,openedAt:state.openedAt,drained:true};
+  } finally {lock.releaseLock();}
+}
+function closeWritesForCutover() { return setCutoverWriteState_(true); }
+function reopenWritesAfterRollback() { return setCutoverWriteState_(false); }
 `;
 }

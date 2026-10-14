@@ -39,5 +39,5 @@ export async function changeRoster(db,p,validateIdentity=syntheticIdentity){
     if(!deleting)for(const s of incoming){const old=byKey.get(s.studentKey);if(!old){await q('INSERT INTO synthetic_students(student_key,identity,document) VALUES(?,?,?)',[s.studentKey,JSON.stringify(s),JSON.stringify({...s,currentStep:1})]);}else if(!isActive(old)){await q('UPDATE synthetic_students SET document=?,version=version+1 WHERE student_key=?',[JSON.stringify({...JSON.parse(old.document),rosterActive:true}),s.studentKey]);}}
     const count=(await q('SELECT document FROM synthetic_students')).filter(isActive).length;
     return {success:true,count,deletedCount,message:'명단이 반영되었습니다. 제외된 학생의 작성 자료는 보존됩니다.'};
-  });
+  },{write:true,issuedAt:p.requestIssuedAt,epoch:p.storageEpoch});
 }

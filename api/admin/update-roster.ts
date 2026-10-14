@@ -26,7 +26,7 @@ export default async function handler(req: any, res: any) {
       action: 'updateRoster',
       students,
       mode: mode || 'replace',
-    });
+    },{adminIssuedAt:auth.issuedAt});
 
     if (gasData && gasData.success) {
       return res.status(200).json(gasData);

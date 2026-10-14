@@ -1,3 +1,4 @@
+import {registeredIdentity} from './roster.mjs';
 import {createHash,randomBytes,createCipheriv,createDecipheriv} from 'node:crypto';
 import {fixture,verifyInitialized} from './store.mjs';
 
@@ -18,48 +19,55 @@ function tableRows(table) {
     return Object.fromEntries(header.map((h,i)=>[h,r[i]??'']));
   });
 }
-function owner(row, rosterOnly=false) {
+function owner(row, rosterOnly=false, identities=fixture) {
   const derived=[row.grade,row.classNum,row.number].every(v=>v!==undefined&&v!=='')?normalizeLegacyKey([row.grade,row.classNum,row.number].join('-')):null;
   const key=row.studentKey?normalizeLegacyKey(row.studentKey):derived;
   if(!key||derived&&key!==derived)throw Error('Identity/key conflict');
-  const student=fixture.find(s=>s.studentKey===key);
-  if(!student||rosterOnly&&(!row.name||!row.googleId)||row.name&&norm(row.name)!==norm(student.name)||row.googleId&&String(row.googleId).trim()!==student.googleId||row.ownerName&&norm(row.ownerName)!==norm(student.name)||row.ownerGoogleId&&String(row.ownerGoogleId).trim()!==student.googleId)throw Error('Non-synthetic or ambiguous legacy identity');
+  const student=identities.find(s=>s.studentKey===key);
+  if(!student||rosterOnly&&!row.name||row.name&&norm(row.name)!==norm(student.name)||row.googleId&&String(row.googleId).trim()!==student.googleId||row.ownerName&&norm(row.ownerName)!==norm(student.name)||row.ownerGoogleId&&String(row.ownerGoogleId).trim()!==student.googleId)throw Error('Non-synthetic or ambiguous legacy identity');
   return student;
 }
 function parseFields(row) {
   const out={...row};
-  for(const k of ['stepData','step8','step10'])if(typeof out[k]==='string'&&out[k]){try{out[k]=JSON.parse(out[k]);}catch{throw Error('Invalid legacy JSON');}if(!out[k]||typeof out[k]!=='object'||Array.isArray(out[k]))throw Error('Invalid legacy object');}
-  for(const k of ['isFinalSubmitted','isTestCompleted','isPromptCompleted','isGemSubmitted'])if(k in out){if([true,'true','TRUE',1,'1'].includes(out[k]))out[k]=true;else if([false,'false','FALSE',0,'0',''].includes(out[k]))out[k]=false;else throw Error('Invalid legacy completion state');}
+  for(const k of ['stepData',...Array.from({length:11},(_,i)=>'step'+(i+1))])if(typeof out[k]==='string'&&out[k]){try{out[k]=JSON.parse(out[k]);}catch{throw Error('Invalid legacy JSON');}if(!out[k]||typeof out[k]!=='object'||Array.isArray(out[k]))throw Error('Invalid legacy object');}
+  for(const k of ['isFinalSubmitted','isTestCompleted','isPromptCompleted','isGemSubmitted','isCounselingCompleted'])if(k in out){if([true,'true','TRUE',1,'1'].includes(out[k]))out[k]=true;else if([false,'false','FALSE',0,'0',''].includes(out[k]))out[k]=false;else throw Error('Invalid legacy completion state');}
   return out;
 }
-export function planSyntheticMigration(input) {
-  if(input?.format!=='legacy-sheets-synthetic-v1'||!input.sheets)throw Error('Synthetic legacy format required');
+export function planSyntheticMigration(input) { return planMigration(input,fixture); }
+export function planRegisteredMigration(input) {
+  if(input?.format!=='legacy-sheets-registered-v1')throw Error('Registered archive required');
+  const identities=tableRows(input.sheets?.Roster).map(r=>registeredIdentity({...r,studentKey:r.studentKey?normalizeLegacyKey(r.studentKey):undefined}));
+  if(!identities.length||identities.length>10000||new Set(identities.map(s=>s.studentKey)).size!==identities.length)throw Error('Ambiguous registered roster');
+  return planMigration(input,identities,true);
+}
+function planMigration(input,identities,registered=false) {
+  if(input?.format!==(registered?'legacy-sheets-registered-v1':'legacy-sheets-synthetic-v1')||!input.sheets)throw Error('Synthetic legacy format required');
   const rows=Object.fromEntries(['Roster','Progress','Tests','Submissions','Counseling'].map(name=>[name,name==='Counseling'&&!input.sheets[name]?[]:tableRows(input.sheets[name])]));
-  if(rows.Roster.length!==25)throw Error('Exactly 25 synthetic roster rows required');
-  const roster=rows.Roster.map(r=>owner(r,true));if(new Set(roster.map(s=>s.studentKey)).size!==25)throw Error('Duplicate roster identity');
+  if(rows.Roster.length!==identities.length)throw Error('Exactly 25 synthetic roster rows required');
+  const roster=rows.Roster.map(r=>owner(r,true,identities));if(new Set(roster.map(s=>s.studentKey)).size!==identities.length)throw Error('Duplicate roster identity');
   let duplicates=0;const grouped={};
   for(const name of ['Progress','Tests','Submissions','Counseling']){
-    grouped[name]=new Map();for(const row of rows[name]){const s=owner(row),parsed=parseFields(row),old=grouped[name].get(s.studentKey);if(old){duplicates++;if(hash(old)!==hash(parsed))throw Error('Conflicting duplicate rows require manual resolution; source preserved');}else grouped[name].set(s.studentKey,parsed);}
+    grouped[name]=new Map();for(const row of rows[name]){const s=owner(row,false,identities),parsed=parseFields(row),old=grouped[name].get(s.studentKey);if(old){duplicates++;if(hash(old)!==hash(parsed))throw Error('Conflicting duplicate rows require manual resolution; source preserved');}else grouped[name].set(s.studentKey,parsed);}
   }
-  const students=fixture.map(s=>{
+  const students=identities.map(s=>{
     const progress=grouped.Progress.get(s.studentKey)||{},tests=grouped.Tests.get(s.studentKey)||{},submission=grouped.Submissions.get(s.studentKey)||{},counseling=grouped.Counseling.get(s.studentKey)||{};
-    const final={...submission,...submission.step10};
+    const final={...submission,...submission.step10},counselingValues={...counseling,...counseling.step11};
     for(const k of ['barrierAnswer','barrierReflection','decisionAnswer','decisionReflection','educationAnswer','educationReflection','finalCareerReflection','gemUrl']){
-      const value=counseling[k];if(value===undefined||value==='')continue;
+      const value=counselingValues[k];if(value===undefined||value==='')continue;
       if(final[k]!==undefined&&final[k]!==''&&final[k]!==value){
-        const a=Date.parse(submission.submittedAt),b=Date.parse(counseling.completedAt);
+        const a=Date.parse(submission.submittedAt),b=Date.parse(counselingValues.completedAt);
         if(!Number.isFinite(a)||!Number.isFinite(b)||a===b)throw Error('Conflicting counseling/submission requires explicit resolution');
         if(b<a)continue;
       } final[k]=value;
     }
     const merged={...progress};for(const source of [tests,final])for(const [k,v] of Object.entries(source))if(v!==''&&v!==undefined&&v!==null)merged[k]=v;
-    const document={...merged,...s,stepData:progress.stepData||{},step8:tests.step8||tests,step10:final,step11:counseling,isCounselingCompleted:Boolean(counseling.completedAt),currentStep:Number(progress.currentStep)||1};
-    document.isFinalSubmitted=Boolean(progress.isFinalSubmitted||submission.submittedAt||counseling.completedAt);
-    if(Object.keys(counseling).length)document.stepData={...document.stepData,step10:{...document.stepData.step10,...document.step10},step11:counseling};if(document.isFinalSubmitted)document.currentStep=10;
+    const document={...merged,...s,stepData:progress.stepData||{},step8:{...progress.step8,...(tests.step8||tests),tests:{...progress.step8?.tests,...tests.step8?.tests}},step10:{...progress.step10,...final},step11:{...progress.step11,...counselingValues},isCounselingCompleted:Boolean(progress.isCounselingCompleted||counselingValues.completedAt),currentStep:Number(progress.currentStep)||1};
+    document.isFinalSubmitted=Boolean(progress.isFinalSubmitted||submission.submittedAt||counselingValues.completedAt);
+    if(Object.keys(counseling).length)document.stepData={...document.stepData,step10:{...document.stepData.step10,...document.step10},step11:{...document.stepData.step11,...document.step11}};if(document.isFinalSubmitted)document.currentStep=10;
     return {student_key:s.studentKey,identity:JSON.stringify(s),version:1,document:JSON.stringify(document)};
   });
   const sourceDigest=hash(input);
-  return {format:'synthetic-migration-plan-v1',sourceDigest,legacyArchive:structuredClone(input),snapshot:{format:'synthetic-only-backup-v1',students,receipts:[]},summary:{students:25,sourceRows:Object.fromEntries(Object.entries(rows).map(([k,v])=>[k,v.length])),identicalDuplicateRowsPreserved:duplicates}};
+  return {format:registered?'registered-migration-plan-v1':'synthetic-migration-plan-v1',sourceDigest,legacyArchive:structuredClone(input),snapshot:{format:registered?'registered-backup-v1':'synthetic-only-backup-v1',students,receipts:[]},summary:{students:identities.length,sourceRows:Object.fromEntries(Object.entries(rows).map(([k,v])=>[k,v.length])),identicalDuplicateRowsPreserved:duplicates}};
 }
 
 export async function applySyntheticMigration(db,plan) {

@@ -17,7 +17,7 @@ export default async function handler(req: any, res: any) {
   }
 
   try {
-    const gasData = await callServerGas({ action: 'getAdminDashboard' });
+    const gasData = await callServerGas({ action: 'getAdminDashboard' },{adminIssuedAt:auth.issuedAt});
     if (gasData && gasData.success) {
       return res.status(200).json(gasData);
     }

@@ -1,0 +1,19 @@
+{
+  "environment": "actual synthetic Supabase PostgreSQL, isolated rehearsal schemas",
+  "students": 25,
+  "productionAccessed": false,
+  "completed": true,
+  "admittedWriterDrain": true,
+  "encryptedBackup": true,
+  "migrationIdempotent": true,
+  "sourceComparison": true,
+  "delayedWritesBlocked": true,
+  "newFinalAndReplay": true,
+  "studentAdminMatch": true,
+  "latestAnswersVersionsReceiptsRestored": true,
+  "pendingUnknownCancelledReceiptsPreserved": true,
+  "schemas": [
+    "role_model_synthetic_rehearsal_cutover_a3ca1178b3",
+    "role_model_synthetic_rehearsal_recover_a3ca1178b3"
+  ]
+}

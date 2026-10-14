@@ -25,7 +25,7 @@ export default async function handler(req: any, res: any) {
     const gasData = await callServerGas({
       action: 'getStudentDetail',
       studentKey,
-    });
+    },{adminIssuedAt:auth.issuedAt});
 
     if (gasData && gasData.success) {
       return res.status(200).json(gasData);

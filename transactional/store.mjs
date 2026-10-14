@@ -68,11 +68,12 @@ export async function initialize(db,{identities=fixture,registered=false}={}) {
   await initializeMaintenance(db);
   await verifyInitialized(db,{registered,identities});
 }
-export async function verifyInitialized(db,{registered=false,identities=fixture}={}) {
+export async function verifyInitialized(db,{registered=false,identities=fixture,strictFixture=false}={}) {
   const meta=await db.query('SELECT marker FROM synthetic_meta WHERE id=1');
   if(meta.length!==1||meta[0].marker!==(registered?'role-model-registered-rehearsal-v1':'role-model-synthetic-only-v1'))throw new Error('Synthetic database not initialized');
   const rows=await db.query('SELECT student_key,identity FROM synthetic_students');
   if(rows.length<identities.length||rows.length>(registered?10000:100)||rows.some(r=>(registered?registeredIdentity:syntheticIdentity)(json(r.identity)).studentKey!==r.student_key)||identities.some(s=>!rows.some(r=>r.student_key===s.studentKey)))throw new Error('Synthetic fixture mismatch; no automatic deletion');
+  if(strictFixture&&(rows.length!==identities.length||rows.some(r=>{const student=json(r.identity);return !identities.some(f=>Object.keys(f).every(k=>f[k]===student[k]));})))throw new Error('Strict synthetic identities required');
 }
 
 export function createService(db,secret,{validateIdentity=syntheticIdentity}={}) {
@@ -92,10 +93,18 @@ export function createService(db,secret,{validateIdentity=syntheticIdentity}={})
       if(['updateRoster','deleteRosterStudents'].includes(p.action))return changeRoster(db,{...p,storageEpoch:adminEpoch},validateIdentity);throw new Fault('SCOPE','지원하지 않는 관리자 요청입니다.');
     }
     if(p.action==='verifyStudent') {
-      const student=(await rosterRows(db)).map(r=>json(r.identity)).find(s=>s.grade===Number(p.grade)&&s.classNum===Number(p.classNo||p.classNum||p.class)&&s.number===Number(p.number)&&normalize(s.name)===normalize(p.name));
-      if(!student)throw new Fault('AUTH','학생 정보를 확인할 수 없습니다.');
-      const id=randomUUID(),exp=Date.now()+8*3600000;const {progress,epoch}=await db.transaction(student.studentKey,async q=>{const [row]=await q('SELECT document,version FROM synthetic_students WHERE student_key=?',[student.studentKey]);if(!row||json(row.document).rosterActive===false)throw new Fault('AUTH','학생 정보를 확인할 수 없습니다.');await q('INSERT INTO synthetic_sessions(id,student_key,expires_at) VALUES(?,?,?)',[id,student.studentKey,exp]);return {epoch:(await q('SELECT epoch FROM synthetic_control WHERE id=1'))[0].epoch,progress:{...json(row.document),version:row.version}};});
-      return {success:true,student,studentToken:sign({id,key:student.studentKey,exp,epoch}),hasExisting:progress.version>0,progress,version:progress.version,storageEpoch:epoch,storageBackend:'transactional-synthetic'};
+      const grade=Number(p.grade),classNum=Number(p.classNo||p.classNum||p.class),number=Number(p.number);
+      if(![grade,classNum,number].every(v=>Number.isSafeInteger(v)&&v>0))throw new Fault('AUTH','학생 정보를 확인할 수 없습니다.');
+      const key=`${grade}-${classNum}-${number}`,id=randomUUID(),exp=Date.now()+8*3600000;
+      const {student,progress,epoch}=await db.transaction(key,async q=>{
+        const [row]=await q('SELECT s.identity,s.document,s.version,c.epoch FROM synthetic_students s CROSS JOIN synthetic_control c WHERE s.student_key=? AND c.id=1',[key]);
+        if(!row||json(row.document).rosterActive===false)throw new Fault('AUTH','학생 정보를 확인할 수 없습니다.');
+        const student=validateIdentity(json(row.identity));
+        if(student.studentKey!==key||normalize(student.name)!==normalize(p.name))throw new Fault('AUTH','학생 정보를 확인할 수 없습니다.');
+        await q('INSERT INTO synthetic_sessions(id,student_key,expires_at) VALUES(?,?,?)',[id,key,exp]);
+        return {student,epoch:row.epoch,progress:{...json(row.document),version:row.version}};
+      });
+      return {success:true,student,studentToken:sign({id,key,exp,epoch}),hasExisting:progress.version>0,progress,version:progress.version,storageEpoch:epoch,storageBackend:'transactional-synthetic'};
     }
     const session=await authenticate(p.studentToken), key=session.key;
     const input=p.progress||p.tests||p.submission||p.counseling||p;

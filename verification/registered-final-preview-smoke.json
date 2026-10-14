@@ -1,0 +1,10 @@
+{
+  "origin": "https://staging-role-model-synthetic25-20261009-6al7ahtu8-jeonghee.vercel.app",
+  "pairedSecretMatches": true,
+  "students": 25,
+  "foreignRosterRejected": true,
+  "documentsVersionsUnchanged": true,
+  "ownFullIdAndFinalRestored": true,
+  "normalLoginSaveSqlUnchangedFromMeasuredPreview": true,
+  "tests": 251
+}

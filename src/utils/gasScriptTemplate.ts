@@ -167,7 +167,7 @@ function handleRequest(e) {
       result = {success:true};
     } else if (action === 'verifyStudent') {
       result = verifyStudent(ss, params, readContext);
-      if(result.success) result.maintenanceEpoch=getCutoverWriteStatus().epoch;
+      if(result.success) { result.maintenanceEpoch=getCutoverWriteStatus().epoch; bindCutoverSessionEpoch_(result.studentToken,result.maintenanceEpoch); }
     } else if (action === 'getRosterOptions') {
       result = getRosterOptions(ss);
     } else if (action === 'getAdminDashboard') {
@@ -2196,6 +2196,7 @@ function getCutoverWriteStatus() {
 function assertCutoverWriteAllowed_(params) {
   var state=getCutoverWriteStatus();
   if(state.closed) throw new Error('서버 점검 중입니다. 입력 내용을 보관하고 저장 결과를 확인해 주세요.');
+  if(state.epoch>0 && params.studentToken && CacheService.getScriptCache().get('student-cutover:'+params.studentToken)!==String(state.epoch)) throw new Error('전환 이전 학생 세션입니다. 새로 로그인해 주세요.');
   if(state.epoch>0 && (params.maintenanceEpoch!==state.epoch || !Number.isSafeInteger(params.requestIssuedAt) || params.requestIssuedAt<state.openedAt)) throw new Error('전환 이전 요청입니다. 새로 로그인한 뒤 다시 확인해 주세요.');
 }
 function setCutoverWriteState_(closed) {
@@ -2210,5 +2211,7 @@ function setCutoverWriteState_(closed) {
 }
 function closeWritesForCutover() { return setCutoverWriteState_(true); }
 function reopenWritesAfterRollback() { return setCutoverWriteState_(false); }
+
+function bindCutoverSessionEpoch_(token,epoch) { CacheService.getScriptCache().put('student-cutover:'+token,String(epoch),21600); }
 `;
 }

@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-15",
+  "environment": "actual Vercel Preview and Seoul Supabase registered-policy rehearsal",
+  "origin": "https://staging-role-model-synthetic25-20261009-hopli3bp7-jeonghee.vercel.app",
+  "phases": {
+    "login": {
+      "meanMs": 4305.0698600000005,
+      "p50Ms": 4820.725199999999,
+      "p95Ms": 5048.6443,
+      "maxMs": 5066.0229,
+      "attempts": 25,
+      "successes": 25
+    }
+  },
+  "failures": 0,
+  "timeouts": 0,
+  "completed": false,
+  "previewAdminSecretMatchesPrivateGasSecret": true,
+  "errorKind": "PERFORMANCE_TARGET",
+  "finalMaintenance": {
+    "closed": false,
+    "epoch": 4,
+    "openedAt": 1791991187097
+  }
+}

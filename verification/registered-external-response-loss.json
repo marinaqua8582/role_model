@@ -1,0 +1,9 @@
+{
+  "environment": "actual student client module in VM using actual synthetic Preview PostgreSQL",
+  "durableCommitThenDiscardedResponse": true,
+  "writeRequests": 1,
+  "automaticResends": 0,
+  "secondSaveBlockedUntilStatus": true,
+  "statusCompleted": true,
+  "realBrowserNetworkDisconnect": false
+}

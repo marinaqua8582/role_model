@@ -13,7 +13,10 @@
   "allSixPdfPagesVisuallyReviewed": true,
   "promptCounselingReflectionEndMarkersVisuallyPresent": true,
   "pdfAutomatedTextMatchingUnavailable": true,
-  "classPdfReviewCompleted": false,
+  "classPdfReviewCompleted": true,
   "realStudentDataAccessed": false,
-  "productionDeployed": false
+  "productionDeployed": false,
+  "classPdfPages": 54,
+  "classPdfStudentsVisuallyVerified": 25,
+  "classPdfClippingOrMixedStudentsObserved": false
 }

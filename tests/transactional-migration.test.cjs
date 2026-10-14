@@ -1,5 +1,16 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const migration=()=>import('../transactional/migration.mjs');
+test('legacy step8Data restores detailed test notes and rejects malformed or conflicting aliases',async()=>{
+ const m=await migration(),source=m.makeLegacySyntheticFixture();
+ source.sheets.Tests[0][6]='step8Data';
+ const details={tests:{test1:{result:'good',note:'synthetic legacy note'},test2:{result:'needs_fix',note:'synthetic second note'}},problemDescription:'synthetic problem'};
+ source.sheets.Tests[1][6]=JSON.stringify(details);
+ const plan=m.planSyntheticMigration(source),doc=JSON.parse(plan.snapshot.students[0].document);
+ assert.deepEqual(doc.step8.tests,details.tests);assert.equal(doc.step8.problemDescription,details.problemDescription);assert.deepEqual(plan.legacyArchive,source);
+ const malformed=structuredClone(source);malformed.sheets.Tests[1][6]='{';assert.throws(()=>m.planSyntheticMigration(malformed),/Invalid legacy JSON/);
+ const conflict=structuredClone(source);conflict.sheets.Tests[0].push('step8');conflict.sheets.Tests[1].push(JSON.stringify({tests:{test1:{result:'good',note:'different synthetic note'}}}));assert.throws(()=>m.planSyntheticMigration(conflict),/Conflicting legacy step8 aliases/);
+ const identical=structuredClone(source);identical.sheets.Tests[0].push('step8');identical.sheets.Tests[1].push(JSON.stringify(details));assert.deepEqual(JSON.parse(m.planSyntheticMigration(identical).snapshot.students[0].document).step8.tests,details.tests);
+});
 test('legacy synthetic migration preserves unknown columns, canonical keys and identical duplicates',async()=>{
  const m=await migration(),source=m.makeLegacySyntheticFixture();source.sheets.Progress.push([...source.sheets.Progress[1]]);const plan=m.planSyntheticMigration(source);
  assert.deepEqual(plan.legacyArchive,source);assert.equal(plan.summary.identicalDuplicateRowsPreserved,1);assert.equal(m.normalizeLegacyKey('０３-０１-０１'),'3-1-1');const doc=JSON.parse(plan.snapshot.students[0].document);assert.equal(doc.stepData.step1.competencyCustom,'기존직접입력0');assert.equal(doc.unknownLegacyColumn,'미지열0');assert.equal(doc.currentStep,10);

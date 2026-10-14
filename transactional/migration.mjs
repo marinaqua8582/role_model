@@ -29,7 +29,11 @@ function owner(row, rosterOnly=false, identities=fixture) {
 }
 function parseFields(row) {
   const out={...row};
-  for(const k of ['stepData',...Array.from({length:11},(_,i)=>'step'+(i+1))])if(typeof out[k]==='string'&&out[k]){try{out[k]=JSON.parse(out[k]);}catch{throw Error('Invalid legacy JSON');}if(!out[k]||typeof out[k]!=='object'||Array.isArray(out[k]))throw Error('Invalid legacy object');}
+  for(const k of ['stepData','step8Data',...Array.from({length:11},(_,i)=>'step'+(i+1))])if(typeof out[k]==='string'&&out[k]){try{out[k]=JSON.parse(out[k]);}catch{throw Error('Invalid legacy JSON');}if(!out[k]||typeof out[k]!=='object'||Array.isArray(out[k]))throw Error('Invalid legacy object');}
+  if(out.step8Data){
+    if(out.step8&&hash(out.step8)!==hash(out.step8Data))throw Error('Conflicting legacy step8 aliases require explicit resolution');
+    out.step8=out.step8Data;
+  }
   for(const k of ['isFinalSubmitted','isTestCompleted','isPromptCompleted','isGemSubmitted','isCounselingCompleted'])if(k in out){if([true,'true','TRUE',1,'1'].includes(out[k]))out[k]=true;else if([false,'false','FALSE',0,'0',''].includes(out[k]))out[k]=false;else throw Error('Invalid legacy completion state');}
   return out;
 }

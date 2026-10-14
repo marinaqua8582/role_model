@@ -51,3 +51,7 @@ test('empty replacement excludes all logins without deleting any answer row',asy
 test('registered identity policy preserves full ID and canonical school key; synthetic boundary remains separate',async()=>{
  const {registeredIdentity,syntheticIdentity}=await import('../transactional/roster.mjs');const record={grade:3,classNum:2,number:25,name:'합성학생25',googleId:'synthetic25@example.invalid'};assert.equal(registeredIdentity(record).studentKey,'3-2-25');assert.equal(registeredIdentity(record).googleId,record.googleId);assert.throws(()=>syntheticIdentity(record));assert.throws(()=>registeredIdentity({...record,studentKey:'3-1-25'}));assert.throws(()=>registeredIdentity({...record,name:''}));
 });
+
+test('blank legacy submission columns do not erase populated Progress answers',async()=>{
+ const m=await import('../transactional/migration.mjs'),s=m.makeLegacySyntheticFixture();s.sheets.Submissions[0].push('roleModelName');s.sheets.Submissions[1].push('');const p=m.planSyntheticMigration(s);assert.equal(JSON.parse(p.snapshot.students[0].document).roleModelName,'기존모형0');assert.deepEqual(p.legacyArchive,s);
+});

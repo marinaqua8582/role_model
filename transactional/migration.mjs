@@ -52,7 +52,8 @@ export function planSyntheticMigration(input) {
         if(b<a)continue;
       } final[k]=value;
     }
-    const document={...progress,...tests,...final,...s,stepData:progress.stepData||{},step8:tests.step8||tests,step10:final,step11:counseling,isCounselingCompleted:Boolean(counseling.completedAt),currentStep:Number(progress.currentStep)||1};
+    const merged={...progress};for(const source of [tests,final])for(const [k,v] of Object.entries(source))if(v!==''&&v!==undefined&&v!==null)merged[k]=v;
+    const document={...merged,...s,stepData:progress.stepData||{},step8:tests.step8||tests,step10:final,step11:counseling,isCounselingCompleted:Boolean(counseling.completedAt),currentStep:Number(progress.currentStep)||1};
     document.isFinalSubmitted=Boolean(progress.isFinalSubmitted||submission.submittedAt||counseling.completedAt);
     if(Object.keys(counseling).length)document.stepData={...document.stepData,step10:{...document.stepData.step10,...document.step10},step11:counseling};if(document.isFinalSubmitted)document.currentStep=10;
     return {student_key:s.studentKey,identity:JSON.stringify(s),version:1,document:JSON.stringify(document)};

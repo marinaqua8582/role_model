@@ -46,7 +46,7 @@ export async function restoreRegisteredSnapshot(db,snapshot) {
   });
 }
 export async function applyRegisteredMigration(db,plan) {
-  const verified=planRegisteredMigration(plan.legacyArchive);
+  const verified=planRegisteredMigration(plan.legacyArchive,{excludeStudentKeys:plan.excludeStudentKeys||[]});
   if(hash(plan)!==hash(verified))throw Error('Migration plan changed');
   await verifyInitialized(db,{registered:true,identities:[]});
   const requestId='migration_'+plan.sourceDigest;

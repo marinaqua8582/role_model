@@ -1,5 +1,19 @@
 const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
 const migration=()=>import('../transactional/migration.mjs');
+test('explicit test exclusions preserve the complete raw archive without linking orphan answers',async()=>{
+ const m=await migration(),source=m.makeLegacySyntheticFixture();source.format='legacy-sheets-registered-v1';
+ source.sheets.Tests.push(['2003-1-26',2003,1,26,'synthetic excluded owner','synthetic-excluded@example.invalid','{invalid test-only JSON']);
+ assert.throws(()=>m.planRegisteredMigration(source));
+ const keys=['3-1-25','2003-1-26'],plan=m.planRegisteredMigration(source,{excludeStudentKeys:keys});
+ assert.equal(plan.snapshot.students.length,24);assert.ok(plan.snapshot.students.every(r=>!keys.includes(r.student_key)));
+ assert.deepEqual(plan.legacyArchive,source);assert.equal(plan.summary.sourceRows.Tests,26);assert.equal(plan.summary.excludedRowsPreserved.Tests,2);
+ assert.deepEqual(m.planRegisteredMigration(source,{excludeStudentKeys:[...keys].reverse()}),plan);
+ const other=m.planRegisteredMigration(source,{excludeStudentKeys:['3-1-24',...keys]});assert.notEqual(other.sourceDigest,plan.sourceDigest);
+ const inconsistent=structuredClone(source);inconsistent.sheets.Progress[25][1]=2;assert.throws(()=>m.planRegisteredMigration(inconsistent,{excludeStudentKeys:keys}),/Identity\/key conflict/);
+ const {openDatabase,initialize}=await import('../transactional/store.mjs'),{setMaintenance}=await import('../transactional/maintenance.mjs'),{applyRegisteredMigration}=await import('../transactional/registered.mjs');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'excluded-synthetic-')),db=await openDatabase({file:path.join(dir,'test.sqlite')});
+ try{await initialize(db,{registered:true,identities:plan.snapshot.students.map(r=>JSON.parse(r.identity))});await setMaintenance(db,true);assert.equal((await applyRegisteredMigration(db,plan)).success,true);assert.equal((await applyRegisteredMigration(db,plan)).alreadyApplied,true);assert.equal((await db.query('SELECT COUNT(*) n FROM synthetic_receipts'))[0].n,24);const tampered=structuredClone(plan);tampered.excludeStudentKeys=['2003-1-26'];await assert.rejects(applyRegisteredMigration(db,tampered),/Migration plan changed/);}finally{await db.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
 test('legacy step8Data restores detailed test notes and rejects malformed or conflicting aliases',async()=>{
  const m=await migration(),source=m.makeLegacySyntheticFixture();
  source.sheets.Tests[0][6]='step8Data';

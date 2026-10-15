@@ -38,15 +38,24 @@ function parseFields(row) {
   return out;
 }
 export function planSyntheticMigration(input) { return planMigration(input,fixture); }
-export function planRegisteredMigration(input) {
+export function planRegisteredMigration(input,{excludeStudentKeys=[]}={}) {
   if(input?.format!=='legacy-sheets-registered-v1')throw Error('Registered archive required');
-  const identities=tableRows(input.sheets?.Roster).map(r=>registeredIdentity({...r,studentKey:r.studentKey?normalizeLegacyKey(r.studentKey):undefined}));
+  if(!Array.isArray(excludeStudentKeys))throw Error('Explicit excluded keys required');
+  const excluded=[...new Set(excludeStudentKeys.map(normalizeLegacyKey))].sort();
+  const identities=tableRows(input.sheets?.Roster).filter(r=>!excluded.includes(migrationRowKey(r))).map(r=>registeredIdentity({...r,studentKey:r.studentKey?normalizeLegacyKey(r.studentKey):undefined}));
   if(!identities.length||identities.length>10000||new Set(identities.map(s=>s.studentKey)).size!==identities.length)throw Error('Ambiguous registered roster');
-  return planMigration(input,identities,true);
+  return planMigration(input,identities,true,excluded);
 }
-function planMigration(input,identities,registered=false) {
+function migrationRowKey(row) {
+  const derived=[row.grade,row.classNum,row.number].every(v=>v!==undefined&&v!=='')?normalizeLegacyKey([row.grade,row.classNum,row.number].join('-')):null;
+  const key=row.studentKey?normalizeLegacyKey(row.studentKey):derived;
+  if(!key||derived&&key!==derived)throw Error('Identity/key conflict');
+  return key;
+}
+function planMigration(input,identities,registered=false,excluded=[]) {
   if(input?.format!==(registered?'legacy-sheets-registered-v1':'legacy-sheets-synthetic-v1')||!input.sheets)throw Error('Synthetic legacy format required');
-  const rows=Object.fromEntries(['Roster','Progress','Tests','Submissions','Counseling'].map(name=>[name,name==='Counseling'&&!input.sheets[name]?[]:tableRows(input.sheets[name])]));
+  const originalRows=Object.fromEntries(['Roster','Progress','Tests','Submissions','Counseling'].map(name=>[name,name==='Counseling'&&!input.sheets[name]?[]:tableRows(input.sheets[name])]));
+  const rows=excluded.length?Object.fromEntries(Object.entries(originalRows).map(([name,values])=>[name,values.filter(r=>!excluded.includes(migrationRowKey(r)))])):originalRows;
   if(rows.Roster.length!==identities.length)throw Error('Exactly 25 synthetic roster rows required');
   const roster=rows.Roster.map(r=>owner(r,true,identities));if(new Set(roster.map(s=>s.studentKey)).size!==identities.length)throw Error('Duplicate roster identity');
   let duplicates=0;const grouped={};
@@ -70,8 +79,8 @@ function planMigration(input,identities,registered=false) {
     if(Object.keys(counseling).length)document.stepData={...document.stepData,step10:{...document.stepData.step10,...document.step10},step11:{...document.stepData.step11,...document.step11}};if(document.isFinalSubmitted)document.currentStep=10;
     return {student_key:s.studentKey,identity:JSON.stringify(s),version:1,document:JSON.stringify(document)};
   });
-  const sourceDigest=hash(input);
-  return {format:registered?'registered-migration-plan-v1':'synthetic-migration-plan-v1',sourceDigest,legacyArchive:structuredClone(input),snapshot:{format:registered?'registered-backup-v1':'synthetic-only-backup-v1',students,receipts:[]},summary:{students:identities.length,sourceRows:Object.fromEntries(Object.entries(rows).map(([k,v])=>[k,v.length])),identicalDuplicateRowsPreserved:duplicates}};
+  const sourceDigest=hash(excluded.length?{archive:input,excludeStudentKeys:excluded}:input);
+  return {format:registered?'registered-migration-plan-v1':'synthetic-migration-plan-v1',sourceDigest,...(excluded.length?{excludeStudentKeys:excluded}:{}),legacyArchive:structuredClone(input),snapshot:{format:registered?'registered-backup-v1':'synthetic-only-backup-v1',students,receipts:[]},summary:{students:identities.length,sourceRows:Object.fromEntries(Object.entries(originalRows).map(([k,v])=>[k,v.length])),...(excluded.length?{excludedRowsPreserved:Object.fromEntries(Object.entries(originalRows).map(([k,v])=>[k,v.length-rows[k].length]))}:{}),identicalDuplicateRowsPreserved:duplicates}};
 }
 
 export async function applySyntheticMigration(db,plan) {

@@ -12,6 +12,12 @@ gui = importlib.machinery.SourceFileLoader("backup_gui", str(HERE / "backup_gui.
 
 
 class CutoverApp(gui.BackupApp):
+    def show_capture(self):
+        super().show_capture()
+        self.info.config(text=self.info.cget("text").replace(
+            "이 도구는 네트워크에 연결하지 않으며 복사된 원본을 메모리에만 보관합니다.",
+            "현재 수집 단계는 원본을 메모리에만 보관합니다. 최종 버튼을 누르면 승인된 운영 DB로만 이관합니다."))
+
     def accept_key(self):
         try:
             freeze = json.loads((gui.STATUS.parent / "operating-freeze-state.private.json").read_text(encoding="utf-8"))

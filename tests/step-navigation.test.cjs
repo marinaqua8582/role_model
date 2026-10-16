@@ -63,9 +63,10 @@ for (let step = 1; step <= 7; step++) {
     assert.deepEqual(plain(header(c, tree).currentStudent), before);
     assert.equal(c.storage.get('rolemodel_chatbot_progress_map'), cache);
     assert.notEqual(header(c, tree).saveStatus, 'saved');
-    assert.match(textOf(tree.root), /실패/);
-    assert.equal(tree.root.findByType('fieldset').props.disabled, false);
+    assert.match(textOf(tree.root), /확인할 수 없습니다/);
+    assert.equal(tree.root.findByType('fieldset').props.disabled, true);
     c.state.failure = null;
+    await act(async()=>{ await c.api.confirmPendingSave(); });
     await act(async () => { await nextButton(tree).props.onClick(); });
     assert.equal(writes(c).length, 2); assert.equal(bar(c, tree).currentStep, step + 1);
     await close(tree);
@@ -93,7 +94,7 @@ for (let step = 1; step <= 7; step++) {
     await close(tree);
   });
 }
-test('previous/top/jump navigation still saves answers then metadata, and blocks unreached steps', async () => {
+test('previous/top/jump navigation saves answers and metadata in one request, and blocks unreached steps', async () => {
   for (const kind of ['previous', 'top', 'jump']) {
     const { c, tree } = await mount(6);
     const before = plain(header(c, tree).currentStudent.step6);
@@ -105,9 +106,8 @@ test('previous/top/jump navigation still saves answers then metadata, and blocks
       else if (kind === 'jump') props.onJumpToStep(3);
       else bar(c, tree).onStepClick(3);
     });
-    assert.equal(writes(c).length, 2);
+    assert.equal(writes(c).length, 1);
     assert.deepEqual(writes(c)[0].step6, before);
-    assert.equal('step6' in writes(c)[1], false);
     assert.equal(header(c, tree).currentStudent.currentStep, 6);
     assert.equal(bar(c, tree).currentStep, kind === 'previous' ? 5 : 3);
     await close(tree);
@@ -120,6 +120,7 @@ test('navigation without a component save still persists metadata; metadata fail
   assert.equal(writes(c).length, 1); assert.equal(writes(c)[0].currentStep, 3);
   assert.equal(bar(c, tree).currentStep, 2); assert.equal(header(c, tree).saveStatus, 'error');
   c.state.failure = null;
+    await act(async()=>{ await c.api.confirmPendingSave(); });
   await act(async () => { await tree.root.findByType(component(c, 2)).props.onNext(); });
   assert.equal(writes(c).length, 2); assert.equal(bar(c, tree).currentStep, 3);
   await close(tree);
@@ -133,13 +134,13 @@ test('session revoked while save awaits: no navigation, no cache repopulation', 
   assert.equal(writes(c).length, 1); assert.match(textOf(tree.root), /실패/);
   await close(tree);
 });
-for (const step of [8, 9, 10]) test(`STEP${step} original action flow is unchanged`, async () => {
+for (const step of [8, 9, 10]) test(`STEP${step} uses one action and preserves completed destination`, async () => {
   const { c, tree } = await mount(step);
   await act(async () => {
     if (step === 10) await tree.root.findByType('form').props.onSubmit({ preventDefault() {} });
     else await nextButton(tree).props.onClick();
   });
-  assert.deepEqual(writes(c).map(r => r.action), step === 8 ? ['saveTests', 'saveProgress'] : step === 9 ? ['updateRevision', 'saveProgress'] : ['submitFinal']);
+  assert.deepEqual(writes(c).map(r => r.action), step === 8 ? ['saveTests'] : step === 9 ? ['updateRevision'] : ['submitFinal']);
   assert.equal(bar(c, tree).currentStep, Math.min(step + 1, 10));
   if (step === 10) assert.equal(header(c, tree).currentStudent.isFinalSubmitted, true);
   await close(tree);
@@ -202,6 +203,8 @@ for (let step = 1; step <= 6; step++) test(`STEP${step} optional destination cha
   const [before, after] = writes(c);
   assert.equal(before.currentStep, step); assert.equal(after.currentStep, step + 1);
   delete before.currentStep; delete after.currentStep;
+  delete before.requestId; delete after.requestId; delete before.requestIssuedAt; delete after.requestIssuedAt;
   assert.deepEqual(after, before);
 });
+
 

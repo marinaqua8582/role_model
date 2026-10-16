@@ -32,18 +32,21 @@ function backend() {
   const sheets = new Map(); const cache = new Map(); let id = 0;
   const ss = { getSheetByName: name => sheets.get(name), insertSheet: name => { const sheet = new Sheet(name); sheets.set(name,sheet); return sheet; } };
   const state = { locked:false, denyLock:false, acquired:0, released:0 };
+  const receiptProps=new Map();
   const context = {
     SpreadsheetApp: {getActiveSpreadsheet: () => ss, flush() {}},
     ContentService: {MimeType:{JSON:'json'},createTextOutput:()=>({setMimeType(){}, setContent(text){this.text=text;}})},
-    PropertiesService: { getScriptProperties:()=>({getProperty:()=> 'test-admin-secret'}) },
+    PropertiesService: { getScriptProperties:()=>({getProperty:k=>k==='ADMIN_API_SECRET'?'test-admin-secret':receiptProps.get(k),setProperty:(k,v)=>receiptProps.set(k,v)}) },
     CacheService: {getScriptCache:()=>({put:(k,v)=>cache.set(k,v),get:k=>cache.get(k),remove:k=>cache.delete(k)})},
-    Utilities: {getUuid:()=>String(++id)},
+    Utilities: {DigestAlgorithm:{SHA_256:"sha256"},computeDigest:(_a,v)=>Array.from(require("node:crypto").createHash("sha256").update(v).digest()),getUuid:()=>String(++id)},
     LockService: {getScriptLock:()=>({tryLock(){if(state.denyLock)return false;assert.equal(state.locked,false);state.locked=true;state.acquired++;return true;},hasLock:()=>state.locked,releaseLock(){state.locked=false;state.released++;}})},
   };
   vm.createContext(context); vm.runInContext(code,context); context.initSheetsIfNeeded(ss);
   sheets.get('Roster').appendRow([3,1,1,'가상학생가','a@example.invalid']);
   sheets.get('Roster').appendRow([3,1,2,'가상학생나','b@example.invalid']);
-  const request = params => JSON.parse(context.handleRequest({postData:{contents:JSON.stringify(params)}}).text);
+  const withRequestId=p=>['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].includes(p.action) && !p.requestId ? {...p,requestId:'fixture_request_'+(++requestSequence).toString().padStart(12,'0'),requestIssuedAt:Date.now()} : p;
+  let requestSequence=0;
+  const request = params => JSON.parse(context.handleRequest({postData:{contents:JSON.stringify(withRequestId(params))}}).text);
   const login = (number=1) => request({action:'verifyStudent',grade:3,classNum:1,number,name:number===1?' 가상 학생가 ':'가상학생나'});
   return {sheets,context,ss,state,request,login,cache};
 }
@@ -98,6 +101,8 @@ test('student A cannot read or write B; own full Google ID survives re-login',()
 });
 test('tests, revision and submission persist and are idempotent',()=>{
   const b=backend();const token=b.login().studentToken;
+  const withRequestId=p=>['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].includes(p.action) && !p.requestId ? {...p,requestId:'fixture_request_'+(++requestSequence).toString().padStart(12,'0'),requestIssuedAt:Date.now()} : p;
+  let requestSequence=0;
   const request=p=>b.request({studentToken:token,studentKey:'3-1-1',...p});
   assert.equal(request({action:'saveProgress',roleModelName:'모델',currentStep:8}).success,true);
   assert.equal(request({action:'saveTests',test1Result:'잘 작동함',step8:{tests:{test1:{result:'good',note:'메모'}}}}).success,true);

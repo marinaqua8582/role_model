@@ -1,0 +1,117 @@
+{
+  "date": "2026-10-15",
+  "environment": "actual Vercel Preview and Seoul Supabase registered-policy rehearsal",
+  "origin": "https://staging-role-model-synthetic25-20261009-bjittheh7-jeonghee.vercel.app",
+  "phases": {
+    "login": {
+      "meanMs": 3270.5462559999996,
+      "p50Ms": 3502.508,
+      "p95Ms": 4151.802599999999,
+      "maxMs": 4330.575700000001,
+      "attempts": 25,
+      "successes": 25
+    },
+    "progressSave": {
+      "meanMs": 3116.789215999999,
+      "p50Ms": 2442.326000000001,
+      "p95Ms": 4475.814199999999,
+      "maxMs": 4487.1088,
+      "attempts": 25,
+      "successes": 25
+    },
+    "progressUpdate": {
+      "meanMs": 3066.55218,
+      "p50Ms": 2427.6451000000015,
+      "p95Ms": 4655.5998,
+      "maxMs": 4876.079099999999,
+      "attempts": 25,
+      "successes": 25
+    },
+    "testsSave": {
+      "meanMs": 3065.730036,
+      "p50Ms": 2431.3158000000003,
+      "p95Ms": 4700.313399999999,
+      "maxMs": 4709.9905,
+      "attempts": 25,
+      "successes": 25
+    },
+    "finalSubmit": {
+      "meanMs": 3027.946184,
+      "p50Ms": 2403.1033000000025,
+      "p95Ms": 4396.686700000002,
+      "maxMs": 4819.3514,
+      "attempts": 25,
+      "successes": 25
+    },
+    "reloginRestore": {
+      "meanMs": 1647.0710959999994,
+      "p50Ms": 1346.0406999999977,
+      "p95Ms": 2238.061800000003,
+      "maxMs": 2238.8050000000003,
+      "attempts": 25,
+      "successes": 25
+    }
+  },
+  "failures": 0,
+  "timeouts": 0,
+  "completed": true,
+  "previewAdminSecretMatchesPrivateGasSecret": true,
+  "duplicateRows": 0,
+  "studentAdminMatch": true,
+  "wrongStudentUpdates": 0,
+  "privacyLeaks": 0,
+  "inFlightPreviewWriteDrained": true,
+  "frozenReadStatusAndWrites": true,
+  "oldSessionBlocked": true,
+  "cancelledDelayedWriteBlocked": true,
+  "finalAndReceiptRetained": true,
+  "metrics": {
+    "poolWaitMs": {
+      "meanMs": 0.08841828000021906,
+      "p50Ms": 0.08079099999940809,
+      "p95Ms": 0.150803000000451,
+      "maxMs": 0.1616779999994833
+    },
+    "lockWaitMs": {
+      "meanMs": 1173.97871651,
+      "p50Ms": 897.3019679999998,
+      "p95Ms": 2489.4376009999996,
+      "maxMs": 2512.5132250000006
+    },
+    "lockHeldMs": {
+      "meanMs": 902.6289991199999,
+      "p50Ms": 899.2173729999995,
+      "p95Ms": 950.5818880000006,
+      "maxMs": 953.7349540000005
+    },
+    "dbReadMs": {
+      "meanMs": 360.49798049999947,
+      "p50Ms": 359.06401700000015,
+      "p95Ms": 379.5112620000036,
+      "maxMs": 381.2414200000003
+    },
+    "dbWriteMs": {
+      "meanMs": 360.78865164000024,
+      "p50Ms": 359.0610280000037,
+      "p95Ms": 379.87274199999956,
+      "maxMs": 380.7593119999992
+    },
+    "commitMs": {
+      "meanMs": 180.9650618900001,
+      "p50Ms": 180.3357329999999,
+      "p95Ms": 190.68083899999965,
+      "maxMs": 191.51731399999971
+    },
+    "totalMs": {
+      "meanMs": 2692.8787241400005,
+      "p50Ms": 2170.1908520000006,
+      "p95Ms": 4122.983475000001,
+      "maxMs": 4227.225658
+    }
+  },
+  "finalMaintenance": {
+    "closed": false,
+    "epoch": 6,
+    "openedAt": 1791992447354
+  }
+}

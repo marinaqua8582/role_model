@@ -1,0 +1,18 @@
+{
+  "environment": "existing synthetic PostgreSQL and njdq911pa Preview",
+  "newStudentOrDatabaseCreated": false,
+  "inactiveLoginRejected": true,
+  "allAnswerDocumentsMatchPreDeletionHash": true,
+  "step10AndFinalSubmissionPreserved": true,
+  "receiptCountBeforeReRegistration": 13,
+  "receiptCountAfterReRegistration": 13,
+  "receiptContentsUnchanged": true,
+  "rosterRestoredThroughActualXlsxUploadUI": true,
+  "activeStudentsAfter": 25,
+  "actualBrowserLoginLogoutReloginRestore": true,
+  "studentAndAdminFinalReflectionMatch": true,
+  "answerSaveOrResetDuringRestoreCheck": false,
+  "initialApplyRejectedByExpiredAdminAuthentication": true,
+  "subsequentExplicitApplyAfterUserReauthenticationSucceeded": true,
+  "productionAccessed": false
+}

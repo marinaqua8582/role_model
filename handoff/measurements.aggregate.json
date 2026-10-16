@@ -1,0 +1,265 @@
+{
+  "notice": "Aggregate historical synthetic measurements only. No fresh test in handoff task.",
+  "waves": {
+    "1": {
+      "at": "2026-10-11T23:57:15.038Z",
+      "completed": true,
+      "restoreVerified": true,
+      "submissionRestoreVerified": true,
+      "duplicateReplayVerified": true,
+      "summary": {
+        "roster-guard": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 3693,
+          "maxMs": 3693,
+          "p95Ms": 3693
+        },
+        "login": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 4217,
+          "maxMs": 4217,
+          "p95Ms": 4217
+        },
+        "save": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 3318,
+          "maxMs": 3318,
+          "p95Ms": 3318
+        },
+        "relogin": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 3060,
+          "maxMs": 3060,
+          "p95Ms": 3060
+        },
+        "restore-api": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2388,
+          "maxMs": 2388,
+          "p95Ms": 2388
+        },
+        "submit": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2904,
+          "maxMs": 2904,
+          "p95Ms": 2904
+        },
+        "relogin-submitted": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2581,
+          "maxMs": 2581,
+          "p95Ms": 2581
+        },
+        "duplicate-submit": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2534,
+          "maxMs": 2534,
+          "p95Ms": 2534
+        }
+      }
+    },
+    "10": {
+      "at": "2026-10-12T02:36:31.792Z",
+      "completed": true,
+      "restoreVerified": true,
+      "submissionRestoreVerified": true,
+      "duplicateReplayVerified": true,
+      "summary": {
+        "roster-guard": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2173,
+          "maxMs": 2173,
+          "p95Ms": 2173
+        },
+        "login": {
+          "success": 10,
+          "total": 10,
+          "meanMs": 3556.9,
+          "maxMs": 4048,
+          "p95Ms": 4048
+        },
+        "save": {
+          "success": 10,
+          "total": 10,
+          "meanMs": 12026.8,
+          "maxMs": 22688,
+          "p95Ms": 22688
+        },
+        "relogin": {
+          "success": 10,
+          "total": 10,
+          "meanMs": 2836.6,
+          "maxMs": 4223,
+          "p95Ms": 4223
+        },
+        "restore-api": {
+          "success": 10,
+          "total": 10,
+          "meanMs": 2556.6,
+          "maxMs": 3387,
+          "p95Ms": 3387
+        },
+        "submit": {
+          "success": 10,
+          "total": 10,
+          "meanMs": 12141.2,
+          "maxMs": 20708,
+          "p95Ms": 20708
+        },
+        "relogin-submitted": {
+          "success": 10,
+          "total": 10,
+          "meanMs": 2946.2,
+          "maxMs": 3600,
+          "p95Ms": 3600
+        },
+        "duplicate-submit": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2114,
+          "maxMs": 2114,
+          "p95Ms": 2114
+        }
+      }
+    },
+    "25": {
+      "at": "2026-10-12T02:38:29.011Z",
+      "completed": true,
+      "restoreVerified": true,
+      "submissionRestoreVerified": true,
+      "duplicateReplayVerified": true,
+      "summary": {
+        "roster-guard": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2041,
+          "maxMs": 2041,
+          "p95Ms": 2041
+        },
+        "login": {
+          "success": 25,
+          "total": 25,
+          "meanMs": 3799.36,
+          "maxMs": 5283,
+          "p95Ms": 4969
+        },
+        "save": {
+          "success": 25,
+          "total": 25,
+          "meanMs": 27113.28,
+          "maxMs": 56197,
+          "p95Ms": 52825
+        },
+        "relogin": {
+          "success": 25,
+          "total": 25,
+          "meanMs": 3813.96,
+          "maxMs": 5651,
+          "p95Ms": 4534
+        },
+        "restore-api": {
+          "success": 25,
+          "total": 25,
+          "meanMs": 3166.4,
+          "maxMs": 4865,
+          "p95Ms": 4845
+        },
+        "submit": {
+          "success": 25,
+          "total": 25,
+          "meanMs": 26316.24,
+          "maxMs": 54933,
+          "p95Ms": 52045
+        },
+        "relogin-submitted": {
+          "success": 25,
+          "total": 25,
+          "meanMs": 3460.48,
+          "maxMs": 4691,
+          "p95Ms": 4594
+        },
+        "duplicate-submit": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2295,
+          "maxMs": 2295,
+          "p95Ms": 2295
+        }
+      }
+    },
+    "5-classroom": {
+      "at": "2026-10-12T03:04:59.428Z",
+      "completed": true,
+      "restoreVerified": true,
+      "submissionRestoreVerified": true,
+      "duplicateReplayVerified": true,
+      "summary": {
+        "roster-guard": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 4672,
+          "maxMs": 4672,
+          "p95Ms": 4672
+        },
+        "login": {
+          "success": 5,
+          "total": 5,
+          "meanMs": 4081.4,
+          "maxMs": 6803,
+          "p95Ms": 6803
+        },
+        "save": {
+          "success": 5,
+          "total": 5,
+          "meanMs": 7019.8,
+          "maxMs": 12261,
+          "p95Ms": 12261
+        },
+        "relogin": {
+          "success": 5,
+          "total": 5,
+          "meanMs": 2935.4,
+          "maxMs": 3801,
+          "p95Ms": 3801
+        },
+        "restore-api": {
+          "success": 5,
+          "total": 5,
+          "meanMs": 2952.4,
+          "maxMs": 4041,
+          "p95Ms": 4041
+        },
+        "submit": {
+          "success": 5,
+          "total": 5,
+          "meanMs": 7310.2,
+          "maxMs": 12220,
+          "p95Ms": 12220
+        },
+        "relogin-submitted": {
+          "success": 5,
+          "total": 5,
+          "meanMs": 2980.6,
+          "maxMs": 3738,
+          "p95Ms": 3738
+        },
+        "duplicate-submit": {
+          "success": 1,
+          "total": 1,
+          "meanMs": 2192,
+          "maxMs": 2192,
+          "p95Ms": 2192
+        }
+      }
+    }
+  }
+}

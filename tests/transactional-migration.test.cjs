@@ -1,0 +1,46 @@
+const {test}=require('node:test'),assert=require('node:assert/strict'),fs=require('node:fs'),path=require('node:path'),os=require('node:os');
+const migration=()=>import('../transactional/migration.mjs');
+test('explicit test exclusions preserve the complete raw archive without linking orphan answers',async()=>{
+ const m=await migration(),source=m.makeLegacySyntheticFixture();source.format='legacy-sheets-registered-v1';
+ source.sheets.Tests.push(['2003-1-26',2003,1,26,'synthetic excluded owner','synthetic-excluded@example.invalid','{invalid test-only JSON']);
+ assert.throws(()=>m.planRegisteredMigration(source));
+ const keys=['3-1-25','2003-1-26'],plan=m.planRegisteredMigration(source,{excludeStudentKeys:keys});
+ assert.equal(plan.snapshot.students.length,24);assert.ok(plan.snapshot.students.every(r=>!keys.includes(r.student_key)));
+ assert.deepEqual(plan.legacyArchive,source);assert.equal(plan.summary.sourceRows.Tests,26);assert.equal(plan.summary.excludedRowsPreserved.Tests,2);
+ assert.deepEqual(m.planRegisteredMigration(source,{excludeStudentKeys:[...keys].reverse()}),plan);
+ const other=m.planRegisteredMigration(source,{excludeStudentKeys:['3-1-24',...keys]});assert.notEqual(other.sourceDigest,plan.sourceDigest);
+ const inconsistent=structuredClone(source);inconsistent.sheets.Progress[25][1]=2;assert.throws(()=>m.planRegisteredMigration(inconsistent,{excludeStudentKeys:keys}),/Identity\/key conflict/);
+ const {openDatabase,initialize}=await import('../transactional/store.mjs'),{setMaintenance}=await import('../transactional/maintenance.mjs'),{applyRegisteredMigration}=await import('../transactional/registered.mjs');
+ const dir=fs.mkdtempSync(path.join(os.tmpdir(),'excluded-synthetic-')),db=await openDatabase({file:path.join(dir,'test.sqlite')});
+ try{await initialize(db,{registered:true,identities:plan.snapshot.students.map(r=>JSON.parse(r.identity))});await setMaintenance(db,true);assert.equal((await applyRegisteredMigration(db,plan)).success,true);assert.equal((await applyRegisteredMigration(db,plan)).alreadyApplied,true);assert.equal((await db.query('SELECT COUNT(*) n FROM synthetic_receipts'))[0].n,24);const tampered=structuredClone(plan);tampered.excludeStudentKeys=['2003-1-26'];await assert.rejects(applyRegisteredMigration(db,tampered),/Migration plan changed/);}finally{await db.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('legacy step8Data restores detailed test notes and rejects malformed or conflicting aliases',async()=>{
+ const m=await migration(),source=m.makeLegacySyntheticFixture();
+ source.sheets.Tests[0][6]='step8Data';
+ const details={tests:{test1:{result:'good',note:'synthetic legacy note'},test2:{result:'needs_fix',note:'synthetic second note'}},problemDescription:'synthetic problem'};
+ source.sheets.Tests[1][6]=JSON.stringify(details);
+ const plan=m.planSyntheticMigration(source),doc=JSON.parse(plan.snapshot.students[0].document);
+ assert.deepEqual(doc.step8.tests,details.tests);assert.equal(doc.step8.problemDescription,details.problemDescription);assert.deepEqual(plan.legacyArchive,source);
+ const malformed=structuredClone(source);malformed.sheets.Tests[1][6]='{';assert.throws(()=>m.planSyntheticMigration(malformed),/Invalid legacy JSON/);
+ const conflict=structuredClone(source);conflict.sheets.Tests[0].push('step8');conflict.sheets.Tests[1].push(JSON.stringify({tests:{test1:{result:'good',note:'different synthetic note'}}}));assert.throws(()=>m.planSyntheticMigration(conflict),/Conflicting legacy step8 aliases/);
+ const identical=structuredClone(source);identical.sheets.Tests[0].push('step8');identical.sheets.Tests[1].push(JSON.stringify(details));assert.deepEqual(JSON.parse(m.planSyntheticMigration(identical).snapshot.students[0].document).step8.tests,details.tests);
+});
+test('legacy synthetic migration preserves unknown columns, canonical keys and identical duplicates',async()=>{
+ const m=await migration(),source=m.makeLegacySyntheticFixture();source.sheets.Progress.push([...source.sheets.Progress[1]]);const plan=m.planSyntheticMigration(source);
+ assert.deepEqual(plan.legacyArchive,source);assert.equal(plan.summary.identicalDuplicateRowsPreserved,1);assert.equal(m.normalizeLegacyKey('０３-０１-０１'),'3-1-1');const doc=JSON.parse(plan.snapshot.students[0].document);assert.equal(doc.stepData.step1.competencyCustom,'기존직접입력0');assert.equal(doc.unknownLegacyColumn,'미지열0');assert.equal(doc.currentStep,10);
+});
+test('migration rejects foreign identity, ambiguous duplicates and malformed answer JSON',async()=>{
+ const m=await migration();for(const mutate of [s=>s.sheets.Roster[1][4]='외부이름',s=>s.sheets.Tests[1][5]='foreign@example.invalid',s=>s.sheets.Progress[1][7]='{',s=>{s.sheets.Progress.push([...s.sheets.Progress[1]]);s.sheets.Progress.at(-1)[6]='different';}]){const s=m.makeLegacySyntheticFixture();mutate(s);assert.throws(()=>m.planSyntheticMigration(s));}
+});
+test('private backup authenticates ciphertext and key without plaintext disclosure',async()=>{
+ const m=await migration(),key=require('node:crypto').randomBytes(32),value=m.planSyntheticMigration(m.makeLegacySyntheticFixture()),sealed=m.encryptPrivateBackup(value,key);assert.ok(!sealed.includes('기존직접입력'));assert.deepEqual(m.decryptPrivateBackup(sealed,key),value);assert.throws(()=>m.decryptPrivateBackup(sealed,Buffer.alloc(32)));const e=JSON.parse(sealed);e.tag=Buffer.alloc(16).toString('base64');assert.throws(()=>m.decryptPrivateBackup(JSON.stringify(e),key));
+});
+test('atomic migration, idempotency and rollback retain post-cutover answers and receipts',async()=>{
+ const m=await migration(),{openDatabase,initialize,createService,fixture}=await import('../transactional/store.mjs'),{exportSyntheticSnapshot,restoreSyntheticSnapshot}=await import('../transactional/recovery.mjs');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'migration-safe-')),a=await openDatabase({file:path.join(dir,'a.sqlite')}),b=await openDatabase({file:path.join(dir,'b.sqlite')});
+ try{await initialize(a);await initialize(b);const plan=m.planSyntheticMigration(m.makeLegacySyntheticFixture());const tampered=structuredClone(plan);tampered.snapshot.students[0].version=9;await assert.rejects(m.applySyntheticMigration(a,tampered),/changed/);await m.applySyntheticMigration(a,plan);const cutover=await exportSyntheticSnapshot(a),service=createService(a,'s'.repeat(32)),auth=await service.dispatch({action:'verifyStudent',...fixture[0]});assert.equal((await service.dispatch({action:'saveProgress',...fixture[0],studentToken:auth.studentToken,expectedVersion:1,requestId:'post_cutover_save',requestIssuedAt:Date.now(),roleModelName:'전환후새답안'})).success,true);assert.equal((await m.applySyntheticMigration(a,plan)).alreadyApplied,true);
+ const current=await exportSyntheticSnapshot(a),rollback=m.prepareSyntheticRollback(plan,cutover,current);assert.equal(rollback.summary.postCutoverChangedStudents,1);assert.equal(rollback.summary.receiptsPreserved,26);await restoreSyntheticSnapshot(b,rollback.snapshot);assert.deepEqual(await b.query('SELECT document,version FROM synthetic_students ORDER BY student_key'),await a.query('SELECT document,version FROM synthetic_students ORDER BY student_key'));assert.deepEqual(await b.query('SELECT * FROM synthetic_receipts ORDER BY student_key,request_id'),current.receipts);await assert.rejects(restoreSyntheticSnapshot(b,rollback.snapshot),/overwrite/);
+ }finally{await a.close();await b.close();fs.rmSync(dir,{recursive:true,force:true});}
+});
+test('migration transaction failure rolls back every answer and receipt',async()=>{
+ const m=await migration(),{openDatabase,initialize}=await import('../transactional/store.mjs');const dir=fs.mkdtempSync(path.join(os.tmpdir(),'migration-atomic-')),db=await openDatabase({file:path.join(dir,'a.sqlite')});try{await initialize(db);await db.query("CREATE TRIGGER reject_import BEFORE UPDATE ON synthetic_students WHEN NEW.student_key='3-1-25' BEGIN SELECT RAISE(ABORT,'injected'); END");await assert.rejects(m.applySyntheticMigration(db,m.planSyntheticMigration(m.makeLegacySyntheticFixture())));assert.equal((await db.query('SELECT COUNT(*) n FROM synthetic_students WHERE version<>0'))[0].n,0);assert.equal((await db.query('SELECT COUNT(*) n FROM synthetic_receipts'))[0].n,0);}finally{await db.close();fs.rmSync(dir,{recursive:true,force:true});}
+});

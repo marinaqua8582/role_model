@@ -1,0 +1,232 @@
+{
+  "purpose": "read-only audit after failed 25-person save trial; no save retries",
+  "startedAt": "2026-10-12T10:21:15.553Z",
+  "requests": [
+    {
+      "phase": "startPerformanceRun",
+      "status": 200,
+      "success": true,
+      "ms": 6570,
+      "correlationId": "6b3fff62-62e4-4a3c-99ad-f44cca0d5bac"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2478,
+      "correlationId": "754310e2-19e6-4a54-b748-460c2a822b37"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2535,
+      "correlationId": "a9a5b246-59a4-435c-a689-4ddc3a028acb"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2532,
+      "correlationId": "8a92b185-4d48-4b1d-b2fc-27dbe92b6952"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2537,
+      "correlationId": "adfa9a7c-7bdc-40aa-b83d-2654ca099fdd"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2673,
+      "correlationId": "4025fecf-744c-4dde-b417-1142858f5045"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2682,
+      "correlationId": "1f13f609-1019-4438-a8c0-257481addeec"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2713,
+      "correlationId": "fa8f73b3-0e83-403d-b10e-723b5198f4ff"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2752,
+      "correlationId": "f1d354c3-1982-48c3-8328-4b183e377495"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 2908,
+      "correlationId": "422c5cc9-1ceb-4b7a-bf6f-0e8cde9c3cba"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3124,
+      "correlationId": "4010ecd2-404d-47e5-aeb2-0a6c59bbc346"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3126,
+      "correlationId": "0fc2688e-0084-4bbd-8058-ebd47b610948"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3182,
+      "correlationId": "5eaf2062-9f10-4d7a-b43b-c8133b9ea383"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3219,
+      "correlationId": "aae52a4f-ae6d-4549-ab40-58b2eeccacd3"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3355,
+      "correlationId": "de1c6c03-00c3-43e8-ae53-f0227995c6b5"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3413,
+      "correlationId": "587a3e65-d076-42cf-a736-b2cc6b9d1183"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3428,
+      "correlationId": "7de7c34d-c35d-435d-b08b-fb65365d0d20"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3480,
+      "correlationId": "509839e5-c4c5-4483-9be4-e98585cbb090"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3483,
+      "correlationId": "0e594fa9-1f94-46bf-b08c-c2ab80f97310"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3623,
+      "correlationId": "3bcf9ebf-19c6-47bf-9a9c-5999130598d6"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3737,
+      "correlationId": "33084078-91a9-474d-9481-b62382a0869e"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3801,
+      "correlationId": "6554afd5-2a70-418d-b896-0ea18d74bf6f"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3798,
+      "correlationId": "4c4e114b-77e6-4038-b9c2-4b30b0452067"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 3815,
+      "correlationId": "b3e21ebe-896b-41f2-a8fb-efb7100b4bd7"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 4115,
+      "correlationId": "9caddda5-53c0-4009-b1a2-db3da020c7f6"
+    },
+    {
+      "phase": "verifyStudent",
+      "status": 200,
+      "success": true,
+      "ms": 4125,
+      "correlationId": "47a28691-5ae0-4efa-b272-b47814e49d46"
+    },
+    {
+      "phase": "getPerformanceSnapshot",
+      "status": 200,
+      "success": true,
+      "ms": 1817,
+      "correlationId": "ca8a29c9-cbb2-4aa5-97b6-9c8ff9bb9258"
+    },
+    {
+      "phase": "finishPerformanceRun",
+      "status": 200,
+      "success": true,
+      "ms": 2399,
+      "correlationId": "b8d1abfd-bdf1-40aa-ad48-a7c801795d8d"
+    }
+  ],
+  "passed": true,
+  "fixture": {
+    "duplicates": 0,
+    "foreignRows": 0,
+    "rowCounts": {
+      "Progress": 25,
+      "Tests": 25,
+      "Submissions": 25
+    }
+  },
+  "progressMatches": 25,
+  "ownIdsOnly": true,
+  "after": {
+    "sheets": {
+      "Progress": {
+        "rows": 25,
+        "duplicates": 0
+      },
+      "Tests": {
+        "rows": 25,
+        "duplicates": 0
+      },
+      "Submissions": {
+        "rows": 25,
+        "duplicates": 0
+      }
+    },
+    "foreignRows": 0
+  },
+  "ended": true
+}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Sparkles, User, AlertCircle, ArrowRight, RotateCcw, CheckCircle2, BookOpen, ShieldAlert } from 'lucide-react';
 import { getRosterOptions, verifyStudentAuth, resetStudentProgress, createInitialStudentProgress } from '../../api/client';
 import { StudentInfo, StudentProgress, RosterItem } from '../../types';
@@ -66,6 +66,11 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isFetchingOptions, setIsFetchingOptions] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [optionsAttempt, setOptionsAttempt] = useState(0);
+  const [optionsFailed, setOptionsFailed] = useState(false);
+  const verifyingRef = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
 
   // Confirmation modal state for existing vs new
   const [verifiedState, setVerifiedState] = useState<{
@@ -101,6 +106,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
 
     async function loadOptions() {
       setIsFetchingOptions(true);
+      setOptionsFailed(false);
       try {
         const data = await getRosterOptions();
         if (isMounted && data && Array.isArray(data.grades) && data.grades.length > 0) {
@@ -111,7 +117,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
           applyNewOptions(computed);
         }
       } catch (e) {
-        console.error('Failed to load roster options', e);
+        if (isMounted) setOptionsFailed(true);
         if (isMounted && roster && roster.length > 0) {
           const computed = computeOptionsFromRoster(roster);
           applyNewOptions(computed);
@@ -128,7 +134,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [optionsAttempt]);
 
   // If roster prop is updated after mount (e.g. from admin roster manager), update options
   useEffect(() => {
@@ -174,6 +180,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
 
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (verifyingRef.current) return;
 
     if (selectedGrade === '' || selectedClass === '' || selectedNumber === '') {
       setErrorMessage('학년, 반, 번호를 모두 선택해 주세요.');
@@ -185,6 +192,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
       return;
     }
 
+    verifyingRef.current = true;
     setIsLoading(true);
     setErrorMessage('');
 
@@ -196,6 +204,7 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
         name: name.trim(),
       });
 
+      if (!mountedRef.current) return;
       if (res.success && res.student) {
         const progress = res.progress || createInitialStudentProgress(res.student);
         if (res.student.googleId) {
@@ -214,7 +223,8 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
     } catch (err) {
       setErrorMessage('서버와 통신 중 오류가 발생했습니다. 다시 시도해 주세요.');
     } finally {
-      setIsLoading(false);
+      verifyingRef.current = false;
+      if (mountedRef.current) setIsLoading(false);
     }
   };
 
@@ -272,6 +282,11 @@ export const StudentAuth: React.FC<StudentAuthProps> = ({ roster, onAuthenticate
             <span className="text-xs text-[#6B7280] ml-auto">중학교 3학년 진로 수업</span>
           </div>
 
+          {optionsFailed && (
+            <div role="alert">선택 항목을 불러오지 못했습니다.
+              <button type="button" disabled={isFetchingOptions} onClick={() => setOptionsAttempt(n => n + 1)}>다시 시도</button>
+            </div>
+          )}
           {errorMessage && (
             <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-700 text-sm">
               <AlertCircle className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />

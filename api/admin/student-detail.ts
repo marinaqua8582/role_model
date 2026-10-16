@@ -1,6 +1,7 @@
 import { extractAdminToken, verifyAdminSessionToken, callServerGas } from '../_lib.js';
 
 export default async function handler(req: any, res: any) {
+  res.setHeader('Cache-Control','no-store');
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, message: 'Method Not Allowed' });
   }
@@ -24,7 +25,7 @@ export default async function handler(req: any, res: any) {
     const gasData = await callServerGas({
       action: 'getStudentDetail',
       studentKey,
-    });
+    },{adminIssuedAt:auth.issuedAt});
 
     if (gasData && gasData.success) {
       return res.status(200).json(gasData);
@@ -34,11 +35,12 @@ export default async function handler(req: any, res: any) {
       message: gasData?.message || 'Google Apps Script에서 학생 상세 정보를 가져오지 못했습니다.',
     });
   } catch (err: any) {
-    console.error('Admin student-detail fetch error:', err);
+    // Error details are deliberately not logged.
     return res.status(500).json({
       success: false,
       message: '학생 상세 조회 실패: ' + (err?.message || 'Server error'),
     });
   }
 }
+
 

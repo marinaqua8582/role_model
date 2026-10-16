@@ -1,0 +1,320 @@
+{
+  "fixture": "25 synthetic students with Progress/Tests/Submissions; logical Sheets calls, not service latency",
+  "after": {
+    "options": {
+      "reads": 2,
+      "batchGet": 0,
+      "totalValueReadCalls": 2,
+      "cellsRead": 80,
+      "fullTableReads": 0,
+      "writes": 0,
+      "locks": 0,
+      "sheets": {
+        "Roster": {
+          "reads": 2,
+          "cells": 80,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 0,
+          "cells": 0,
+          "full": 0,
+          "writes": 0
+        },
+        "Tests": {
+          "reads": 0,
+          "cells": 0,
+          "full": 0,
+          "writes": 0
+        },
+        "Submissions": {
+          "reads": 0,
+          "cells": 0,
+          "full": 0,
+          "writes": 0
+        }
+      }
+    },
+    "optionsWarm": {
+      "reads": 0,
+      "batchGet": 0,
+      "totalValueReadCalls": 0,
+      "cellsRead": 0,
+      "fullTableReads": 0,
+      "writes": 0,
+      "locks": 0,
+      "sheets": {
+        "Roster": {
+          "reads": 0,
+          "cells": 0,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 0,
+          "cells": 0,
+          "full": 0,
+          "writes": 0
+        },
+        "Tests": {
+          "reads": 0,
+          "cells": 0,
+          "full": 0,
+          "writes": 0
+        },
+        "Submissions": {
+          "reads": 0,
+          "cells": 0,
+          "full": 0,
+          "writes": 0
+        }
+      }
+    },
+    "login": {
+      "reads": 11,
+      "batchGet": 0,
+      "totalValueReadCalls": 11,
+      "cellsRead": 351,
+      "fullTableReads": 0,
+      "writes": 0,
+      "locks": 0,
+      "sheets": {
+        "Roster": {
+          "reads": 2,
+          "cells": 130,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 3,
+          "cells": 95,
+          "full": 0,
+          "writes": 0
+        },
+        "Tests": {
+          "reads": 3,
+          "cells": 55,
+          "full": 0,
+          "writes": 0
+        },
+        "Submissions": {
+          "reads": 3,
+          "cells": 71,
+          "full": 0,
+          "writes": 0
+        }
+      }
+    },
+    "load": {
+      "reads": 11,
+      "batchGet": 0,
+      "totalValueReadCalls": 11,
+      "cellsRead": 351,
+      "fullTableReads": 0,
+      "writes": 0,
+      "locks": 0,
+      "sheets": {
+        "Roster": {
+          "reads": 2,
+          "cells": 130,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 3,
+          "cells": 95,
+          "full": 0,
+          "writes": 0
+        },
+        "Tests": {
+          "reads": 3,
+          "cells": 55,
+          "full": 0,
+          "writes": 0
+        },
+        "Submissions": {
+          "reads": 3,
+          "cells": 71,
+          "full": 0,
+          "writes": 0
+        }
+      }
+    },
+    "save": {
+      "reads": 11,
+      "batchGet": 0,
+      "totalValueReadCalls": 11,
+      "cellsRead": 351,
+      "fullTableReads": 0,
+      "writes": 3,
+      "locks": 1,
+      "sheets": {
+        "Roster": {
+          "reads": 2,
+          "cells": 130,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 3,
+          "cells": 95,
+          "full": 0,
+          "writes": 3
+        },
+        "Tests": {
+          "reads": 3,
+          "cells": 55,
+          "full": 0,
+          "writes": 0
+        },
+        "Submissions": {
+          "reads": 3,
+          "cells": 71,
+          "full": 0,
+          "writes": 0
+        }
+      }
+    },
+    "tests": {
+      "reads": 11,
+      "batchGet": 0,
+      "totalValueReadCalls": 11,
+      "cellsRead": 351,
+      "fullTableReads": 0,
+      "writes": 5,
+      "locks": 1,
+      "sheets": {
+        "Roster": {
+          "reads": 2,
+          "cells": 130,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 3,
+          "cells": 95,
+          "full": 0,
+          "writes": 2
+        },
+        "Tests": {
+          "reads": 3,
+          "cells": 55,
+          "full": 0,
+          "writes": 3
+        },
+        "Submissions": {
+          "reads": 3,
+          "cells": 71,
+          "full": 0,
+          "writes": 0
+        }
+      }
+    },
+    "revision": {
+      "reads": 14,
+      "batchGet": 0,
+      "totalValueReadCalls": 14,
+      "cellsRead": 446,
+      "fullTableReads": 0,
+      "writes": 7,
+      "locks": 1,
+      "sheets": {
+        "Roster": {
+          "reads": 2,
+          "cells": 130,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 6,
+          "cells": 190,
+          "full": 0,
+          "writes": 5
+        },
+        "Tests": {
+          "reads": 3,
+          "cells": 55,
+          "full": 0,
+          "writes": 2
+        },
+        "Submissions": {
+          "reads": 3,
+          "cells": 71,
+          "full": 0,
+          "writes": 0
+        }
+      }
+    },
+    "submit": {
+      "reads": 11,
+      "batchGet": 0,
+      "totalValueReadCalls": 11,
+      "cellsRead": 351,
+      "fullTableReads": 0,
+      "writes": 4,
+      "locks": 1,
+      "sheets": {
+        "Roster": {
+          "reads": 2,
+          "cells": 130,
+          "full": 0,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 3,
+          "cells": 95,
+          "full": 0,
+          "writes": 2
+        },
+        "Tests": {
+          "reads": 3,
+          "cells": 55,
+          "full": 0,
+          "writes": 0
+        },
+        "Submissions": {
+          "reads": 3,
+          "cells": 71,
+          "full": 0,
+          "writes": 2
+        }
+      }
+    },
+    "dashboard": {
+      "reads": 4,
+      "batchGet": 0,
+      "totalValueReadCalls": 4,
+      "cellsRead": 2028,
+      "fullTableReads": 4,
+      "writes": 0,
+      "locks": 0,
+      "sheets": {
+        "Roster": {
+          "reads": 1,
+          "cells": 130,
+          "full": 1,
+          "writes": 0
+        },
+        "Progress": {
+          "reads": 1,
+          "cells": 910,
+          "full": 1,
+          "writes": 0
+        },
+        "Tests": {
+          "reads": 1,
+          "cells": 390,
+          "full": 1,
+          "writes": 0
+        },
+        "Submissions": {
+          "reads": 1,
+          "cells": 598,
+          "full": 1,
+          "writes": 0
+        }
+      }
+    }
+  }
+}

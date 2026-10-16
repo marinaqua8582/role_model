@@ -1,0 +1,12 @@
+{
+  "sourceCommit": "1a6546d3d17761c8b217ef0a42a4677a282eb5d8",
+  "target": "preview",
+  "project": "staging-role-model-synthetic25-20261009",
+  "tests": 195,
+  "testsPassed": true,
+  "preflightAccepted": true,
+  "productionBuildPassed": true,
+  "buildSeconds": 6.49,
+  "secretsRotation": "user confirmed all three; Preview paired-secret and test GAS authentication passed; values not read or printed",
+  "ciRerun": false
+}

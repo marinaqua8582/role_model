@@ -39,7 +39,7 @@ export function generateAdminSessionToken(): string {
 /**
  * Validate a cryptographically signed session token
  */
-export function verifyAdminSessionToken(token?: string): { valid: boolean; message?: string } {
+export function verifyAdminSessionToken(token?: string): { valid: boolean; message?: string; issuedAt?: number } {
   if (!token || typeof token !== 'string') {
     return { valid: false, message: '인증 토큰이 없습니다.' };
   }
@@ -69,7 +69,7 @@ export function verifyAdminSessionToken(token?: string): { valid: boolean; messa
       return { valid: false, message: '관리자 인증이 만료되었습니다. 다시 로그인해 주세요.' };
     }
 
-    return { valid: true };
+    return { valid: true, issuedAt:payload.iat };
   } catch {
     return { valid: false, message: '토큰 디코딩 실패' };
   }
@@ -108,8 +108,21 @@ export function extractAdminToken(req: any): string | undefined {
 /**
  * Call Google Apps Script securely from server with ADMIN_API_SECRET
  */
-export async function callServerGas(payload: Record<string, any>): Promise<any> {
-  const targetUrl = process.env.GAS_URL || process.env.VITE_GAS_URL;
+export async function callServerGas(payload: Record<string, any>, options: {adminIssuedAt?: number} = {}): Promise<any> {
+  if (process.env.OPERATING_POSTGRES) {
+    const { operatingDispatch } = await import('../transactional/operating-runtime.mjs');
+    return operatingDispatch(payload, { admin: true, adminIssuedAt:options.adminIssuedAt });
+  }
+  if (process.env.TRANSACTIONAL_SYNTHETIC) {
+    const { syntheticDispatch } = await import('../transactional/runtime.mjs');
+    return syntheticDispatch(payload, { admin: true, adminIssuedAt:options.adminIssuedAt });
+  }
+  if(process.env.CUTOVER_CONTROLS_ENABLED==='true' && ['updateRoster','deleteRosterStudents'].includes(payload.action)) {
+    const status=await callServerGas({action:'getCutoverWriteStatus'});
+    if(!status.success || status.closed || status.epoch>0 && (!Number.isSafeInteger(options.adminIssuedAt) || (options.adminIssuedAt ?? 0)<status.openedAt)) throw new Error('점검 중이거나 전환 전 관리자 요청입니다. 다시 로그인해 주세요.');
+    payload={...payload,maintenanceEpoch:status.epoch,requestIssuedAt:Date.now()};
+  }
+  const targetUrl = process.env.GAS_URL;
 
   if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('https://')) {
     throw new Error('GAS_URL 환경변수가 설정되지 않았습니다.');
@@ -128,13 +141,14 @@ export async function callServerGas(payload: Record<string, any>): Promise<any> 
     },
     body: JSON.stringify(bodyPayload),
     redirect: 'follow',
+    signal: AbortSignal.timeout(8000),
   });
 
   const text = await response.text();
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`Google Apps Script non-JSON response: ${text.slice(0, 200)}`);
+    throw new Error('Google Apps Script 응답을 확인하지 못했습니다.');
   }
 }
 
@@ -145,3 +159,4 @@ export async function checkAdminConfiguration(): Promise<void> {
   const result = await callServerGas({action:'checkAdminConfig'});
   if (result?.success !== true) throw new Error('GAS와 Vercel의 ADMIN_API_SECRET 설정 또는 GAS 배포 버전을 확인해 주세요.');
 }
+

@@ -1,0 +1,320 @@
+{
+  "count": 25,
+  "passed": false,
+  "ended": true,
+  "initialCounts": {
+    "Progress": 25,
+    "Tests": 25,
+    "Submissions": 25
+  },
+  "checks": {
+    "ownFullId": true
+  },
+  "otherIdExposures": 0,
+  "failure": "phase failed; no resave or larger wave",
+  "phases": {
+    "startPerformanceRun": {
+      "success": 1,
+      "total": 1,
+      "responseMs": {
+        "n": 1,
+        "mean": 5087,
+        "p50": 5087,
+        "p95": 5087,
+        "max": 5087
+      },
+      "timeout": 0,
+      "lockFailures": 0,
+      "gas": {
+        "lockWaitMs": {
+          "n": 0,
+          "mean": null
+        },
+        "lockHeldMs": {
+          "n": 0,
+          "mean": null
+        },
+        "sheetReadMs": {
+          "n": 0,
+          "mean": null
+        },
+        "sheetReadCalls": {
+          "n": 0,
+          "mean": null
+        },
+        "sheetWriteMs": {
+          "n": 0,
+          "mean": null
+        },
+        "flushMs": {
+          "n": 0,
+          "mean": null
+        },
+        "totalMs": {
+          "n": 0,
+          "mean": null
+        }
+      }
+    },
+    "login": {
+      "success": 25,
+      "total": 25,
+      "responseMs": {
+        "n": 25,
+        "mean": 3252,
+        "p50": 3139,
+        "p95": 4423,
+        "max": 4804
+      },
+      "timeout": 0,
+      "lockFailures": 0,
+      "gas": {
+        "lockWaitMs": {
+          "n": 25,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "n": 25,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "n": 25,
+          "mean": 391,
+          "p50": 322,
+          "p95": 877,
+          "max": 939
+        },
+        "sheetReadCalls": {
+          "n": 25,
+          "mean": 11,
+          "p50": 11,
+          "p95": 11,
+          "max": 11
+        },
+        "sheetWriteMs": {
+          "n": 25,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "n": 25,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "n": 25,
+          "mean": 1747,
+          "p50": 1683,
+          "p95": 2361,
+          "max": 3371
+        }
+      }
+    },
+    "saveProgress_first": {
+      "success": 23,
+      "total": 25,
+      "responseMs": {
+        "n": 25,
+        "mean": 30818,
+        "p50": 30578,
+        "p95": 63994,
+        "max": 64008
+      },
+      "timeout": 0,
+      "lockFailures": 0,
+      "gas": {
+        "lockWaitMs": {
+          "n": 25,
+          "mean": 24806,
+          "p50": 24264,
+          "p95": 52511,
+          "max": 56777
+        },
+        "lockHeldMs": {
+          "n": 25,
+          "mean": 2333,
+          "p50": 2005,
+          "p95": 4159,
+          "max": 4458
+        },
+        "sheetReadMs": {
+          "n": 25,
+          "mean": 421,
+          "p50": 249,
+          "p95": 1008,
+          "max": 1203
+        },
+        "sheetReadCalls": {
+          "n": 25,
+          "mean": 11,
+          "p50": 11,
+          "p95": 11,
+          "max": 11
+        },
+        "sheetWriteMs": {
+          "n": 25,
+          "mean": 17,
+          "p50": 11,
+          "p95": 25,
+          "max": 134
+        },
+        "flushMs": {
+          "n": 25,
+          "mean": 289,
+          "p50": 195,
+          "p95": 804,
+          "max": 1025
+        },
+        "totalMs": {
+          "n": 25,
+          "mean": 27330,
+          "p50": 27328,
+          "p95": 57055,
+          "max": 59994
+        }
+      }
+    },
+    "getPerformanceTrace": {
+      "success": 2,
+      "total": 2,
+      "responseMs": {
+        "n": 2,
+        "mean": 1835,
+        "p50": 1712,
+        "p95": 1957,
+        "max": 1957
+      },
+      "timeout": 0,
+      "lockFailures": 0,
+      "gas": {
+        "lockWaitMs": {
+          "n": 2,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "n": 2,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "n": 2,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadCalls": {
+          "n": 2,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetWriteMs": {
+          "n": 2,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "n": 2,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "n": 2,
+          "mean": 336,
+          "p50": 284,
+          "p95": 388,
+          "max": 388
+        }
+      }
+    },
+    "finishPerformanceRun": {
+      "success": 1,
+      "total": 1,
+      "responseMs": {
+        "n": 1,
+        "mean": 1815,
+        "p50": 1815,
+        "p95": 1815,
+        "max": 1815
+      },
+      "timeout": 0,
+      "lockFailures": 0,
+      "gas": {
+        "lockWaitMs": {
+          "n": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "n": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "n": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadCalls": {
+          "n": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetWriteMs": {
+          "n": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "n": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "n": 1,
+          "mean": 595,
+          "p50": 595,
+          "p95": 595,
+          "max": 595
+        }
+      }
+    }
+  },
+  "sourceCommit": "1a6546d3d17761c8b217ef0a42a4677a282eb5d8",
+  "gasVersion": 9,
+  "startedAt": "2026-10-12T10:12:24.297Z",
+  "failedResponsePerformanceRecovered": "2 failed API responses joined to original successful GAS traces"
+}

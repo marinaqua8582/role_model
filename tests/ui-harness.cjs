@@ -13,7 +13,7 @@ const plain = value => JSON.parse(JSON.stringify(value));
 function runtime(sourceRoot = root) {
   const b = backend();
   const storage = new Map(), session = new Map(), modules = new Map(), listeners = new Map();
-  const state = { calls: [], failure: null, deferred: null, admin: false, preview: null };
+  const state = { calls: [], failure: null, deferred: null, admin: false, preview: null, copied: [] };
   const store = map => ({ getItem: k => map.get(k) ?? null, setItem: (k, v) => map.set(k, String(v)), removeItem: k => map.delete(k) });
   const window = {
     addEventListener(type, cb) { if (!listeners.has(type)) listeners.set(type, new Set()); listeners.get(type).add(cb); },
@@ -22,6 +22,7 @@ function runtime(sourceRoot = root) {
     confirm: () => true, scrollTo() {},
   };
   const context = vm.createContext({ console, URL, AbortSignal, setTimeout, clearTimeout, window,
+    navigator: { clipboard: { writeText: async text => { state.copied.push(text); } } },
     localStorage: store(storage), sessionStorage: store(session),
     Event: class { constructor(type) { this.type = type; } },
     fetch: async (url, options = {}) => {

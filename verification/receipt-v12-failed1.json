@@ -1,0 +1,83 @@
+{
+  "count": 1,
+  "profile": "receipt-followup-v12",
+  "startedAt": "2026-10-12T12:58:28.341Z",
+  "requests": [
+    {
+      "phase": "startPerformanceRun",
+      "route": "staging-control",
+      "status": 200,
+      "success": true,
+      "ms": 9620,
+      "correlationId": "56665536-55a7-43ce-8120-ebcc39296dc2",
+      "performance": null,
+      "confirmedByReceipt": false
+    },
+    {
+      "phase": "login",
+      "route": "student-proxy",
+      "status": 502,
+      "success": false,
+      "ms": 6125,
+      "correlationId": "5ea343a7-89a4-46d8-b572-4c3f604a5669",
+      "performance": null,
+      "confirmedByReceipt": false,
+      "errorKind": "unclassified"
+    },
+    {
+      "phase": "getPerformanceTrace",
+      "route": "staging-control",
+      "status": 200,
+      "success": false,
+      "ms": 16690,
+      "correlationId": "a45ae047-dd9e-40ce-94ec-adfb02c24d55",
+      "performance": null,
+      "confirmedByReceipt": false,
+      "errorKind": "javascript-runtime"
+    },
+    {
+      "phase": "finishPerformanceRun",
+      "route": "staging-control",
+      "status": 200,
+      "success": true,
+      "ms": 2546,
+      "correlationId": "fdcfc16a-6948-4821-ad8f-33a03af7ec90",
+      "performance": {
+        "preparationMs": 0,
+        "functionMs": {
+          "validatePerformanceRun_": 236,
+          "requestSheet_": 179
+        },
+        "functionCalls": {
+          "validatePerformanceRun_": 2,
+          "requestSheet_": 4
+        },
+        "lockWaitMs": 0,
+        "lockHeldMs": 0,
+        "sheetReadMs": 0,
+        "sheetReadCalls": 0,
+        "sheetWriteMs": 0,
+        "flushMs": 0,
+        "lockTimeoutCount": 0,
+        "totalMs": 658
+      },
+      "confirmedByReceipt": false
+    }
+  ],
+  "checks": {},
+  "passed": false,
+  "initialCounts": {
+    "Progress": 25,
+    "Tests": 25,
+    "Submissions": 25
+  },
+  "failure": "phase failed; no resave or larger wave",
+  "joinedTraces": [
+    {
+      "correlationId": "5ea343a7-89a4-46d8-b572-4c3f604a5669",
+      "found": false,
+      "trace": null
+    }
+  ],
+  "ended": true
+}

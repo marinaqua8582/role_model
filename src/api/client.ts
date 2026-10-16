@@ -29,8 +29,11 @@ const PROGRESS_MAP_KEY = `${STORAGE_PREFIX}progress_map`;
 const GAS_URL_KEY = `${STORAGE_PREFIX}gas_url`;
 const STUDENT_SESSION_KEY = `${STORAGE_PREFIX}student_session`;
 let sessionGeneration = 0;
+let lastServerSaveTime = '';
+export function getLastServerSaveTime() { return lastServerSaveTime; }
 export function clearStudentSession() {
   sessionGeneration++;
+  lastServerSaveTime = '';
   localStorage.removeItem(STUDENT_SESSION_KEY);
   localStorage.removeItem('rolemodel_current_student_key');
   localStorage.removeItem(PROGRESS_MAP_KEY);
@@ -53,7 +56,7 @@ export async function logoutStudent(): Promise<void> {
     if (!response.ok || !(await response.json())?.success) throw new Error('logout failed');
   } catch {
     // Offline clients cannot revoke a remote token; the local session is already gone.
-    console.warn('서버 로그아웃을 확인하지 못했습니다. 로컬 세션은 제거되었습니다.');
+    console.warn('서버 요청을 확인하지 못했습니다.');
   }
 }
 
@@ -62,76 +65,109 @@ export const DEFAULT_ROSTER: RosterItem[] = [];
 
 export const DEFAULT_GAS_URL = '';
 
-export function getEffectiveGasUrl(): string {
-  const envUrl = ((import.meta as any)?.env?.VITE_GAS_URL as string | undefined)?.trim();
-  if (envUrl) return envUrl;
-
-  const stored = getStoredGasUrl().trim();
-  if (stored) return stored;
-
-  return '';
-}
+export function getEffectiveGasUrl(): string { return ''; }
 
 /**
  * Execute request to Google Apps Script
- * Tries server-side proxy first (bypasses browser CORS & 302 redirect blocking),
- * and falls back to direct client fetch if needed.
+ * Uses only the same-origin API with bounded retry and in-flight deduplication.
  */
-let pendingWrites = 0;
-export function isStudentSaving() { return pendingWrites > 0; }
-export async function callGasApi(payload: Record<string, any>): Promise<any> {
-  const writing = ['saveProgress', 'saveTests', 'updateRevision', 'submitFinal', 'submitCounseling', 'resetStudentData'].includes(payload.action);
-  if (writing) { pendingWrites++; window.dispatchEvent(new Event('student-save-state')); }
-  try { return await requestGasApi(payload); }
-  finally { if (writing) { pendingWrites--; window.dispatchEvent(new Event('student-save-state')); } }
+const UNCERTAIN_KEY = STORAGE_PREFIX+'uncertain_save';
+const UNKNOWN_MESSAGE = '저장 결과를 확인할 수 없습니다. 잠시 후 다시 확인해 주세요.';
+function pendingKey(studentKey?:string) {
+  const session=JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null');
+  return UNCERTAIN_KEY+':'+(studentKey || session?.studentKey || '');
 }
-
+export function hasUncertainSave(studentKey?:string) { return Boolean(localStorage.getItem(pendingKey(studentKey))); }
+export async function confirmPendingSave(): Promise<any> {
+  const pending=JSON.parse(localStorage.getItem(pendingKey()) || 'null');
+  if(!pending) return {success:true};
+  const data=await callGasApi({action:'getSaveStatus',...pending});
+  if(data?.success && ['completed','cancelled'].includes(data.state)) {
+    localStorage.removeItem(pendingKey()); window.dispatchEvent(new Event('student-save-state'));
+  }
+  return data;
+}
+let pendingWrites = 0;
+export function isSaveOutcomeUnknown() { return pendingWrites===0 && hasUncertainSave(); }
+let pendingRequests = 0;
+export function isApiPending() { return pendingRequests > 0; }
+const requestsInFlight = new Map<string, Promise<any>>();
+export function isStudentSaving() { return pendingWrites > 0 || hasUncertainSave(); }
+export function callGasApi(payload: Record<string, any>): Promise<any> {
+  const key = sessionGeneration + ':' + JSON.stringify(payload, (field,value) => ['testedAt','submittedAt'].includes(field) ? undefined : value);
+  const existing = requestsInFlight.get(key);
+  if (existing) return existing;
+  const writing = ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].includes(payload.action);
+  if(writing && hasUncertainSave((payload.progress || payload.tests || payload.submission || payload.counseling || payload).studentKey)) return Promise.reject(new Error(UNKNOWN_MESSAGE));
+  pendingRequests++;
+  window.dispatchEvent(new Event('api-request-state'));
+  if (writing) { pendingWrites++; window.dispatchEvent(new Event('student-save-state')); }
+  const request = requestGasApi(payload).finally(() => {
+    pendingRequests--;
+    window.dispatchEvent(new Event('api-request-state'));
+    requestsInFlight.delete(key);
+    if (writing) { pendingWrites--; window.dispatchEvent(new Event('student-save-state')); }
+  });
+  requestsInFlight.set(key, request);
+  return request;
+}
 async function requestGasApi(payload: Record<string, any>): Promise<any> {
   const generation = sessionGeneration;
   const session = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null');
-  payload = { ...payload, studentToken: session?.token };
-  const checkResponse = (data: any) => {
-    const currentSession = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null');
-    if (generation !== sessionGeneration || session?.token !== currentSession?.token) throw new Error('학생 세션이 변경되었습니다.');
-    return data;
+  const writing=['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling','resetStudentData'].includes(payload.action);
+  const requestId=writing ? ('save_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2)+'_'+Math.random().toString(36).slice(2)) : undefined;
+  const requestIssuedAt=writing ? Date.now() : payload.requestIssuedAt;
+  const input=payload.progress || payload.tests || payload.submission || payload.counseling || payload;
+  const markUnknown=()=>{ localStorage.setItem(pendingKey(input.studentKey),JSON.stringify({requestId,requestIssuedAt,studentKey:input.studentKey})); window.dispatchEvent(new Event('student-save-state')); };
+  const body = JSON.stringify({ ...payload, requestId:requestId || payload.requestId, requestIssuedAt, maintenanceEpoch:session?.maintenanceEpoch, ...(writing && ['transactional-synthetic','transactional-postgres'].includes(session?.storageBackend)?{expectedVersion:session.version}:{}), studentToken: session?.token });
+  const deadline = Date.now() + (writing || payload.action==='getSaveStatus' ? 80000 : 20000);
+  const checkSession = () => {
+    const current = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null');
+    if (generation !== sessionGeneration || session?.token !== current?.token) throw new Error('학생 세션이 변경되었습니다.');
   };
-  // 1. Primary: Use backend server proxy to reliably handle Google Apps Script 302 redirect & CORS
-  try {
-    const proxyRes = await fetch('/api/gas-proxy', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (proxyRes.ok) {
-      const data = await proxyRes.json();
-      return checkResponse(data);
+  if(writing) markUnknown();
+  // A timeout can leave a write running; never automatically retry that unknown outcome.
+  for (let attempt = 0; attempt < 2; attempt++) {
+    checkSession();
+    let response: Response;
+    try {
+      response = await fetch('/api/gas-proxy', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body, signal: AbortSignal.timeout(Math.max(1,Math.min(writing || payload.action==='getSaveStatus' ? 80000 : 18000,deadline - Date.now()))),
+      });
+    } catch (error: any) {
+      if(writing) { markUnknown(); throw new Error(UNKNOWN_MESSAGE); }
+      if (attempt || error?.name === 'TimeoutError' || error?.name === 'AbortError') throw error;
+      await new Promise(resolve => setTimeout(resolve, 250 + Math.random() * 350));
+      continue;
     }
-    if (proxyRes.status === 403) throw new Error('요청 권한이 없습니다.');
-    if (proxyRes.status !== 404) throw new Error(`서버 연결 오류 (HTTP ${proxyRes.status}). 다시 저장해 주세요.`);
-  } catch (proxyErr) {
-    if (payload.action !== 'getRosterOptions') throw proxyErr;
-    console.warn('Backend GAS proxy failed:', proxyErr);
-  }
-
-  // 2. Direct browser fetch fallback (if VITE_GAS_URL is provided in client)
-  const gasUrl = getEffectiveGasUrl();
-  if (gasUrl) {
-    const directRes = await fetch(gasUrl, {
-      method: 'POST',
-      body: JSON.stringify(payload),
-    });
-
-    if (directRes.ok) {
-      return checkResponse(await directRes.json());
+    if (!response.ok) {
+      if(writing) { markUnknown(); throw new Error(UNKNOWN_MESSAGE); }
+      if (!attempt && [429,500,502,503].includes(response.status)) {
+        await new Promise(resolve => setTimeout(resolve, 250 + Math.random() * 350));
+        continue;
+      }
+      throw new Error(`서버 연결 오류 (HTTP ${response.status}). 다시 시도해 주세요.`);
     }
-
-    throw new Error(`Google Apps Script 서버 응답 오류 (HTTP ${directRes.status})`);
+    let data: any;
+    try { data=await response.json(); } catch(error) { if(writing) { markUnknown(); throw new Error(UNKNOWN_MESSAGE); } throw error; }
+    checkSession();
+    if(writing && data?.success) { localStorage.removeItem(pendingKey(input.studentKey)); window.dispatchEvent(new Event('student-save-state')); }
+    if(['transactional-synthetic','transactional-postgres'].includes(data?.storageBackend) && session?.token) {
+      const version=data.version ?? data.result?.version;
+      if(Number.isSafeInteger(version)) localStorage.setItem(STUDENT_SESSION_KEY,JSON.stringify({...session,version}));
+      if(writing && ['VERSION_CONFLICT','CANCELLED','EXPIRED','SCOPE','ID_REUSE','REQUEST','AUTH','MAINTENANCE','STALE_EPOCH'].includes(data.code)) {
+        localStorage.removeItem(pendingKey(input.studentKey));
+        window.dispatchEvent(new Event('student-save-state'));
+      }
+    }
+    if (data?.success && ['saveProgress','saveTests','updateRevision','submitFinal','submitCounseling'].includes(payload.action)) {
+      const time = data.savedAt || data.submittedAt || data.completedAt;
+      if (time && Number.isFinite(Date.parse(time))) lastServerSaveTime = new Date(time).toISOString();
+    }
+    return data;
   }
-
-  throw new Error('Google Apps Script 서버 주소가 설정되지 않았습니다.');
+  throw new Error('서버 응답을 확인하지 못했습니다. 다시 시도해 주세요.');
 }
 
 function getStoredRoster(): RosterItem[] {
@@ -142,7 +178,7 @@ function getStoredRoster(): RosterItem[] {
       return Array.isArray(parsed) ? parsed : [];
     }
   } catch (e) {
-    console.error('Error reading roster from storage', e);
+    console.warn('서버 요청을 확인하지 못했습니다.');
   }
   return DEFAULT_ROSTER;
 }
@@ -151,7 +187,7 @@ function saveStoredRoster(roster: RosterItem[]) {
   try {
     localStorage.setItem(ROSTER_KEY, JSON.stringify(roster));
   } catch (e) {
-    console.error('Error saving roster to storage', e);
+    console.warn('서버 요청을 확인하지 못했습니다.');
   }
 }
 
@@ -160,7 +196,7 @@ function getStoredProgressMap(): Record<string, StudentProgress> {
     const raw = localStorage.getItem(PROGRESS_MAP_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {
-    console.error('Error reading progress map', e);
+    console.warn('서버 요청을 확인하지 못했습니다.');
   }
   return {};
 }
@@ -169,7 +205,7 @@ function saveStoredProgressMap(map: Record<string, StudentProgress>) {
   try {
     localStorage.setItem(PROGRESS_MAP_KEY, JSON.stringify(map));
   } catch (e) {
-    console.error('Error saving progress map', e);
+    console.warn('서버 요청을 확인하지 못했습니다.');
   }
 }
 
@@ -277,113 +313,27 @@ export function normalizeKoreanName(name: string): string {
 /**
  * Get Roster selection options (Grades, Classes, Numbers) without leaking student names
  */
-export async function getRosterOptions(): Promise<{
+type RosterOptions = {
   grades: number[];
   classesByGrade: Record<number, number[]>;
   numbersByClass: Record<string, number[]>;
-}> {
-  // 1. Primary: Query Google Apps Script (Google Sheets Roster)
-  try {
-    const json = await callGasApi({ action: 'getRosterOptions' });
-
-      // Standard format: { success: true, data: { grades, classesByGrade, numbersByClass } }
-      if (json && json.success && json.data && Array.isArray(json.data.grades)) {
-        const grades = json.data.grades.map(Number).sort((a: number, b: number) => a - b);
-        const classesByGrade: Record<number, number[]> = {};
-        Object.keys(json.data.classesByGrade || {}).forEach((k) => {
-          classesByGrade[Number(k)] = (json.data.classesByGrade[k] || [])
-            .map(Number)
-            .sort((a: number, b: number) => a - b);
-        });
-        const numbersByClass: Record<string, number[]> = {};
-        Object.keys(json.data.numbersByClass || {}).forEach((k) => {
-          numbersByClass[k] = (json.data.numbersByClass[k] || [])
-            .map(Number)
-            .sort((a: number, b: number) => a - b);
-        });
-
-        if (grades.length > 0) {
-          return { grades, classesByGrade, numbersByClass };
-        }
-      }
-
-      // Alternative format: { success: true, options: { [grade]: { [class]: [numbers] } } }
-      if (json && json.success && json.options && typeof json.options === 'object') {
-        const grades = Object.keys(json.options)
-          .map(Number)
-          .sort((a, b) => a - b);
-        const classesByGrade: Record<number, number[]> = {};
-        const numbersByClass: Record<string, number[]> = {};
-
-        grades.forEach((g) => {
-          const classKeys = Object.keys(json.options[g] || {})
-            .map(Number)
-            .sort((a, b) => a - b);
-          classesByGrade[g] = classKeys;
-          classKeys.forEach((c) => {
-            const classKey = `${g}-${c}`;
-            numbersByClass[classKey] = (json.options[g][c] || [])
-              .map(Number)
-              .sort((a, b) => a - b);
-          });
-        });
-
-        if (grades.length > 0) {
-          return { grades, classesByGrade, numbersByClass };
-        }
-      }
-    } catch (e) {
-      console.warn('Error fetching roster options from Google Apps Script:', e);
-    }
-
-  // 2. Fallback: check local server API or local storage
-  try {
-    const res = await fetch('/api/roster/options');
-    if (res.ok) {
-      const json = await res.json();
-      if (json.success && json.data && json.data.grades && json.data.grades.length > 0) {
-        return json.data;
-      }
-    }
-  } catch (e) {
-    // Fallback to local storage
-  }
-
-  const roster = getStoredRoster();
-  const gradesSet = new Set<number>();
-  const classesByGrade: Record<number, Set<number>> = {};
-  const numbersByClass: Record<string, Set<number>> = {};
-
-  roster.forEach((item) => {
-    const g = Number(item.grade);
-    const c = Number(item.classNum !== undefined ? item.classNum : (item as any).class);
-    const n = Number(item.number);
-    if (!isNaN(g) && !isNaN(c) && !isNaN(n) && g > 0 && c > 0 && n > 0) {
-      gradesSet.add(g);
-      if (!classesByGrade[g]) classesByGrade[g] = new Set();
-      classesByGrade[g].add(c);
-
-      const classKey = `${g}-${c}`;
-      if (!numbersByClass[classKey]) numbersByClass[classKey] = new Set();
-      numbersByClass[classKey].add(n);
-    }
-  });
-
-  const grades = Array.from(gradesSet).sort((a, b) => a - b);
-  const classesMap: Record<number, number[]> = {};
-  grades.forEach((g) => {
-    classesMap[g] = Array.from(classesByGrade[g] || []).sort((a, b) => a - b);
-  });
-
-  const numbersMap: Record<string, number[]> = {};
-  grades.forEach((g) => {
-    (classesMap[g] || []).forEach((c) => {
-      const classKey = `${g}-${c}`;
-      numbersMap[classKey] = Array.from(numbersByClass[classKey] || []).sort((a, b) => a - b);
-    });
-  });
-
-  return { grades, classesByGrade: classesMap, numbersByClass: numbersMap };
+};
+let optionsCache: { data: RosterOptions; expires: number } | undefined;
+let optionsFlight: Promise<RosterOptions> | undefined;
+export function invalidateRosterOptions() { optionsCache = undefined; }
+export function getRosterOptions(): Promise<RosterOptions> {
+  if (optionsCache && optionsCache.expires > Date.now()) return Promise.resolve(optionsCache.data);
+  if (optionsFlight) return optionsFlight;
+  optionsFlight = callGasApi({action:'getRosterOptions'}).then(json => {
+    if (json?.success !== true || !Array.isArray(json.data?.grades)) throw new Error(json?.message || '명단 선택 항목을 불러오지 못했습니다.');
+    const numbers = (v: any): number[] => Array.isArray(v) ? v.map(Number).filter(n => Number.isInteger(n) && n > 0).sort((a,b) => a-b) : [];
+    const data: RosterOptions = { grades: numbers(json.data.grades), classesByGrade: {}, numbersByClass: {} };
+    Object.entries(json.data.classesByGrade || {}).forEach(([k,v]) => { if (/^\d+$/.test(k)) data.classesByGrade[Number(k)] = numbers(v); });
+    Object.entries(json.data.numbersByClass || {}).forEach(([k,v]) => { if (/^\d+-\d+$/.test(k)) data.numbersByClass[k] = numbers(v); });
+    optionsCache = {data, expires: Date.now() + 30000};
+    return data;
+  }).finally(() => { optionsFlight = undefined; });
+  return optionsFlight;
 }
 
 /**
@@ -415,8 +365,14 @@ export async function loadStudentProgress(studentKey: string): Promise<{ success
   return { success: true, found: Boolean(res.found), progress: res.found ? mapFullStudentDetail(res.data) : undefined };
 }
 
+let loginFlight: Promise<Awaited<ReturnType<typeof performStudentAuth>>> | undefined;
+export function verifyStudentAuth(params: {grade:number;classNum:number;number:number;name:string}) {
+  if (loginFlight) return loginFlight;
+  loginFlight = performStudentAuth(params).finally(() => { loginFlight = undefined; });
+  return loginFlight;
+}
 /** Roster verification remains grade/class/number/name; no student password or code. */
-export async function verifyStudentAuth(params: { grade: number; classNum: number; number: number; name: string }): Promise<{
+async function performStudentAuth(params: { grade: number; classNum: number; number: number; name: string }): Promise<{
   success: boolean; message?: string; student?: StudentInfo; hasExisting?: boolean; progress?: StudentProgress;
 }> {
   await logoutStudent();
@@ -426,7 +382,7 @@ export async function verifyStudentAuth(params: { grade: number; classNum: numbe
     if (data?.success !== true || !data.student) return { success: false, message: data?.message || '학생 정보를 확인할 수 없습니다.' };
     if (!data.studentToken) return { success: false, message: 'Google Apps Script를 최신 코드로 배포한 뒤 다시 로그인해 주세요.' };
     const student: StudentInfo = { ...data.student, studentKey, googleId: data.student.googleId || '' };
-    localStorage.setItem(STUDENT_SESSION_KEY, JSON.stringify({ token: data.studentToken, studentKey }));
+    localStorage.setItem(STUDENT_SESSION_KEY, JSON.stringify({ token: data.studentToken, studentKey, maintenanceEpoch:data.maintenanceEpoch, ...(['transactional-synthetic','transactional-postgres'].includes(data.storageBackend)?{storageBackend:data.storageBackend,version:data.version}: {}) }));
     const progress = data.hasExisting && !data.identityMismatch ? mapFullStudentDetail(data.progress) : createInitialStudentProgress(student);
     Object.assign(progress, student);
     saveStoredProgressMap({ [studentKey]: progress });
@@ -441,7 +397,7 @@ export async function verifyStudentAuth(params: { grade: number; classNum: numbe
  */
 export async function saveProgressPayload(
   payload: Record<string, any>
-): Promise<{ success: boolean; message?: string; studentKey?: string }> {
+): Promise<{ success: boolean; message?: string; studentKey?: string; savedAt?: string }> {
   const studentKey = payload.studentKey;
 
   // 1. Google Apps Script: Attempt to save to Google Sheets via GAS
@@ -454,6 +410,7 @@ export async function saveProgressPayload(
     if (res && res.success) {
       return {
         success: true,
+        savedAt: res.savedAt,
         message: res.message || '진행 상황이 저장되었습니다.',
         studentKey,
       };
@@ -464,7 +421,7 @@ export async function saveProgressPayload(
       };
     }
   } catch (err: any) {
-    console.warn('saveProgress to GAS skipped/failed, saving locally:', err?.message);
+    console.warn('서버 요청을 확인하지 못했습니다.');
   }
 
   // 2. Keep the local cache for recovery, but never report a remote failure as saved.
@@ -532,7 +489,7 @@ export async function saveStep1Progress(
       strengths,
       values,
     };
-    existing.updatedAt = new Date().toISOString();
+    existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
     localMap[studentKey] = existing;
     saveStoredProgressMap(localMap);
   }
@@ -574,7 +531,7 @@ export async function saveStep2Progress(
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
     existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step2 = { ...data };
-    existing.updatedAt = new Date().toISOString();
+    existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
     localMap[studentKey] = existing;
     saveStoredProgressMap(localMap);
   }
@@ -612,7 +569,7 @@ export async function saveStep3Progress(
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
     existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step3 = { ...data };
-    existing.updatedAt = new Date().toISOString();
+    existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
     localMap[studentKey] = existing;
     saveStoredProgressMap(localMap);
   }
@@ -655,7 +612,7 @@ export async function saveStep4Progress(
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
     existing.currentStep = Math.max(existing.currentStep, currentStep);
     existing.step4 = { ...data };
-    existing.updatedAt = new Date().toISOString();
+    existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
     localMap[studentKey] = existing;
     saveStoredProgressMap(localMap);
   }
@@ -694,7 +651,7 @@ export async function saveStep5Progress(
       quizPassed: true,
       allRulesChecked: true,
     };
-    existing.updatedAt = new Date().toISOString();
+    existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
     localMap[studentKey] = existing;
     saveStoredProgressMap(localMap);
   }
@@ -744,7 +701,7 @@ export async function saveStep6Progress(
       isConfirmed: true,
     };
     existing.isPromptCompleted = true;
-    existing.updatedAt = new Date().toISOString();
+    existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
     localMap[studentKey] = existing;
     saveStoredProgressMap(localMap);
   }
@@ -775,7 +732,7 @@ export async function updateCurrentStep(
     const localMap = getStoredProgressMap();
     const existing = localMap[studentKey] || createInitialStudentProgress(student);
     existing.currentStep = Math.max(existing.currentStep, step);
-    existing.updatedAt = new Date().toISOString();
+    existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
     localMap[studentKey] = existing;
     saveStoredProgressMap(localMap);
   }
@@ -811,6 +768,7 @@ export async function saveTests(
     problemDescription: (data.problemDescription || '').trim(),
     revisionNote: (data.revisionNote || '').trim(),
     testedAt: now,
+    currentStep: (student as StudentProgress).currentStep,
   };
 
   try {
@@ -822,7 +780,7 @@ export async function saveTests(
       };
     }
   } catch (err: any) {
-    console.warn('saveTests to GAS skipped/failed:', err?.message);
+    console.warn('서버 요청을 확인하지 못했습니다.');
     return { success: false, message: '서버 저장에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.' };
   }
 
@@ -835,7 +793,7 @@ export async function saveTests(
     testedAt: now,
   };
   existing.isTestCompleted = true;
-  existing.updatedAt = now;
+  existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
   localMap[studentKey] = existing;
   saveStoredProgressMap(localMap);
 
@@ -866,7 +824,7 @@ export async function updateRevision(
     classNum: Number(student.classNum),
     number: Number(student.number),
     name: (student.name || '').trim(),
-    currentStep: 9,
+    currentStep: Math.max(9,(student as StudentProgress).currentStep || 9),
     chatbotName,
     initialPrompt: promptData.initialPrompt || '',
     revisedPrompt,
@@ -881,7 +839,7 @@ export async function updateRevision(
       return { success: false, message: res?.message || '수정 내용을 저장하지 못했습니다. 다시 시도해 주세요.' };
     }
   } catch (err: any) {
-    console.warn('updateRevision to GAS skipped/failed:', err?.message);
+    console.warn('서버 요청을 확인하지 못했습니다.');
     return { success: false, message: '서버 저장에 실패했습니다. 인터넷 연결을 확인한 뒤 다시 저장해 주세요.' };
   }
 
@@ -902,7 +860,7 @@ export async function updateRevision(
     problemDescription,
     revisionNote,
   };
-  existing.updatedAt = now;
+  existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
   localMap[studentKey] = existing;
   saveStoredProgressMap(localMap);
 
@@ -961,7 +919,7 @@ export async function submitFinal(
       };
     }
   } catch (err: any) {
-    console.error('submitFinal to GAS failed:', err);
+    console.warn('서버 요청을 확인하지 못했습니다.');
     return {
       success: false,
       message: '최종 제출 저장에 실패했습니다. 다시 시도해 주세요. (' + (err?.message || '연결 오류') + ')',
@@ -978,7 +936,7 @@ export async function submitFinal(
   };
   existing.isGemSubmitted = Boolean(submission.gemUrl && submission.gemUrl.trim());
   existing.isFinalSubmitted = true;
-  existing.updatedAt = now;
+  existing.updatedAt = getLastServerSaveTime() || existing.updatedAt;
   localMap[studentKey] = existing;
   saveStoredProgressMap(localMap);
 
@@ -992,7 +950,7 @@ export async function saveStudentProgress(progress: StudentProgress): Promise<{ 
   // Step components persist their own fields. Navigation saves only the reached step.
   const res = await updateCurrentStep(progress, progress.currentStep);
   if (!res.success) throw new Error(res.message || '서버 저장에 실패했습니다.');
-  return { success: true, savedAt: new Date().toISOString() };
+  return { success: true, savedAt: getLastServerSaveTime() || progress.updatedAt };
 }
 
 export async function saveCurrentStudentStep(progress: StudentProgress, step: number) {
@@ -1106,7 +1064,7 @@ export async function logoutAdmin(): Promise<void> {
       headers,
     });
   } catch (e) {
-    console.warn('Admin logout fetch failed:', e);
+    console.warn('서버 요청을 확인하지 못했습니다.');
   }
 }
 
@@ -1986,6 +1944,7 @@ export async function updateAdminRoster(
     throw new Error(json?.message || '학생 명단 저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
   }
 
+  invalidateRosterOptions();
   // Sync to local student view cache if needed
   let finalRoster: RosterItem[] = [];
   if (mode === 'replace') {
@@ -2047,6 +2006,7 @@ export async function deleteAdminRosterStudents(
     throw new Error(json?.message || '학생 명단 삭제에 실패했습니다. 잠시 후 다시 시도해 주세요.');
   }
 
+  invalidateRosterOptions();
   // Update local roster cache if needed
   const existing = getStoredRoster();
   const deleteKeys = new Set(
@@ -2087,10 +2047,10 @@ export async function fetchAdminOverview(): Promise<{
 }
 
 export function getStoredGasUrl(): string {
-  return localStorage.getItem(GAS_URL_KEY) || '';
+  localStorage.removeItem(GAS_URL_KEY);
+  return '';
 }
 
 export function setStoredGasUrl(url: string) {
-  localStorage.setItem(GAS_URL_KEY, url.trim());
+  localStorage.removeItem(GAS_URL_KEY);
 }
-

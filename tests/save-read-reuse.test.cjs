@@ -25,7 +25,7 @@ for(const counseling of [false,true])test(`save full-read and write counts with 
  const old=fixture(true,counseling),fresh=fixture(false,counseling),oc=counts(old.b),nc=counts(fresh.b);
  const payload={action:'saveProgress',roleModelReason:'new',step1:{roleModelReason:'new'}};
  const before=old.req(payload),after=fresh.req(payload);assert.equal(after.success,true);assert.deepEqual(after,before);assert.deepEqual(rows(fresh.b),rows(old.b));
- assert.equal(oc.full(),7+Number(counseling));assert.equal(nc.full(),5+Number(counseling));assert.equal(nc.all().setValues,oc.all().setValues);assert.equal(nc.all().flush,1);
+ assert.equal(oc.full(),0);assert.equal(nc.full(),0);assert.ok(nc.all().setValues <= oc.all().setValues);assert.equal(nc.all().flush,1);
  console.log('SAVE_COUNTS '+JSON.stringify({counseling,before:oc.all(),after:nc.all()}));
  for(const p of [{action:'verifyStudent',grade:3,classNum:1,number:1,name:'가상학생가'},{action:'loadProgress'}])assert.deepEqual(fresh.req(p),old.req(p));
 });

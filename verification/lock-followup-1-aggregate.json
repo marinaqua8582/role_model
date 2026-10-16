@@ -1,0 +1,1175 @@
+{
+  "count": 1,
+  "profile": "lock-followup-v11",
+  "startedAt": "2026-10-12T12:42:37.504Z",
+  "passed": true,
+  "ended": true,
+  "failure": null,
+  "checks": {
+    "ownFullId": true,
+    "responseLoss": {
+      "writeCalls": 1,
+      "automaticResaves": 0,
+      "confirmed": "completed"
+    },
+    "cancelledLateWrite": true,
+    "restoration": true
+  },
+  "initialCounts": {
+    "Progress": 25,
+    "Tests": 25,
+    "Submissions": 25
+  },
+  "after": {
+    "success": true,
+    "sheets": {
+      "Progress": {
+        "rows": 25,
+        "duplicates": 0
+      },
+      "Tests": {
+        "rows": 25,
+        "duplicates": 0
+      },
+      "Submissions": {
+        "rows": 25,
+        "duplicates": 0
+      }
+    },
+    "foreignRows": 0,
+    "performance": {
+      "preparationMs": 0,
+      "functionMs": {
+        "validatePerformanceRun_": 121,
+        "requestSheet_": 489,
+        "sheetName_": 2,
+        "sheetMetadata_": 209
+      },
+      "functionCalls": {
+        "validatePerformanceRun_": 1,
+        "requestSheet_": 7,
+        "sheetName_": 3,
+        "sheetMetadata_": 3
+      },
+      "lockWaitMs": 0,
+      "lockHeldMs": 0,
+      "sheetReadMs": 195,
+      "sheetReadCalls": 6,
+      "sheetWriteMs": 0,
+      "flushMs": 0,
+      "lockTimeoutCount": 0,
+      "totalMs": 1273
+    }
+  },
+  "otherIdExposures": 0,
+  "phases": {
+    "startPerformanceRun": {
+      "count": 1,
+      "mean": 5298,
+      "p50": 5298,
+      "p95": 5298,
+      "max": 5298,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": null,
+        "lockWaitMs": null,
+        "lockHeldMs": null,
+        "sheetReadMs": null,
+        "sheetWriteMs": null,
+        "flushMs": null,
+        "totalMs": null,
+        "lockTimeoutCount": null
+      }
+    },
+    "login": {
+      "count": 1,
+      "mean": 6372,
+      "p50": 6372,
+      "p95": 6372,
+      "max": 6372,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 711,
+          "p50": 711,
+          "p95": 711,
+          "max": 711
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 3317,
+          "p50": 3317,
+          "p95": 3317,
+          "max": 3317
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "saveProgress_first": {
+      "count": 1,
+      "mean": 4683,
+      "p50": 4683,
+      "p95": 4683,
+      "max": 4683,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 351,
+          "p50": 351,
+          "p95": 351,
+          "max": 351
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 56,
+          "p50": 56,
+          "p95": 56,
+          "max": 56
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 2062,
+          "p50": 2062,
+          "p95": 2062,
+          "max": 2062
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 317,
+          "p50": 317,
+          "p95": 317,
+          "max": 317
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 18,
+          "p50": 18,
+          "p95": 18,
+          "max": 18
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 463,
+          "p50": 463,
+          "p95": 463,
+          "max": 463
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 2633,
+          "p50": 2633,
+          "p95": 2633,
+          "max": 2633
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "saveProgress_update": {
+      "count": 1,
+      "mean": 4693,
+      "p50": 4693,
+      "p95": 4693,
+      "max": 4693,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 349,
+          "p50": 349,
+          "p95": 349,
+          "max": 349
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 60,
+          "p50": 60,
+          "p95": 60,
+          "max": 60
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 2072,
+          "p50": 2072,
+          "p95": 2072,
+          "max": 2072
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 446,
+          "p50": 446,
+          "p95": 446,
+          "max": 446
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 31,
+          "p50": 31,
+          "p95": 31,
+          "max": 31
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 280,
+          "p50": 280,
+          "p95": 280,
+          "max": 280
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 2622,
+          "p50": 2622,
+          "p95": 2622,
+          "max": 2622
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "saveTests_first": {
+      "count": 1,
+      "mean": 3447,
+      "p50": 3447,
+      "p95": 3447,
+      "max": 3447,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 177,
+          "p50": 177,
+          "p95": 177,
+          "max": 177
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 47,
+          "p50": 47,
+          "p95": 47,
+          "max": 47
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 1345,
+          "p50": 1345,
+          "p95": 1345,
+          "max": 1345
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 270,
+          "p50": 270,
+          "p95": 270,
+          "max": 270
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 10,
+          "p50": 10,
+          "p95": 10,
+          "max": 10
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 159,
+          "p50": 159,
+          "p95": 159,
+          "max": 159
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 1768,
+          "p50": 1768,
+          "p95": 1768,
+          "max": 1768
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "saveTests_update": {
+      "count": 1,
+      "mean": 3947,
+      "p50": 3947,
+      "p95": 3947,
+      "max": 3947,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 283,
+          "p50": 283,
+          "p95": 283,
+          "max": 283
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 69,
+          "p50": 69,
+          "p95": 69,
+          "max": 69
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 2190,
+          "p50": 2190,
+          "p95": 2190,
+          "max": 2190
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 343,
+          "p50": 343,
+          "p95": 343,
+          "max": 343
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 10,
+          "p50": 10,
+          "p95": 10,
+          "max": 10
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 224,
+          "p50": 224,
+          "p95": 224,
+          "max": 224
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 2655,
+          "p50": 2655,
+          "p95": 2655,
+          "max": 2655
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "submitFinal_first": {
+      "count": 1,
+      "mean": 3317,
+      "p50": 3317,
+      "p95": 3317,
+      "max": 3317,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 219,
+          "p50": 219,
+          "p95": 219,
+          "max": 219
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 61,
+          "p50": 61,
+          "p95": 61,
+          "max": 61
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 1667,
+          "p50": 1667,
+          "p95": 1667,
+          "max": 1667
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 334,
+          "p50": 334,
+          "p95": 334,
+          "max": 334
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 6,
+          "p50": 6,
+          "p95": 6,
+          "max": 6
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 206,
+          "p50": 206,
+          "p95": 206,
+          "max": 206
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 2147,
+          "p50": 2147,
+          "p95": 2147,
+          "max": 2147
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "submitFinal_update": {
+      "count": 1,
+      "mean": 3866,
+      "p50": 3866,
+      "p95": 3866,
+      "max": 3866,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 303,
+          "p50": 303,
+          "p95": 303,
+          "max": 303
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 64,
+          "p50": 64,
+          "p95": 64,
+          "max": 64
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 1899,
+          "p50": 1899,
+          "p95": 1899,
+          "max": 1899
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 404,
+          "p50": 404,
+          "p95": 404,
+          "max": 404
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 12,
+          "p50": 12,
+          "p95": 12,
+          "max": 12
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 243,
+          "p50": 243,
+          "p95": 243,
+          "max": 243
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 2542,
+          "p50": 2542,
+          "p95": 2542,
+          "max": 2542
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "sameRequestDuplicate": {
+      "count": 3,
+      "mean": 5082,
+      "p50": 5865,
+      "p95": 6794,
+      "max": 6794,
+      "successes": 3,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 3,
+          "mean": 234,
+          "p50": 219,
+          "p95": 302,
+          "max": 302
+        },
+        "lockWaitMs": {
+          "count": 3,
+          "mean": 1216,
+          "p50": 709,
+          "p95": 2894,
+          "max": 2894
+        },
+        "lockHeldMs": {
+          "count": 3,
+          "mean": 1420,
+          "p50": 1019,
+          "p95": 2243,
+          "max": 2243
+        },
+        "sheetReadMs": {
+          "count": 3,
+          "mean": 435,
+          "p50": 275,
+          "p95": 778,
+          "max": 778
+        },
+        "sheetWriteMs": {
+          "count": 3,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 3,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 3,
+          "mean": 3120,
+          "p50": 3662,
+          "p95": 4264,
+          "max": 4264
+        },
+        "lockTimeoutCount": {
+          "count": 3,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "frontend_verifyStudent": {
+      "count": 1,
+      "mean": 3565,
+      "p50": 3565,
+      "p95": 3565,
+      "max": 3565,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 414,
+          "p50": 414,
+          "p95": 414,
+          "max": 414
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 1906,
+          "p50": 1906,
+          "p95": 1906,
+          "max": 1906
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "frontend_saveProgress": {
+      "count": 1,
+      "mean": 4481,
+      "p50": 4481,
+      "p95": 4481,
+      "max": 4481,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 164,
+          "p50": 164,
+          "p95": 164,
+          "max": 164
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 65,
+          "p50": 65,
+          "p95": 65,
+          "max": 65
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 2293,
+          "p50": 2293,
+          "p95": 2293,
+          "max": 2293
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 226,
+          "p50": 226,
+          "p95": 226,
+          "max": 226
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 7,
+          "p50": 7,
+          "p95": 7,
+          "max": 7
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 159,
+          "p50": 159,
+          "p95": 159,
+          "max": 159
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 2680,
+          "p50": 2680,
+          "p95": 2680,
+          "max": 2680
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "frontend_getSaveStatus": {
+      "count": 1,
+      "mean": 2946,
+      "p50": 2946,
+      "p95": 2946,
+      "max": 2946,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 172,
+          "p50": 172,
+          "p95": 172,
+          "max": 172
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 43,
+          "p50": 43,
+          "p95": 43,
+          "max": 43
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 958,
+          "p50": 958,
+          "p95": 958,
+          "max": 958
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 248,
+          "p50": 248,
+          "p95": 248,
+          "max": 248
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 1372,
+          "p50": 1372,
+          "p95": 1372,
+          "max": 1372
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "getSaveStatus": {
+      "count": 1,
+      "mean": 4502,
+      "p50": 4502,
+      "p95": 4502,
+      "max": 4502,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 286,
+          "p50": 286,
+          "p95": 286,
+          "max": 286
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 139,
+          "p50": 139,
+          "p95": 139,
+          "max": 139
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 2166,
+          "p50": 2166,
+          "p95": 2166,
+          "max": 2166
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 475,
+          "p50": 475,
+          "p95": 475,
+          "max": 475
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 2964,
+          "p50": 2964,
+          "p95": 2964,
+          "max": 2964
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "reloginRestore": {
+      "count": 1,
+      "mean": 2954,
+      "p50": 2954,
+      "p95": 2954,
+      "max": 2954,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 256,
+          "p50": 256,
+          "p95": 256,
+          "max": 256
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 1525,
+          "p50": 1525,
+          "p95": 1525,
+          "max": 1525
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "getPerformanceSnapshot": {
+      "count": 1,
+      "mean": 2448,
+      "p50": 2448,
+      "p95": 2448,
+      "max": 2448,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 195,
+          "p50": 195,
+          "p95": 195,
+          "max": 195
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 1273,
+          "p50": 1273,
+          "p95": 1273,
+          "max": 1273
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "getPerformanceTrace": {
+      "count": 1,
+      "mean": 1946,
+      "p50": 1946,
+      "p95": 1946,
+      "max": 1946,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 682,
+          "p50": 682,
+          "p95": 682,
+          "max": 682
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    },
+    "finishPerformanceRun": {
+      "count": 1,
+      "mean": 2091,
+      "p50": 2091,
+      "p95": 2091,
+      "max": 2091,
+      "successes": 1,
+      "failures": 0,
+      "timeouts": 0,
+      "metrics": {
+        "preparationMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockWaitMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "lockHeldMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetReadMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "sheetWriteMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "flushMs": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        },
+        "totalMs": {
+          "count": 1,
+          "mean": 715,
+          "p50": 715,
+          "p95": 715,
+          "max": 715
+        },
+        "lockTimeoutCount": {
+          "count": 1,
+          "mean": 0,
+          "p50": 0,
+          "p95": 0,
+          "max": 0
+        }
+      }
+    }
+  }
+}

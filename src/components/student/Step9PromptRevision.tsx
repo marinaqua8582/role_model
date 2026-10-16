@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { PromptData, TestData, StudentInfo } from '../../types';
 import { Wrench, Sparkles, Copy, Check, ArrowRight, ArrowLeft, Lightbulb, AlertCircle } from 'lucide-react';
 import { updateRevision } from '../../api/client';
@@ -9,7 +9,7 @@ interface Step9PromptRevisionProps {
   student?: StudentInfo;
   onChangePrompt: (promptData: PromptData) => void;
   onChangeTest: (testData: TestData) => void;
-  onNext: () => void;
+  onNext: (saved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -45,25 +45,29 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
 
   const currentPrompt = promptData.finalPrompt || promptData.revisedPrompt || promptData.initialPrompt;
 
+  const savingRef = useRef(false);
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (isReadOnly || !student) {
       onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await updateRevision(student, promptData, testData);
+      const res = await updateRevision({ ...student, currentStep: Math.max(10,(student as any).currentStep || 10) } as any, promptData, testData);
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -235,5 +239,6 @@ export const Step9PromptRevision: React.FC<Step9PromptRevisionProps> = ({
     </div>
   );
 };
+
 
 

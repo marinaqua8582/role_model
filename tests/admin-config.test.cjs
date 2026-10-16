@@ -7,7 +7,7 @@ function server(b,env) {
     if(cache[file])return cache[file];
     const source=ts.transpileModule(fs.readFileSync(path.join(__dirname,'..',file),'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
     const exports={};cache[file]=exports;
-    vm.runInNewContext(source,{exports,process:{env},Buffer,Date,console,require:id=>id==='../_lib.js'?load('api/_lib.ts'):require(id),fetch:async(url,options)=>{calls++;return {text:async()=>JSON.stringify(b.request(JSON.parse(options.body)))};}});
+    vm.runInNewContext(source,{exports,AbortSignal,process:{env},Buffer,Date,console,require:id=>id==='../_lib.js'?load('api/_lib.ts'):require(id),fetch:async(url,options)=>{calls++;return {text:async()=>JSON.stringify(b.request(JSON.parse(options.body)))};}});
     return exports;
   }
   return {handler:load('api/admin/login.ts').default,calls:()=>calls};
@@ -23,3 +23,4 @@ test('admin login validates Vercel/GAS secret before issuing session, without ex
     if(!secret)assert.equal(s.calls(),0);
   }
 });
+

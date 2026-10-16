@@ -1,0 +1,6 @@
+[
+  ".gitignore",
+  "src/api/client.ts",
+  "tests/run.cjs",
+  "vercel.json"
+]

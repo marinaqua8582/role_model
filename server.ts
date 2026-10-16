@@ -2,6 +2,7 @@ import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
+import studentGasHandler from './api/gas-proxy';
 import { RosterItem, StudentProgress, StudentInfo } from './src/types/index';
 import {
   generateAdminSessionToken,
@@ -20,6 +21,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(express.json({ limit: '10mb' }));
+app.use('/api', (_req, res, next) => { res.setHeader('Cache-Control','no-store'); next(); });
 
 // In-memory store initialized with sample roster (for fallback or local sync)
 let rosterStore: RosterItem[] = [];
@@ -51,59 +53,7 @@ function normalizeName(name: any): string {
 // -------------------------------------------------------------
 
 // 0. Student GAS Proxy (Students only access non-admin actions)
-app.post('/api/gas-proxy', async (req, res) => {
-  try {
-    const payload = req.body || {};
-    const action = payload.action;
-
-    // Block client attempts to run admin actions through public proxy
-    if (
-      action === 'checkAdminConfig' ||
-      action === 'getAdminDashboard' ||
-      action === 'getStudentDetail' ||
-      action === 'updateRoster' ||
-      action === 'deleteRosterStudents' ||
-      action === 'getAllProgress'
-    ) {
-      return res.status(403).json({
-        success: false,
-        message: '관리자 전용 기능은 클라이언트에서 직접 호출할 수 없습니다.',
-      });
-    }
-
-    const targetUrl = process.env.GAS_URL || process.env.VITE_GAS_URL;
-
-    if (!targetUrl || typeof targetUrl !== 'string' || !targetUrl.startsWith('https://')) {
-      return res.status(500).json({
-        success: false,
-        message: 'GAS_URL 환경변수가 설정되지 않았습니다.',
-      });
-    }
-
-    const response = await fetch(targetUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'text/plain;charset=utf-8',
-      },
-      body: JSON.stringify(payload),
-      redirect: 'follow',
-    });
-
-    const text = await response.text();
-    try {
-      const data = JSON.parse(text);
-      return res.json(data);
-    } catch {
-      return res.status(response.status).send(text);
-    }
-  } catch (err: any) {
-    console.error('GAS proxy error:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Google Apps Script 연결 중 오류가 발생했습니다: ' + (err?.message || 'Server error'),
-    });
-  }
-});
+app.post('/api/gas-proxy', studentGasHandler);
 
 // 1. Dropdown Options (grades, classes, numbers) strictly from saved roster
 app.get('/api/roster/options', (req, res) => {
@@ -238,7 +188,7 @@ app.get('/api/admin/dashboard', requireAdminAuth, async (req, res) => {
       message: gasData?.message || 'Google Apps Script에서 대시보드 데이터를 가져오지 못했습니다.',
     });
   } catch (err: any) {
-    console.error('Admin dashboard fetch error:', err);
+    // Do not log upstream error details.
     return res.status(500).json({
       success: false,
       message: '관리자 대시보드 조회 실패: ' + (err?.message || 'Server error'),
@@ -267,7 +217,7 @@ app.get('/api/admin/student-detail', requireAdminAuth, async (req, res) => {
       message: gasData?.message || 'Google Apps Script에서 학생 상세 정보를 가져오지 못했습니다.',
     });
   } catch (err: any) {
-    console.error('Admin student-detail fetch error:', err);
+    // Do not log upstream error details.
     return res.status(500).json({
       success: false,
       message: '학생 상세 조회 실패: ' + (err?.message || 'Server error'),
@@ -323,7 +273,7 @@ app.post('/api/admin/update-roster', requireAdminAuth, async (req, res) => {
       message: gasData?.message || 'Google Apps Script 학생 명단 수정에 실패했습니다.',
     });
   } catch (err: any) {
-    console.error('Admin update-roster error:', err);
+    // Do not log upstream error details.
     return res.status(500).json({
       success: false,
       message: '학생 명단 저장 실패: ' + (err?.message || 'Server error'),
@@ -361,7 +311,7 @@ app.post('/api/admin/delete-roster', requireAdminAuth, async (req, res) => {
       message: gasData?.message || 'Google Apps Script 학생 명단 삭제에 실패했습니다.',
     });
   } catch (err: any) {
-    console.error('Admin delete-roster error:', err);
+    // Do not log upstream error details.
     return res.status(500).json({
       success: false,
       message: '학생 명단 삭제 실패: ' + (err?.message || 'Server error'),

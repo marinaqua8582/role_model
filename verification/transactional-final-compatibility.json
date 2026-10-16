@@ -1,0 +1,7 @@
+{
+  "source": "repository GAS schemas only; generated synthetic rows",
+  "legacyTestsWithoutOwnerColumnsAccepted": false,
+  "rawCounselingArchived": true,
+  "counselingImportedIntoActiveDocument": false,
+  "productionMigrationReady": false
+}

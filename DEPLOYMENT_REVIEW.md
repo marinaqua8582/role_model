@@ -1,3 +1,9 @@
+> 이전 작업 기록입니다. 최신 배포 판단은 배포전_최종점검_보고서.md 및 staging-25명-시험절차.md를 확인하세요.
+
+> 후속 점검의 최신 판단은 PERFORMANCE_FOLLOWUP.md입니다. 기본 build/정상 ci와 실제 staging은 미검증이며 production 배포를 보류합니다.
+
+> 최신 성능 개선 배포 안내는 PERFORMANCE_REVIEW.md를 먼저 확인하세요. GAS_URL은 서버 전용으로 설정하고 VITE_GAS_URL은 제거합니다. 이번 작업에서 배포하지 않았습니다.
+
 # 배포 전 확인 사항
 
 이 수정본은 Production 배포나 실제 시트 변경을 수행하지 않는다.
@@ -25,3 +31,4 @@
 프론트와 수정된 GAS를 함께 검증해야 한다. ADMIN_API_SECRET은 Vercel 서버 환경과 GAS Script Properties에서 일치해야 하며 VITE_ 변수로 공개하지 않는다. GAS_URL(없으면 VITE_GAS_URL)이 서버 프록시 대상이다. 운영 GAS 배포 및 환경변수 변경은 별도 승인 작업이다.
 
 로그아웃은 서버 캐시 토큰을 제거한다. 네트워크 실패 시 로컬 상태는 제거하지만 서버 토큰은 만료 전까지 남을 수 있다.
+

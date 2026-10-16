@@ -1,0 +1,22 @@
+{
+  "date": "2026-10-14",
+  "sourceRuntimeCandidate": "f6c4db1",
+  "sourceRemoteRuntimeCandidate": "d896115565380cd5c4404ade9dd5284bf21c7de0",
+  "finalSyntheticPreview": "https://staging-role-model-synthetic25-20261009-44uakrd9u-jeonghee.vercel.app/",
+  "previewPipelineTests": 239,
+  "previewLintBuildPassed": true,
+  "finalPreview25ActiveAndStudentAdminDocumentsMatch": true,
+  "localFullTestsAfterMigrationBlankProtection": 240,
+  "localLintBuildPassed": true,
+  "migrationOnlyFollowupChangesRequireNoStudentRuntimeChange": true,
+  "singleStudentA4PdfPages": 6,
+  "allSixPdfPagesVisuallyReviewed": true,
+  "promptCounselingReflectionEndMarkersVisuallyPresent": true,
+  "pdfAutomatedTextMatchingUnavailable": true,
+  "classPdfReviewCompleted": true,
+  "realStudentDataAccessed": false,
+  "productionDeployed": false,
+  "classPdfPages": 54,
+  "classPdfStudentsVisuallyVerified": 25,
+  "classPdfClippingOrMixedStudentsObserved": false
+}

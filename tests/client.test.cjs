@@ -5,7 +5,7 @@ const {backend}=require('./gas.test.cjs');
 function client(b) {
   const storage=new Map(); const modules=new Map();
   const state={fail:false,negative:false,calls:[],deferred:null};
-  const context={AbortSignal,console:{...console,warn(){},error(){}},Event:class{constructor(type){this.type=type}},window:{dispatchEvent(){}},
+  const context={AbortSignal,setTimeout,clearTimeout,console:{...console,warn(){},error(){}},Event:class{constructor(type){this.type=type}},window:{dispatchEvent(){}},
     localStorage:{getItem:k=>storage.get(k)??null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},
     sessionStorage:{getItem:()=>null,removeItem(){}},
     fetch:async(url,options)=>{
@@ -109,3 +109,4 @@ test('real client logout revokes token; offline and corrupt-session logout still
   for(const key of c.storage.keys()) if(key.includes('session')) c.storage.set(key,'{corrupt');
   await c.api.logoutStudent();assert.equal(JSON.stringify([...c.storage]).includes('corrupt'),false);
 });
+

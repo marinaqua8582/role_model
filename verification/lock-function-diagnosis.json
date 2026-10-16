@@ -1,0 +1,60 @@
+{
+  "source": "GAS v10 / Preview 1a6546d",
+  "count": 1,
+  "passed": true,
+  "ended": true,
+  "inclusiveFunctionTimings": true,
+  "writeSampleCount": 6,
+  "functions": {
+    "authorizeStudent_": {
+      "mean": 1225,
+      "min": 796,
+      "max": 1537
+    },
+    "assertStudentOwnsRows_": {
+      "mean": 944,
+      "min": 586,
+      "max": 1257
+    },
+    "sheetMetadata_": {
+      "mean": 829,
+      "min": 503,
+      "max": 1078
+    },
+    "requestSheet_": {
+      "mean": 197,
+      "min": 150,
+      "max": 249
+    },
+    "receiptRead_": {
+      "mean": 39,
+      "min": 20,
+      "max": 55
+    },
+    "receiptWrite_": {
+      "mean": 152,
+      "min": 128,
+      "max": 191
+    }
+  },
+  "lockHeldMs": {
+    "mean": 2051,
+    "min": 1431,
+    "max": 2683
+  },
+  "sheetReadMs": {
+    "mean": 316,
+    "min": 239,
+    "max": 431
+  },
+  "sheetWriteMs": {
+    "mean": 10,
+    "min": 7,
+    "max": 13
+  },
+  "flushMs": {
+    "mean": 220,
+    "min": 167,
+    "max": 287
+  }
+}

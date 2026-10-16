@@ -1,0 +1,22 @@
+{
+  "checkedAt": "2026-10-12T09:09:08.288Z",
+  "results": [
+    {
+      "project": "role-model",
+      "id": "prj_jF1q8aCLIMVcjeFVDFz5DK4OSJR6",
+      "rootDirectory": null,
+      "git": {
+        "type": "github",
+        "repo": "role_model",
+        "org": "marinaqua8582",
+        "productionBranch": "main"
+      }
+    },
+    {
+      "project": "staging-role-model-synthetic25-20261009",
+      "id": "prj_f16TrHu2qlMK75Az7msfUkumkIQM",
+      "rootDirectory": null,
+      "git": null
+    }
+  ]
+}

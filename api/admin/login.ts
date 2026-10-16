@@ -1,6 +1,7 @@
 import { generateAdminSessionToken, checkAdminConfiguration } from '../_lib.js';
 
 export default async function handler(req: any, res: any) {
+  res.setHeader('Cache-Control','no-store');
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, message: 'Method Not Allowed' });
   }
@@ -50,4 +51,5 @@ export default async function handler(req: any, res: any) {
     message: '관리자 로그인이 완료되었습니다.',
   });
 }
+
 

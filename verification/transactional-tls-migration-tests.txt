@@ -1,0 +1,15 @@
+✔ legacy synthetic migration preserves unknown columns, canonical keys and identical duplicates (15.224ms)
+✔ migration rejects foreign identity, ambiguous duplicates and malformed answer JSON (1.7019ms)
+✔ private backup authenticates ciphertext and key without plaintext disclosure (4.7018ms)
+✔ atomic migration, idempotency and rollback retain post-cutover answers and receipts (303.3471ms)
+✔ migration transaction failure rolls back every answer and receipt (114.3501ms)
+✔ PostgreSQL always verifies TLS with official Supabase CA and rejects unsafe URL overrides (10.3505ms)
+✔ deployed synthetic runtime fails closed in production and never fetches GAS (267.4888ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 537.38

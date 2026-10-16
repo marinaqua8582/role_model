@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { FinalSubmissionData, StudentProgress, StudentInfo } from '../../types';
 import {
   Send,
@@ -85,6 +85,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
   isReadOnly = false,
 }) => {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(progress.isFinalSubmitted);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [copiedQuestion, setCopiedQuestion] = useState<string | null>(null);
@@ -129,7 +130,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isReadOnly || isSubmitting) return;
+    if (isReadOnly || submittingRef.current) return;
 
     if (!isGemUrlValid) {
       setSubmitError('https://gemini.google.com 으로 시작하는 올바른 Gemini Gem 공유 링크를 입력해 주세요.');
@@ -152,6 +153,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
       return;
     }
 
+    submittingRef.current = true;
     setIsSubmitting(true);
     setSubmitError(null);
 
@@ -174,6 +176,7 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
       console.error(err);
       setSubmitError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };

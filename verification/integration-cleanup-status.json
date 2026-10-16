@@ -1,0 +1,21 @@
+{
+  "visibleTriggers": 1,
+  "registered": true,
+  "installed": true,
+  "unmanagedVisibleTriggers": 0,
+  "intervalMinutes": 5,
+  "receiptCount": 0,
+  "last": {
+    "deleted": 0,
+    "remaining": 0,
+    "protectedPending": 0,
+    "protectedUnknownState": 0,
+    "invalidExpiresAt": 0,
+    "malformed": 0,
+    "deferredExpired": 0,
+    "success": true,
+    "statusRecorded": true,
+    "at": "2026-10-12T09:59:25.676Z"
+  },
+  "notice": ""
+}

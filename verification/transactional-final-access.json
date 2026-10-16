@@ -1,0 +1,6 @@
+{
+  "invalidNameRejected": true,
+  "foreignStudentRejected": true,
+  "studentTokenCannotReadAdmin": true,
+  "unauthenticatedReadRejected": true
+}

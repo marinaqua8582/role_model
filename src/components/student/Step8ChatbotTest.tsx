@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { TestData, StudentInfo } from '../../types';
 import {
   CheckCircle2,
@@ -17,7 +17,7 @@ interface Step8ChatbotTestProps {
   data: TestData;
   student?: StudentInfo;
   onChange: (data: TestData) => void;
-  onNext: () => void;
+  onNext: (saved?: boolean) => void | Promise<void>;
   onPrev: () => void;
   isReadOnly?: boolean;
 }
@@ -220,25 +220,29 @@ export const Step8ChatbotTest: React.FC<Step8ChatbotTestProps> = ({
     });
   };
 
+  const savingRef = useRef(false);
   const handleSaveAndNext = async () => {
+    if (savingRef.current) return;
     if (isReadOnly || !student) {
       onNext();
       return;
     }
 
+    savingRef.current = true;
     setIsSaving(true);
     setSaveError(null);
 
     try {
-      const res = await saveTests(student, data);
+      const res = await saveTests({ ...student, currentStep: Math.max(9,(student as any).currentStep || 9) } as any, data);
       if (res.success) {
-        onNext();
+        await onNext(true);
       } else {
         setSaveError(res.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
       }
     } catch (err: any) {
       setSaveError(err?.message || '저장에 실패했습니다. 잠시 후 다시 시도해 주세요.');
     } finally {
+      savingRef.current = false;
       setIsSaving(false);
     }
   };
@@ -527,5 +531,6 @@ export const Step8ChatbotTest: React.FC<Step8ChatbotTestProps> = ({
     </div>
   );
 };
+
 
 

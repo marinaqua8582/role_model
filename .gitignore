@@ -15,3 +15,5 @@ handoff/readiness-*.json
 *.sqlite
 *.sqlite-wal
 *.sqlite-shm
+__pycache__/
+node-compile-cache/

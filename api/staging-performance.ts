@@ -25,6 +25,7 @@ export function verifySyntheticRequest(body:any,subject:string) {
 }
 export default async function handler(req:any,res:any) {
   res.setHeader('Cache-Control','no-store');
+  if(process.env.VERCEL_ENV==='production'||process.env.OPERATING_POSTGRES)return res.status(404).json({success:false});
   const correlationId=randomUUID(),started=Date.now();
   res.setHeader('X-Staging-Correlation-Id',correlationId);
   let stage='guard';

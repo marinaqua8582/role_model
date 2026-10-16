@@ -119,7 +119,7 @@ async function requestGasApi(payload: Record<string, any>): Promise<any> {
   const requestIssuedAt=writing ? Date.now() : payload.requestIssuedAt;
   const input=payload.progress || payload.tests || payload.submission || payload.counseling || payload;
   const markUnknown=()=>{ localStorage.setItem(pendingKey(input.studentKey),JSON.stringify({requestId,requestIssuedAt,studentKey:input.studentKey})); window.dispatchEvent(new Event('student-save-state')); };
-  const body = JSON.stringify({ ...payload, requestId:requestId || payload.requestId, requestIssuedAt, maintenanceEpoch:session?.maintenanceEpoch, ...(writing && session?.storageBackend==='transactional-synthetic'?{expectedVersion:session.version}:{}), studentToken: session?.token });
+  const body = JSON.stringify({ ...payload, requestId:requestId || payload.requestId, requestIssuedAt, maintenanceEpoch:session?.maintenanceEpoch, ...(writing && ['transactional-synthetic','transactional-postgres'].includes(session?.storageBackend)?{expectedVersion:session.version}:{}), studentToken: session?.token });
   const deadline = Date.now() + (writing || payload.action==='getSaveStatus' ? 80000 : 20000);
   const checkSession = () => {
     const current = JSON.parse(localStorage.getItem(STUDENT_SESSION_KEY) || 'null');
@@ -153,7 +153,7 @@ async function requestGasApi(payload: Record<string, any>): Promise<any> {
     try { data=await response.json(); } catch(error) { if(writing) { markUnknown(); throw new Error(UNKNOWN_MESSAGE); } throw error; }
     checkSession();
     if(writing && data?.success) { localStorage.removeItem(pendingKey(input.studentKey)); window.dispatchEvent(new Event('student-save-state')); }
-    if(data?.storageBackend==='transactional-synthetic' && session?.token) {
+    if(['transactional-synthetic','transactional-postgres'].includes(data?.storageBackend) && session?.token) {
       const version=data.version ?? data.result?.version;
       if(Number.isSafeInteger(version)) localStorage.setItem(STUDENT_SESSION_KEY,JSON.stringify({...session,version}));
       if(writing && ['VERSION_CONFLICT','CANCELLED','EXPIRED','SCOPE','ID_REUSE','REQUEST','AUTH','MAINTENANCE','STALE_EPOCH'].includes(data.code)) {
@@ -382,7 +382,7 @@ async function performStudentAuth(params: { grade: number; classNum: number; num
     if (data?.success !== true || !data.student) return { success: false, message: data?.message || '학생 정보를 확인할 수 없습니다.' };
     if (!data.studentToken) return { success: false, message: 'Google Apps Script를 최신 코드로 배포한 뒤 다시 로그인해 주세요.' };
     const student: StudentInfo = { ...data.student, studentKey, googleId: data.student.googleId || '' };
-    localStorage.setItem(STUDENT_SESSION_KEY, JSON.stringify({ token: data.studentToken, studentKey, maintenanceEpoch:data.maintenanceEpoch, ...(data.storageBackend==='transactional-synthetic'?{storageBackend:data.storageBackend,version:data.version}: {}) }));
+    localStorage.setItem(STUDENT_SESSION_KEY, JSON.stringify({ token: data.studentToken, studentKey, maintenanceEpoch:data.maintenanceEpoch, ...(['transactional-synthetic','transactional-postgres'].includes(data.storageBackend)?{storageBackend:data.storageBackend,version:data.version}: {}) }));
     const progress = data.hasExisting && !data.identityMismatch ? mapFullStudentDetail(data.progress) : createInitialStudentProgress(student);
     Object.assign(progress, student);
     saveStoredProgressMap({ [studentKey]: progress });

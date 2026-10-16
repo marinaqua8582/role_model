@@ -3,6 +3,10 @@ const STUDENT_ACTIONS = new Set(['getRosterOptions','verifyStudent','loadProgres
 export default async function handler(req: any, res: any) {
   res.setHeader('Cache-Control', 'no-store');
   if (req.method !== 'POST') return res.status(405).json({success:false,message:'Method Not Allowed'});
+  if (process.env.OPERATING_POSTGRES) {
+    const { operatingHttp } = await import('../transactional/operating-runtime.mjs');
+    return operatingHttp(req, res);
+  }
   if (process.env.TRANSACTIONAL_SYNTHETIC) {
     const { syntheticHttp } = await import('../transactional/runtime.mjs');
     return syntheticHttp(req, res);

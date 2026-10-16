@@ -18,7 +18,7 @@ export const isActive=row=>JSON.parse(row.document).rosterActive!==false;
 export async function rosterRows(db){return (await db.query('SELECT * FROM synthetic_students ORDER BY student_key')).filter(isActive).sort((a,b)=>JSON.parse(a.identity).grade-JSON.parse(b.identity).grade||JSON.parse(a.identity).classNum-JSON.parse(b.identity).classNum||JSON.parse(a.identity).number-JSON.parse(b.identity).number);}
 export async function changeRoster(db,p,validateIdentity=syntheticIdentity){
   const deleting=p.action==='deleteRosterStudents';
-  if(!Array.isArray(p.students)||(!p.students.length&&(deleting||p.mode!=='replace'))||p.students.length>100||!deleting&&!['append','replace'].includes(p.mode))fail();
+  if(!Array.isArray(p.students)||(!p.students.length&&(deleting||p.mode!=='replace'))||p.students.length>(validateIdentity===registeredIdentity?10000:100)||!deleting&&!['append','replace'].includes(p.mode))fail();
   const incoming=p.students.map(s=>validateIdentity(s,{deletion:deleting}));
   if(new Set(incoming.map(s=>s.studentKey)).size!==incoming.length)fail();
   return db.transaction('__roster__',async q=>{

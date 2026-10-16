@@ -29,3 +29,6 @@ require('./transactional-migration.test.cjs');
 require('./transactional-readiness.test.cjs');
 
 require('./cutover.test.cjs');
+require('./operating-runtime.test.cjs');
+require('./legacy-operating-fence.test.cjs');
+require('./operating-import.test.cjs');

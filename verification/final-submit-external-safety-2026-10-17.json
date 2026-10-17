@@ -1,0 +1,12 @@
+{
+  "passed": true,
+  "environment": "real student client module in VM using dedicated external PostgreSQL Preview",
+  "finalSubmitResponseDiscardedAfterDurableCommit": true,
+  "automaticResends": 0,
+  "extraSaveBlockedUntilReceipt": true,
+  "receiptCompleted": true,
+  "reloginRestored": true,
+  "serverCompletedWhileAcknowledgementHeld": true,
+  "noPrematureAcknowledgement": true,
+  "browserNetworkDisconnected": false
+}

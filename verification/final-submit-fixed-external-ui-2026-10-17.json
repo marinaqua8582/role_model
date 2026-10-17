@@ -1,0 +1,10 @@
+{
+  "passed": true,
+  "environment": "patched actual React STEP10 and real API client against dedicated external PostgreSQL Preview",
+  "committedResponseDiscarded": true,
+  "receiptConfirmedCompleted": true,
+  "existingScreenUpdatedWithoutRelogin": true,
+  "saveResends": 0,
+  "editingCompletedSubmissionPreserved": true,
+  "realBrowserNetworkDisconnect": false
+}

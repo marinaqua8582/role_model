@@ -32,3 +32,4 @@ require('./cutover.test.cjs');
 require('./operating-runtime.test.cjs');
 require('./legacy-operating-fence.test.cjs');
 require('./operating-import.test.cjs');
+require('./step10-focused.test.cjs');

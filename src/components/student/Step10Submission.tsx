@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { FinalSubmissionData, StudentProgress, StudentInfo } from '../../types';
 import {
   Send,
@@ -87,6 +87,9 @@ export const Step10Submission: React.FC<Step10SubmissionProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const submittingRef = useRef(false);
   const [isSubmittedSuccess, setIsSubmittedSuccess] = useState(progress.isFinalSubmitted);
+  useEffect(() => {
+    if (progress.isFinalSubmitted) setIsSubmittedSuccess(true);
+  }, [progress.isFinalSubmitted, progress.updatedAt]);
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [copiedQuestion, setCopiedQuestion] = useState<string | null>(null);
 

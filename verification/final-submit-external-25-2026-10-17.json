@@ -1,0 +1,100 @@
+{
+  "date": "2026-10-17T08:18:52.720Z",
+  "origin": "https://staging-role-model-synthetic25-20261009-mpsvpsuzr-jeonghee.vercel.app",
+  "environment": "external synthetic PostgreSQL Preview",
+  "completed": true,
+  "normalFailures": 0,
+  "timeouts": 0,
+  "phases": {
+    "loginPreparation": {
+      "attempts": 25,
+      "successes": 25,
+      "meanMs": 3714.4533200000005,
+      "p50Ms": 3475.7239,
+      "p95Ms": 4382.5646,
+      "maxMs": 4385.3071
+    },
+    "simultaneousFinalSubmit25": {
+      "attempts": 25,
+      "successes": 25,
+      "meanMs": 3340.7839960000006,
+      "p50Ms": 3547.4214999999986,
+      "p95Ms": 4202.8591,
+      "maxMs": 4230.6468
+    },
+    "receiptRead": {
+      "attempts": 25,
+      "successes": 25,
+      "meanMs": 2287.3686279999997,
+      "p50Ms": 1877.1780999999992,
+      "p95Ms": 3263.733299999998,
+      "maxMs": 3316.8755
+    },
+    "sameRequestReplay": {
+      "attempts": 25,
+      "successes": 25,
+      "meanMs": 2594.981136000001,
+      "p50Ms": 2067.514800000001,
+      "p95Ms": 4119.320000000003,
+      "maxMs": 4144.791099999999
+    },
+    "reloginRestore": {
+      "attempts": 25,
+      "successes": 25,
+      "meanMs": 1668.6244319999998,
+      "p50Ms": 1360.7165999999997,
+      "p95Ms": 2252.4184999999998,
+      "maxMs": 2263.9603000000025
+    }
+  },
+  "submittedAndReceiptsMatched": 25,
+  "studentAdminMatched": 25,
+  "duplicateStudentRows": 0,
+  "replayExtraVersions": 0,
+  "wrongStudentUpdates": 0,
+  "privacyLeaks": 0,
+  "serverMetrics": {
+    "poolWaitMs": {
+      "meanMs": 0.10314067999959661,
+      "p50Ms": 0.10010499999953026,
+      "p95Ms": 0.15806399999928544,
+      "maxMs": 0.173373000000538
+    },
+    "lockWaitMs": {
+      "meanMs": 1094.0684092800004,
+      "p50Ms": 915.8362809999999,
+      "p95Ms": 1447.5377880000005,
+      "maxMs": 1450.2928919999995
+    },
+    "lockHeldMs": {
+      "meanMs": 906.7907437600005,
+      "p50Ms": 910.9300240000002,
+      "p95Ms": 924.8953659999997,
+      "maxMs": 926.5348199999999
+    },
+    "dbReadMs": {
+      "meanMs": 362.2926730400005,
+      "p50Ms": 363.95407200000045,
+      "p95Ms": 368.7348199999997,
+      "maxMs": 370.6762380000009
+    },
+    "dbWriteMs": {
+      "meanMs": 362.4599279600003,
+      "p50Ms": 363.8022059999994,
+      "p95Ms": 369.7913900000003,
+      "maxMs": 370.73240499999883
+    },
+    "commitMs": {
+      "meanMs": 181.56268428000007,
+      "p50Ms": 182.0768790000002,
+      "p95Ms": 184.6721889999999,
+      "maxMs": 185.41330800000014
+    },
+    "totalMs": {
+      "meanMs": 2967.62196888,
+      "p50Ms": 3164.1174100000003,
+      "p95Ms": 3835.2594790000003,
+      "maxMs": 3837.741274
+    }
+  }
+}
